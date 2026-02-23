@@ -16,6 +16,7 @@ interface PrepaidData {
   startDate: string;
   period: string;
   periodUnit: string;
+  pembagianType: string;
   vendor: string;
   costCenter: string;
   headerText: string;
@@ -43,6 +44,7 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
     startDate: '',
     period: '',
     periodUnit: 'bulan',
+    pembagianType: 'otomatis',
     vendor: '',
     costCenter: '',
     headerText: ''
@@ -64,6 +66,7 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
         startDate: editData.startDate?.split('T')[0] || '',
         period: editData.period?.toString() || '',
         periodUnit: editData.periodUnit || 'bulan',
+        pembagianType: editData.pembagianType || 'otomatis',
         vendor: editData.vendor || '',
         costCenter: editData.costCenter || '',
         headerText: editData.headerText || ''
@@ -82,6 +85,7 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
         startDate: '',
         period: '',
         periodUnit: 'bulan',
+        pembagianType: 'otomatis',
         vendor: '',
         costCenter: '',
         headerText: ''
@@ -162,13 +166,12 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* Company Code */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Company Code <span className="text-red-600">*</span>
+                  Company Code
                 </label>
                 <select
                   name="companyCode"
                   value={formData.companyCode}
                   onChange={handleChange}
-                  required
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
                 >
                   <option value="">Pilih company code</option>
@@ -180,14 +183,13 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* No PO */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  No PO <span className="text-red-600">*</span>
+                  No PO
                 </label>
                 <input
                   type="text"
                   name="noPo"
                   value={formData.noPo}
                   onChange={handleChange}
-                  required
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
                   placeholder="Masukkan no PO"
                 />
@@ -196,14 +198,13 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* Assignment/Order (Alokasi) */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Assignment/Order <span className="text-red-600">*</span>
+                  Assignment/Order
                 </label>
                 <input
                   type="text"
                   name="alokasi"
                   value={formData.alokasi}
                   onChange={handleChange}
-                  required
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
                   placeholder="Masukkan assignment/order"
                 />
@@ -212,13 +213,12 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* Kode Akun Prepaid */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Kode Akun Prepaid <span className="text-red-600">*</span>
+                  Kode Akun Prepaid
                 </label>
                 <select
                   name="kdAkr"
                   value={formData.kdAkr}
                   onChange={handleChange}
-                  required
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
                 >
                   <option value="">Pilih kode akun prepaid</option>
@@ -231,14 +231,13 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* Kode Akun Biaya */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Kode Akun Biaya <span className="text-red-600">*</span>
+                  Kode Akun Biaya
                 </label>
                 <input
                   type="text"
                   name="namaAkun"
                   value={formData.namaAkun}
                   onChange={handleChange}
-                  required
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
                   placeholder="Contoh: Prepaid Insurance"
                 />
@@ -247,14 +246,13 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* Klasifikasi */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Klasifikasi <span className="text-red-600">*</span>
+                  Klasifikasi
                 </label>
                 <input
                   type="text"
                   name="klasifikasi"
                   value={formData.klasifikasi}
                   onChange={handleChange}
-                  required
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
                   placeholder="Contoh: Insurance, Rent, Service"
                 />
@@ -263,14 +261,13 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* Amount */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Amount <span className="text-red-600">*</span>
+                  Amount
                 </label>
                 <input
                   type="number"
                   name="totalAmount"
                   value={formData.totalAmount}
                   onChange={handleChange}
-                  required
                   min="0"
                   step="0.01"
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
@@ -281,14 +278,13 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* Start Date */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Start Date <span className="text-red-600">*</span>
+                  Start Date
                 </label>
                 <input
                   type="date"
                   name="startDate"
                   value={formData.startDate}
                   onChange={handleChange}
-                  required
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
                 />
               </div>
@@ -296,14 +292,13 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* Jumlah Periode */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Jumlah Periode <span className="text-red-600">*</span>
+                  Jumlah Periode
                 </label>
                 <input
                   type="number"
                   name="period"
                   value={formData.period}
                   onChange={handleChange}
-                  required
                   min="1"
                   max="36"
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
@@ -311,17 +306,32 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
                 />
               </div>
 
+              {/* Pembagian Type */}
+              <div>
+                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
+                  Mode Amortisasi
+                </label>
+                <select
+                  name="pembagianType"
+                  value={formData.pembagianType}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
+                >
+                  <option value="otomatis">Otomatis (dibagi rata, berjalan per bulan)</option>
+                  <option value="manual">Manual (input amortisasi per periode)</option>
+                </select>
+              </div>
+
               {/* Cost Center */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Cost Center <span className="text-red-600">*</span>
+                  Cost Center
                 </label>
                 <input
                   type="text"
                   name="costCenter"
                   value={formData.costCenter}
                   onChange={handleChange}
-                  required
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
                   placeholder="Contoh: CC-001"
                 />
@@ -330,14 +340,13 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* Header Text */}
               <div className="sm:col-span-2">
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Header Text (untuk jurnal SAP) <span className="text-red-600">*</span>
+                  Header Text (untuk jurnal SAP)
                 </label>
                 <input
                   type="text"
                   name="headerText"
                   value={formData.headerText}
                   onChange={handleChange}
-                  required
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
                   placeholder="Header text untuk jurnal SAP"
                 />
@@ -346,13 +355,12 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* Deskripsi */}
               <div className="sm:col-span-2">
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Deskripsi <span className="text-red-600">*</span>
+                  Deskripsi
                 </label>
                 <textarea
                   name="deskripsi"
                   value={formData.deskripsi}
                   onChange={handleChange}
-                  required
                   rows={3}
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none text-sm transition-all"
                   placeholder="Deskripsi prepaid"
