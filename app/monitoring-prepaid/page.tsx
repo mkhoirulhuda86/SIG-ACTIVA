@@ -750,7 +750,7 @@ export default function MonitoringPrepaidPage() {
   };
 
   const formatCurrency = (amount: number) => {
-    return `Rp ${amount.toLocaleString('id-ID')}`;
+    return `Rp ${Math.round(amount).toLocaleString('id-ID')}`;
   };
 
   return (
