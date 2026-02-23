@@ -807,6 +807,7 @@ export default function MonitoringPrepaidPage() {
 
                       return (
                         <React.Fragment key={item.id}>
+                          <tr className="hover:bg-gray-50 transition-colors">
                           <td className="px-3 py-3 text-gray-800 whitespace-nowrap">
                             {item.companyCode || '-'}
                           </td>
