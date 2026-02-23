@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Search, Download, Plus, Edit, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, Download, Plus, Edit, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock, Upload } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { exportToCSV } from '../utils/exportUtils';
 
@@ -66,6 +66,8 @@ export default function MonitoringPrepaidPage() {
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [editingPeriode, setEditingPeriode] = useState<{ prepaidId: number; periodeId: number; amount: string } | null>(null);
   const [savingPeriode, setSavingPeriode] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   const bulanMap: Record<string, number> = {
     'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
@@ -702,6 +704,30 @@ export default function MonitoringPrepaidPage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/prepaid/import', { method: 'POST', body: formData });
+      const result = await res.json();
+      if (res.ok) {
+        const errMsg = result.errors?.length ? `\n\nWarning (${result.errors.length}):\n${result.errors.slice(0, 5).join('\n')}` : '';
+        alert(`Import berhasil!\n✅ ${result.created} data diimpor\n⏭ ${result.skipped} baris dilewati${errMsg}`);
+        await fetchPrepaidData();
+      } else {
+        alert(`Gagal mengimpor: ${result.error}`);
+      }
+    } catch (err) {
+      alert('Terjadi kesalahan saat mengimpor file');
+    } finally {
+      setImportLoading(false);
+      if (importFileRef.current) importFileRef.current.value = '';
+    }
+  };
+
   const handleExport = () => {
     const headers = ['kdAkr', 'namaAkun', 'alokasi', 'vendor', 'totalAmount', 'remaining', 'period', 'type'];
     exportToCSV(filteredData, 'Monitoring_Prepaid.csv', headers);
@@ -818,6 +844,22 @@ export default function MonitoringPrepaidPage() {
 
               {/* Action Buttons */}
               <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:ml-auto">
+                <input
+                  ref={importFileRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  onChange={handleImportExcel}
+                />
+                <button
+                  onClick={() => importFileRef.current?.click()}
+                  disabled={importLoading}
+                  className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center disabled:opacity-60"
+                >
+                  <Upload size={16} className="sm:w-[18px] sm:h-[18px]" />
+                  <span className="hidden sm:inline">{importLoading ? 'Mengimpor...' : 'Import Excel'}</span>
+                  <span className="sm:hidden">{importLoading ? '...' : 'Import'}</span>
+                </button>
                 <button
                   onClick={handleDownloadGlobalReport}
                   className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center"
