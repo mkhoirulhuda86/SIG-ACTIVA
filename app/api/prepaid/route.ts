@@ -263,12 +263,26 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE - Menghapus prepaid
+// DELETE - Menghapus prepaid (single id atau bulk ids=1,2,3)
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const ids = searchParams.get('ids');
     const id = searchParams.get('id');
 
+    // Bulk delete
+    if (ids) {
+      const idList = ids.split(',').map((s) => parseInt(s.trim())).filter((n) => !isNaN(n));
+      if (idList.length === 0) {
+        return NextResponse.json({ error: 'Invalid ids' }, { status: 400 });
+      }
+      const result = await prisma.prepaid.deleteMany({
+        where: { id: { in: idList } },
+      });
+      return NextResponse.json({ message: `${result.count} prepaid berhasil dihapus`, count: result.count });
+    }
+
+    // Single delete
     if (!id) {
       return NextResponse.json(
         { error: 'Prepaid ID is required' },

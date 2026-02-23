@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Download, Plus, Edit, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock, Upload } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { exportToCSV } from '../utils/exportUtils';
@@ -68,6 +68,8 @@ export default function MonitoringPrepaidPage() {
   const [savingPeriode, setSavingPeriode] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [deletingSelected, setDeletingSelected] = useState(false);
 
   const bulanMap: Record<string, number> = {
     'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
@@ -714,8 +716,10 @@ export default function MonitoringPrepaidPage() {
       const res = await fetch('/api/prepaid/import', { method: 'POST', body: formData });
       const result = await res.json();
       if (res.ok) {
-        const errMsg = result.errors?.length ? `\n\nWarning (${result.errors.length}):\n${result.errors.slice(0, 5).join('\n')}` : '';
-        alert(`Import berhasil!\n✅ ${result.created} data diimpor\n⏭ ${result.skipped} baris dilewati${errMsg}`);
+        const reasonMsg = result.skipReasons?.length
+          ? `\n\nAlasan dilewati (${result.skipReasons.length}):\n${result.skipReasons.slice(0, 5).join('\n')}`
+          : '';
+        alert(`Import berhasil!\n✅ ${result.created} data diimpor\n⏭ ${result.skipped} baris dilewati${reasonMsg}`);
         await fetchPrepaidData();
       } else {
         alert(`Gagal mengimpor: ${result.error}`);
@@ -732,6 +736,30 @@ export default function MonitoringPrepaidPage() {
     const headers = ['kdAkr', 'namaAkun', 'alokasi', 'vendor', 'totalAmount', 'remaining', 'period', 'type'];
     exportToCSV(filteredData, 'Monitoring_Prepaid.csv', headers);
   };
+
+  const handleDeleteSelected = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Yakin hapus ${selectedIds.size} data prepaid terpilih?`)) return;
+
+    setDeletingSelected(true);
+    try {
+      const ids = Array.from(selectedIds).join(',');
+      const response = await fetch(`/api/prepaid?ids=${ids}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Gagal menghapus');
+      }
+      const data = await response.json();
+      setSelectedIds(new Set());
+      fetchPrepaidData();
+      alert(data.count != null ? `${data.count} data berhasil dihapus.` : 'Data berhasil dihapus.');
+    } catch (error) {
+      console.error('Error bulk delete:', error);
+      alert('Gagal menghapus data terpilih');
+    } finally {
+      setDeletingSelected(false);
+    }
+  }, [selectedIds]);
 
   const handleEdit = (item: Prepaid) => {
     setEditData(item);
@@ -868,6 +896,23 @@ export default function MonitoringPrepaidPage() {
                   <span className="hidden sm:inline">Export Laporan Prepaid</span>
                   <span className="sm:hidden">Laporan</span>
                 </button>
+                {canEdit && selectedIds.size > 0 && (
+                  <button
+                    onClick={handleDeleteSelected}
+                    disabled={deletingSelected}
+                    className="flex items-center gap-1 sm:gap-2 bg-red-700 hover:bg-red-800 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 size={16} className="sm:w-[18px] sm:h-[18px]" />
+                    {deletingSelected ? (
+                      <span>Menghapus...</span>
+                    ) : (
+                      <>
+                        <span className="hidden sm:inline">Hapus terpilih ({selectedIds.size})</span>
+                        <span className="sm:hidden">Hapus ({selectedIds.size})</span>
+                      </>
+                    )}
+                  </button>
+                )}
                 {canEdit && (
                   <button 
                     onClick={handleAddNew}
@@ -909,6 +954,21 @@ export default function MonitoringPrepaidPage() {
                 <table className="w-full text-sm bg-white min-w-max">
                   <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                     <tr className="bg-gray-50">
+                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 w-10">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                          checked={filteredData.length > 0 && filteredData.every((item) => selectedIds.has(item.id))}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedIds(new Set(filteredData.map((item) => item.id)));
+                            } else {
+                              setSelectedIds(new Set());
+                            }
+                          }}
+                          title="Pilih semua"
+                        />
+                      </th>
                       <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">
                         Company Code
                       </th>
@@ -975,6 +1035,20 @@ export default function MonitoringPrepaidPage() {
                       return (
                         <React.Fragment key={item.id}>
                           <tr className="hover:bg-gray-50 transition-colors">
+                          <td className="px-3 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                              checked={selectedIds.has(item.id)}
+                              onChange={(e) => {
+                                setSelectedIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (e.target.checked) next.add(item.id); else next.delete(item.id);
+                                  return next;
+                                });
+                              }}
+                            />
+                          </td>
                           <td className="px-3 py-3 text-gray-800 whitespace-nowrap">
                             {item.companyCode || '-'}
                           </td>
@@ -1052,7 +1126,7 @@ export default function MonitoringPrepaidPage() {
                         </tr>
                         {isExpanded && (
                           <tr>
-                            <td colSpan={16} className="px-0 py-0 bg-gray-50 border-b border-gray-200">
+                            <td colSpan={17} className="px-0 py-0 bg-gray-50 border-b border-gray-200">
                               <div className="px-8 pt-2 pb-4">
                                 <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
                                   Detail Amortisasi

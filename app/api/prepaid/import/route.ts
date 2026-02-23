@@ -56,16 +56,25 @@ function parseExcelDate(val: any): Date | null {
 function parseNum(val: any): number {
   if (val === '' || val === null || val === undefined) return 0;
   if (typeof val === 'number') return val;
-  const n = Number(String(val).replace(/\./g, '').replace(/,/g, '.'));
+  const s = String(val).trim();
+  if (s === '-' || s === '') return 0;
+  const n = Number(s.replace(/\./g, '').replace(/,/g, '.'));
   return isNaN(n) ? 0 : n;
 }
 
+/** Find column index — tries exact match first, then partial */
 function findCol(headers: any[], keywords: string[]): number {
   for (const kw of keywords) {
-    const idx = headers.findIndex((h: any) =>
+    const exact = headers.findIndex((h: any) =>
+      String(h ?? '').toLowerCase().trim() === kw.toLowerCase()
+    );
+    if (exact >= 0) return exact;
+  }
+  for (const kw of keywords) {
+    const partial = headers.findIndex((h: any) =>
       String(h ?? '').toLowerCase().trim().includes(kw.toLowerCase())
     );
-    if (idx >= 0) return idx;
+    if (partial >= 0) return partial;
   }
   return -1;
 }
@@ -127,18 +136,20 @@ export async function POST(request: NextRequest) {
 
     const headers = rawRows[headerRowIdx];
 
-    // Column indices
+    // Column indices — exact match takes priority over partial (via findCol)
     const colAccount     = findCol(headers, ['account']);
     const colCompany     = findCol(headers, ['company code', 'company cod', 'bukrs']);
     const colItem        = findCol(headers, ['item']);
     const colGLAccount   = findCol(headers, ['gl account', 'gl accou', 'hkont']);
     const colCostCenter  = findCol(headers, ['cost center', 'kostl']);
+    // Amount sources (in priority order)
     const colOpenBalance = findCol(headers, ['opening balance', 'opening balan', 'opening bal']);
+    const colPrepaidAmo  = findCol(headers, ['prepaid amo', 'prepaid amount', 'prepaid amt']);
+    // Exact "balance" last column — avoid matching "FY25 End Balance" / "Opening Balance"
     const colBalance     = findCol(headers, ['balance']);
     const colDateStart   = findCol(headers, ['date: reclass', 'date:reclass', 'reclass', 'start date']);
     const colDateEnd     = findCol(headers, ['date: end', 'date:end', 'end date', 'finish']);
     const colNumPeriod   = findCol(headers, ['# of period', '#of period', 'of period', 'num period']);
-    const colMonthlyAmt  = findCol(headers, ['monthly amort', 'monthly amortiz']);
 
     // Period month columns (headers "1","2",...,"12")
     const periodColIndices: number[] = [];
@@ -160,48 +171,56 @@ export async function POST(request: NextRequest) {
 
     let createdCount = 0;
     let skippedCount = 0;
-    const errors: string[] = [];
+    const skipReasons: string[] = [];
 
     for (let ri = 0; ri < dataRows.length; ri++) {
       const row = dataRows[ri];
 
       // Skip empty or subtotal rows
       const kdAkr = String(row[colAccount] ?? '').trim();
-      if (!kdAkr || kdAkr.toLowerCase().includes('subtotal') || kdAkr.toLowerCase().includes('total')) {
-        skippedCount++;
-        continue;
+      if (!kdAkr) { skippedCount++; continue; }
+      if (kdAkr.toLowerCase().includes('subtotal') || kdAkr.toLowerCase().includes('total')) {
+        skippedCount++; continue;
       }
-      // Skip rows with no numeric amount
-      const balanceRaw = colBalance >= 0 ? parseNum(row[colBalance]) : 0;
-      const openBalanceRaw = colOpenBalance >= 0 ? parseNum(row[colOpenBalance]) : 0;
-      const totalAmount = Math.abs(openBalanceRaw) || Math.abs(balanceRaw);
-      if (totalAmount <= 0) { skippedCount++; continue; }
+      // Skip rows where account is not a number (header remnants, category labels)
+      if (!/\d/.test(kdAkr)) { skippedCount++; continue; }
+
+      // Amount: try Opening Balance → Prepaid Amo → Balance (in that priority)
+      const openBalanceRaw  = colOpenBalance >= 0 ? parseNum(row[colOpenBalance]) : 0;
+      const prepaidAmoRaw   = colPrepaidAmo  >= 0 ? parseNum(row[colPrepaidAmo])  : 0;
+      const balanceRaw      = colBalance     >= 0 ? parseNum(row[colBalance])     : 0;
+      const totalAmount = Math.abs(openBalanceRaw) || Math.abs(prepaidAmoRaw) || Math.abs(balanceRaw);
+      if (totalAmount <= 0) {
+        skipReasons.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): amount=0 (opening=${openBalanceRaw}, prepaidAmo=${prepaidAmoRaw}, balance=${balanceRaw})`);
+        skippedCount++; continue;
+      }
 
       // Parse fields
-      const companyCode = colCompany >= 0 ? String(row[colCompany] ?? '').trim() : '';
-      const noPo        = colGLAccount >= 0 ? String(row[colGLAccount] ?? '').trim() : '';
-      const alokasi     = colCostCenter >= 0 ? String(row[colCostCenter] ?? '').trim() : '';
-      const deskripsi   = colItem >= 0 ? String(row[colItem] ?? '').trim() : '';
+      const companyCode = colCompany    >= 0 ? String(row[colCompany]   ?? '').trim() : '';
+      const noPo        = colGLAccount  >= 0 ? String(row[colGLAccount] ?? '').trim() : '';
+      const alokasi     = colCostCenter >= 0 ? String(row[colCostCenter]?? '').trim() : '';
+      const deskripsi   = colItem       >= 0 ? String(row[colItem]      ?? '').trim() : '';
       const namaAkun    = deskripsi || kdAkr;
 
-      const numPeriod   = colNumPeriod >= 0 ? Math.round(Math.abs(parseNum(row[colNumPeriod]))) : 0;
-      if (numPeriod <= 0) { skippedCount++; continue; }
+      const numPeriod = colNumPeriod >= 0 ? Math.round(Math.abs(parseNum(row[colNumPeriod]))) : 0;
+      if (numPeriod <= 0) {
+        skipReasons.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): # of Period = 0`);
+        skippedCount++; continue;
+      }
 
       // Dates
       const startDateRaw = colDateStart >= 0 ? row[colDateStart] : null;
-      const endDateRaw   = colDateEnd >= 0 ? row[colDateEnd] : null;
+      const endDateRaw   = colDateEnd   >= 0 ? row[colDateEnd]   : null;
       let startDate = parseExcelDate(startDateRaw);
-      const endDate     = parseExcelDate(endDateRaw);
+      const endDate = parseExcelDate(endDateRaw);
 
       if (!startDate && endDate) {
-        // Calculate start from end date and period
         startDate = new Date(endDate);
         startDate.setMonth(startDate.getMonth() - numPeriod + 1);
       }
       if (!startDate) {
-        errors.push(`Baris ${ri + headerRowIdx + 2}: Tanggal mulai tidak valid untuk kdAkr ${kdAkr}`);
-        skippedCount++;
-        continue;
+        skipReasons.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): tanggal mulai tidak valid ("${startDateRaw}")`);
+        skippedCount++; continue;
       }
 
       // Build periode amounts from period columns
@@ -264,7 +283,7 @@ export async function POST(request: NextRequest) {
         });
         createdCount++;
       } catch (err: any) {
-        errors.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): ${err.message}`);
+        skipReasons.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): ${err.message}`);
         skippedCount++;
       }
     }
@@ -273,7 +292,7 @@ export async function POST(request: NextRequest) {
       success: true,
       created: createdCount,
       skipped: skippedCount,
-      errors: errors.slice(0, 20), // max 20 error messages
+      skipReasons: skipReasons.slice(0, 30),
     });
   } catch (error: any) {
     console.error('Import prepaid error:', error);
