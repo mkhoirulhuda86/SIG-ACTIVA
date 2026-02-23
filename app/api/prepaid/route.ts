@@ -44,14 +44,12 @@ export async function GET(request: NextRequest) {
           },
           orderBy: {
             periodeKe: 'asc'
-          },
-          take: 100
+          }
         }
       },
       orderBy: {
         startDate: 'desc'
-      },
-      take: 1000
+      }
     });
 
     // Hitung remaining untuk setiap prepaid
