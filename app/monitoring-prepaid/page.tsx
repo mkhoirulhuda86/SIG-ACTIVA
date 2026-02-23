@@ -847,7 +847,7 @@ export default function MonitoringPrepaidPage() {
                 <input
                   ref={importFileRef}
                   type="file"
-                  accept=".xlsx,.xls"
+                  accept=".xlsx,.xls,.xlsb"
                   className="hidden"
                   onChange={handleImportExcel}
                 />

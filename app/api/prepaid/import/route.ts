@@ -81,8 +81,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
-    if (!file.name.match(/\.(xlsx|xls)$/i)) {
-      return NextResponse.json({ error: 'File harus berformat .xlsx atau .xls' }, { status: 400 });
+    if (!file.name.match(/\.(xlsx|xls|xlsb)$/i)) {
+      return NextResponse.json({ error: 'File harus berformat .xlsx, .xls, atau .xlsb' }, { status: 400 });
     }
 
     const buffer = await file.arrayBuffer();
