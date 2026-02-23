@@ -716,10 +716,13 @@ export default function MonitoringPrepaidPage() {
       const res = await fetch('/api/prepaid/import', { method: 'POST', body: formData });
       const result = await res.json();
       if (res.ok) {
-        const reasonMsg = result.skipReasons?.length
-          ? `\n\nAlasan dilewati (${result.skipReasons.length}):\n${result.skipReasons.slice(0, 5).join('\n')}`
+        const warningsMsg = result.warnings?.length
+          ? `\n\nPeringatan (${result.warnings.length}):\n${result.warnings.slice(0, 10).join('\n')}`
           : '';
-        alert(`Import berhasil!\n✅ ${result.created} data diimpor\n⏭ ${result.skipped} baris dilewati${reasonMsg}`);
+        const skippedMsg = result.skipped > 0 
+          ? `\n${result.skipped} baris gagal diimport (error)`
+          : '';
+        alert(`Import berhasil!\n${result.created} data berhasil diimport${skippedMsg}${warningsMsg}`);
         await fetchPrepaidData();
       } else {
         alert(`Gagal mengimpor: ${result.error}`);

@@ -171,14 +171,15 @@ export async function POST(request: NextRequest) {
 
     let createdCount = 0;
     let skippedCount = 0;
-    const skipReasons: string[] = [];
+    const warnings: string[] = [];
 
     for (let ri = 0; ri < dataRows.length; ri++) {
       const row = dataRows[ri];
 
-      // Skip empty or subtotal rows
+      // Skip ONLY truly empty rows
       const kdAkr = String(row[colAccount] ?? '').trim();
       if (!kdAkr) { skippedCount++; continue; }
+      // Skip subtotal rows
       if (kdAkr.toLowerCase().includes('subtotal') || kdAkr.toLowerCase().includes('total')) {
         skippedCount++; continue;
       }
@@ -189,10 +190,12 @@ export async function POST(request: NextRequest) {
       const openBalanceRaw  = colOpenBalance >= 0 ? parseNum(row[colOpenBalance]) : 0;
       const prepaidAmoRaw   = colPrepaidAmo  >= 0 ? parseNum(row[colPrepaidAmo])  : 0;
       const balanceRaw      = colBalance     >= 0 ? parseNum(row[colBalance])     : 0;
-      const totalAmount = Math.abs(openBalanceRaw) || Math.abs(prepaidAmoRaw) || Math.abs(balanceRaw);
+      let totalAmount = Math.abs(openBalanceRaw) || Math.abs(prepaidAmoRaw) || Math.abs(balanceRaw);
+      
+      // Jika amount = 0, tetap import dengan nilai 0 (user bisa update nanti)
       if (totalAmount <= 0) {
-        skipReasons.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): amount=0 (opening=${openBalanceRaw}, prepaidAmo=${prepaidAmoRaw}, balance=${balanceRaw})`);
-        skippedCount++; continue;
+        totalAmount = 0;
+        warnings.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): amount=0 - data tetap diimport`);
       }
 
       // Parse fields
@@ -202,10 +205,12 @@ export async function POST(request: NextRequest) {
       const deskripsi   = colItem       >= 0 ? String(row[colItem]      ?? '').trim() : '';
       const namaAkun    = deskripsi || kdAkr;
 
-      const numPeriod = colNumPeriod >= 0 ? Math.round(Math.abs(parseNum(row[colNumPeriod]))) : 0;
+      let numPeriod = colNumPeriod >= 0 ? Math.round(Math.abs(parseNum(row[colNumPeriod]))) : 0;
+      
+      // Jika # of Period = 0, set default 12 bulan (user bisa update nanti)
       if (numPeriod <= 0) {
-        skipReasons.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): # of Period = 0`);
-        skippedCount++; continue;
+        numPeriod = 12;
+        warnings.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): # of Period = 0, diset ke default 12 bulan`);
       }
 
       // Dates
@@ -218,9 +223,12 @@ export async function POST(request: NextRequest) {
         startDate = new Date(endDate);
         startDate.setMonth(startDate.getMonth() - numPeriod + 1);
       }
+      
+      // Jika tanggal tidak valid, set ke bulan ini (user bisa update nanti)
       if (!startDate) {
-        skipReasons.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): tanggal mulai tidak valid ("${startDateRaw}")`);
-        skippedCount++; continue;
+        startDate = new Date();
+        startDate.setDate(1); // Set ke tanggal 1 bulan ini
+        warnings.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): tanggal tidak valid, diset ke bulan ini`);
       }
 
       // Build periode amounts from period columns
@@ -283,7 +291,7 @@ export async function POST(request: NextRequest) {
         });
         createdCount++;
       } catch (err: any) {
-        skipReasons.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): ${err.message}`);
+        warnings.push(`ERROR Baris ${ri + headerRowIdx + 2} (${kdAkr}): ${err.message}`);
         skippedCount++;
       }
     }
@@ -292,7 +300,7 @@ export async function POST(request: NextRequest) {
       success: true,
       created: createdCount,
       skipped: skippedCount,
-      skipReasons: skipReasons.slice(0, 30),
+      warnings: warnings.slice(0, 30),
     });
   } catch (error: any) {
     console.error('Import prepaid error:', error);
