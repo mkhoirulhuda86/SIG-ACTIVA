@@ -155,7 +155,7 @@ export default function MonitoringPrepaidPage() {
       'Finish Date',
       'Periode',
       'Total Prepaid',
-      'Total Realisasi',
+      'Total Amortisasi',
       'Saldo'
     ];
     
@@ -190,7 +190,7 @@ export default function MonitoringPrepaidPage() {
       { width: 12 },  // Finish Date
       { width: 10 },  // Periode
       { width: 15 },  // Total Prepaid
-      { width: 15 },  // Total Realisasi
+      { width: 15 },  // Total Amortisasi
       { width: 15 }   // Saldo
     ];
     
@@ -224,9 +224,9 @@ export default function MonitoringPrepaidPage() {
       const startDate = new Date(item.startDate);
       const startDateStr = `${startDate.getDate().toString().padStart(2, '0')}/${(startDate.getMonth() + 1).toString().padStart(2, '0')}/${startDate.getFullYear()}`;
       
-      // Finish Date
+      // Finish Date: periode 1 = bulan start, finish = start + (period-1) bulan
       const finishDate = new Date(item.startDate);
-      finishDate.setMonth(finishDate.getMonth() + item.period);
+      finishDate.setMonth(finishDate.getMonth() + item.period - 1);
       const finishDateStr = `${finishDate.getDate().toString().padStart(2, '0')}/${(finishDate.getMonth() + 1).toString().padStart(2, '0')}/${finishDate.getFullYear()}`;
       
       row.getCell(1).value = item.companyCode || '';
@@ -761,7 +761,7 @@ export default function MonitoringPrepaidPage() {
                         Total Prepaid
                       </th>
                       <th className="px-3 py-3 text-right text-xs font-semibold text-gray-700 whitespace-nowrap">
-                        Total Realisasi
+                        Total Amortisasi
                       </th>
                       <th className="px-3 py-3 text-right text-xs font-semibold text-gray-700">
                         Saldo
@@ -775,7 +775,7 @@ export default function MonitoringPrepaidPage() {
                     {filteredData.map((item) => {
                       const startDate = new Date(item.startDate);
                       const finishDate = new Date(startDate);
-                      finishDate.setMonth(finishDate.getMonth() + item.period);
+                      finishDate.setMonth(finishDate.getMonth() + item.period - 1);
                       
                       const totalRealisasi = item.totalAmount - item.remaining;
                       const saldo = item.totalAmount + item.remaining;
