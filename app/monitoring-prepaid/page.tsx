@@ -753,10 +753,6 @@ export default function MonitoringPrepaidPage() {
     return `Rp ${amount.toLocaleString('id-ID')}`;
   };
 
-  const formatCurrencyPlain = (amount: number) => {
-    return `Rp ${Math.round(amount)}`;
-  };
-
   return (
     <div className="flex min-h-screen bg-gray-50">
       {/* Mobile Sidebar Overlay */}
@@ -977,10 +973,10 @@ export default function MonitoringPrepaidPage() {
                             {formatCurrency(item.totalAmount)}
                           </td>
                           <td className="px-3 py-3 text-right font-medium text-gray-800">
-                            {formatCurrencyPlain(totalAmortisasi)}
+                            {formatCurrency(totalAmortisasi)}
                           </td>
                           <td className="px-3 py-3 text-right font-medium text-gray-800">
-                            {formatCurrencyPlain(saldo)}
+                            {formatCurrency(saldo)}
                           </td>
                           <td className="px-3 py-3 text-center">
                             <div className="flex items-center justify-center gap-1">
@@ -1063,7 +1059,7 @@ export default function MonitoringPrepaidPage() {
                                                 autoFocus
                                               />
                                             ) : (
-                                              formatCurrencyPlain(displayAmount)
+                                              formatCurrency(displayAmount)
                                             )}
                                           </td>
                                           <td className="px-3 py-3 text-center whitespace-nowrap">
