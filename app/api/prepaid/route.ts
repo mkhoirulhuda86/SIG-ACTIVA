@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
         startDate: true,
         period: true,
         periodUnit: true,
+        pembagianType: true,
         vendor: true,
         type: true,
         headerText: true,
@@ -54,13 +55,33 @@ export async function GET(request: NextRequest) {
     });
 
     // Hitung remaining untuk setiap prepaid
+    const bulanMap: Record<string, number> = {
+      'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
+      'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11
+    };
+    const today = new Date();
+    const todayFirst = new Date(today.getFullYear(), today.getMonth(), 1);
+
     const prepaidsWithRemaining = prepaids.map((prepaid: any) => {
-      const amortizedAmount = prepaid.periodes
-        .filter((p: any) => p.isAmortized)
-        .reduce((sum: number, p: any) => sum + p.amountPrepaid, 0);
+      let amortizedAmount = 0;
+
+      if (prepaid.pembagianType === 'otomatis') {
+        // Auto: hitung hanya periode yang bulannya sudah lewat atau bulan ini
+        amortizedAmount = prepaid.periodes.reduce((sum: number, p: any) => {
+          const parts = p.bulan.split(' ');
+          const periodeMonth = bulanMap[parts[0]] ?? 0;
+          const periodeYear = parseInt(parts[1]);
+          const periodeDate = new Date(periodeYear, periodeMonth, 1);
+          return periodeDate <= todayFirst ? sum + p.amountPrepaid : sum;
+        }, 0);
+      } else {
+        // Manual: sum semua amountPrepaid yang sudah diinput user
+        amortizedAmount = prepaid.periodes.reduce((sum: number, p: any) => sum + p.amountPrepaid, 0);
+      }
       
       return {
         ...prepaid,
+        totalAmortisasi: amortizedAmount,
         remaining: prepaid.totalAmount - amortizedAmount
       };
     });
@@ -119,8 +140,9 @@ export async function POST(request: NextRequest) {
       const tahun = periodeDate.getFullYear();
       
       let amountPrepaid;
-      if (pembagianType === 'manual' && periodeAmounts && periodeAmounts[i]) {
-        amountPrepaid = periodeAmounts[i];
+      if (pembagianType === 'manual') {
+        // Manual: semua periode mulai dari 0, user input sendiri
+        amountPrepaid = (periodeAmounts && periodeAmounts[i] !== undefined) ? periodeAmounts[i] : 0;
       } else {
         // Otomatis - bagi rata
         amountPrepaid = totalAmount / period;

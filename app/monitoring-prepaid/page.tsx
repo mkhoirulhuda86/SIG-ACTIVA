@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Download, Plus, MoreVertical, Edit, Trash2, FileDown } from 'lucide-react';
+import { Search, Download, Plus, Edit, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { exportToCSV } from '../utils/exportUtils';
 
@@ -43,6 +43,8 @@ interface Prepaid {
   period: number;
   periodUnit: string;
   remaining: number;
+  totalAmortisasi: number;
+  pembagianType: string;
   vendor: string;
   type: string;
   headerText?: string;
@@ -61,6 +63,41 @@ export default function MonitoringPrepaidPage() {
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
   const [userRole, setUserRole] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [editingPeriode, setEditingPeriode] = useState<{ prepaidId: number; periodeId: number; amount: string } | null>(null);
+  const [savingPeriode, setSavingPeriode] = useState(false);
+
+  const bulanMap: Record<string, number> = {
+    'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
+    'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11
+  };
+
+  const toggleRow = (id: number) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSavePeriodeAmount = async (periodeId: number, amount: number) => {
+    setSavingPeriode(true);
+    try {
+      const res = await fetch('/api/prepaid/periode', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ periodeId, amountPrepaid: amount })
+      });
+      if (res.ok) {
+        await fetchPrepaidData();
+        setEditingPeriode(null);
+      } else {
+        alert('Gagal menyimpan amortisasi');
+      }
+    } finally {
+      setSavingPeriode(false);
+    }
+  };
 
   // Load user role from localStorage
   useEffect(() => {
@@ -198,25 +235,9 @@ export default function MonitoringPrepaidPage() {
     
     // Data rows
     filteredData.forEach((item) => {
-      // Calculate totals
-      const totalPrepaid = item.periodes?.reduce((sum, p) => {
-        const [bulanName, tahunStr] = p.bulan.split(' ');
-        const bulanMap: Record<string, number> = {
-          'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
-          'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11
-        };
-        const periodeBulan = bulanMap[bulanName];
-        const periodeTahun = parseInt(tahunStr);
-        const periodeDate = new Date(periodeTahun, periodeBulan, 1);
-        const today = new Date();
-        if (today >= periodeDate) {
-          return sum + p.amountPrepaid;
-        }
-        return sum;
-      }, 0) || 0;
-      
-      const totalAmortized = item.periodes?.filter(p => p.isAmortized).reduce((sum, p) => sum + p.amountPrepaid, 0) || 0;
-      const saldo = totalPrepaid - totalAmortized;
+      // Use pre-computed values from API
+      const totalAmortized = item.totalAmortisasi ?? (item.totalAmount - item.remaining);
+      const saldo = item.totalAmount - totalAmortized;
       
       const row = worksheet.getRow(currentRow);
       
@@ -241,7 +262,7 @@ export default function MonitoringPrepaidPage() {
       row.getCell(9).value = startDateStr;
       row.getCell(10).value = finishDateStr;
       row.getCell(11).value = `${item.period} ${item.periodUnit}`;
-      row.getCell(12).value = totalPrepaid;
+      row.getCell(12).value = item.totalAmount;
       row.getCell(12).numFmt = '#,##0.0';
       row.getCell(13).value = totalAmortized;
       row.getCell(13).numFmt = '#,##0.0';
@@ -776,12 +797,16 @@ export default function MonitoringPrepaidPage() {
                       const startDate = new Date(item.startDate);
                       const finishDate = new Date(startDate);
                       finishDate.setMonth(finishDate.getMonth() + item.period - 1);
-                      
-                      const totalRealisasi = item.totalAmount - item.remaining;
-                      const saldo = item.totalAmount + item.remaining;
-                      
+
+                      const totalAmortisasi = item.totalAmortisasi ?? (item.totalAmount - item.remaining);
+                      const saldo = item.totalAmount - totalAmortisasi;
+                      const isExpanded = expandedRows.has(item.id);
+
+                      const today = new Date();
+                      const todayFirst = new Date(today.getFullYear(), today.getMonth(), 1);
+
                       return (
-                        <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                        <React.Fragment key={item.id}>
                           <td className="px-3 py-3 text-gray-800 whitespace-nowrap">
                             {item.companyCode || '-'}
                           </td>
@@ -822,32 +847,142 @@ export default function MonitoringPrepaidPage() {
                             {formatCurrency(item.totalAmount)}
                           </td>
                           <td className="px-3 py-3 text-right font-medium text-gray-800">
-                            {formatCurrency(totalRealisasi)}
+                            {formatCurrency(totalAmortisasi)}
                           </td>
                           <td className="px-3 py-3 text-right font-medium text-gray-800">
                             {formatCurrency(saldo)}
                           </td>
                           <td className="px-3 py-3 text-center">
-                            {canEdit && (
-                              <div className="flex items-center justify-center gap-1">
-                                <button
-                                  onClick={() => handleEdit(item)}
-                                  className="text-blue-600 hover:text-blue-800 transition-colors p-1 hover:bg-blue-50 rounded"
-                                  title="Edit"
-                                >
-                                  <Edit size={16} className="sm:w-[18px] sm:h-[18px]" />
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(item.id)}
-                                  className="text-red-600 hover:text-red-800 transition-colors p-1 hover:bg-red-50 rounded"
-                                  title="Hapus"
-                                >
-                                  <Trash2 size={16} className="sm:w-[18px] sm:h-[18px]" />
-                                </button>
-                              </div>
-                            )}
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => toggleRow(item.id)}
+                                className="text-gray-600 hover:text-gray-800 transition-colors p-1 hover:bg-gray-100 rounded"
+                                title="Detail Periode"
+                              >
+                                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                              </button>
+                              {canEdit && (
+                                <>
+                                  <button
+                                    onClick={() => handleEdit(item)}
+                                    className="text-blue-600 hover:text-blue-800 transition-colors p-1 hover:bg-blue-50 rounded"
+                                    title="Edit"
+                                  >
+                                    <Edit size={16} className="sm:w-[18px] sm:h-[18px]" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(item.id)}
+                                    className="text-red-600 hover:text-red-800 transition-colors p-1 hover:bg-red-50 rounded"
+                                    title="Hapus"
+                                  >
+                                    <Trash2 size={16} className="sm:w-[18px] sm:h-[18px]" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={16} className="px-0 py-0 bg-blue-50/40 border-b border-blue-100">
+                              <div className="px-6 py-4">
+                                <p className="text-xs font-semibold text-gray-600 mb-3 uppercase tracking-wide">
+                                  Detail Amortisasi — Mode: <span className="text-blue-700">{item.pembagianType === 'otomatis' ? 'Otomatis (berbasis tanggal)' : 'Manual'}</span>
+                                </p>
+                                <table className="text-xs w-auto">
+                                  <thead>
+                                    <tr className="bg-gray-200 text-gray-700">
+                                      <th className="px-3 py-2 text-center font-semibold">Periode</th>
+                                      <th className="px-3 py-2 text-center font-semibold">Bulan</th>
+                                      <th className="px-3 py-2 text-right font-semibold">Amortisasi</th>
+                                      <th className="px-3 py-2 text-center font-semibold">Status</th>
+                                      {item.pembagianType === 'manual' && canEdit && (
+                                        <th className="px-3 py-2 text-center font-semibold">Aksi</th>
+                                      )}
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-200">
+                                    {item.periodes.map((p) => {
+                                      const parts = p.bulan.split(' ');
+                                      const pm = bulanMap[parts[0]] ?? 0;
+                                      const py = parseInt(parts[1]);
+                                      const periodeDate = new Date(py, pm, 1);
+                                      const isPast = periodeDate <= todayFirst;
+                                      const displayAmount = item.pembagianType === 'otomatis'
+                                        ? (isPast ? p.amountPrepaid : 0)
+                                        : p.amountPrepaid;
+                                      const isEditing = editingPeriode?.periodeId === p.id;
+
+                                      return (
+                                        <tr key={p.id} className={`${isPast || item.pembagianType === 'manual' ? 'bg-white' : 'bg-gray-50 text-gray-400'}`}>
+                                          <td className="px-3 py-2 text-center">{p.periodeKe}</td>
+                                          <td className="px-3 py-2 text-center whitespace-nowrap">{p.bulan}</td>
+                                          <td className="px-3 py-2 text-right font-medium">
+                                            {item.pembagianType === 'manual' && isEditing ? (
+                                              <input
+                                                type="number"
+                                                className="border border-blue-400 rounded px-2 py-1 text-xs w-40 text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                                value={editingPeriode!.amount}
+                                                onChange={(e) => setEditingPeriode(prev => prev ? { ...prev, amount: e.target.value } : null)}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') handleSavePeriodeAmount(p.id, parseFloat(editingPeriode!.amount) || 0);
+                                                  if (e.key === 'Escape') setEditingPeriode(null);
+                                                }}
+                                                autoFocus
+                                              />
+                                            ) : (
+                                              formatCurrency(displayAmount)
+                                            )}
+                                          </td>
+                                          <td className="px-3 py-2 text-center">
+                                            {item.pembagianType === 'otomatis' ? (
+                                              isPast
+                                                ? <span className="inline-flex items-center gap-1 text-green-600"><CheckCircle size={12} /> Teramortisasi</span>
+                                                : <span className="inline-flex items-center gap-1 text-gray-400"><Clock size={12} /> Belum</span>
+                                            ) : (
+                                              p.amountPrepaid > 0
+                                                ? <span className="inline-flex items-center gap-1 text-green-600"><CheckCircle size={12} /> Diisi</span>
+                                                : <span className="inline-flex items-center gap-1 text-gray-400"><Clock size={12} /> Belum</span>
+                                            )}
+                                          </td>
+                                          {item.pembagianType === 'manual' && canEdit && (
+                                            <td className="px-3 py-2 text-center">
+                                              {isEditing ? (
+                                                <div className="flex items-center gap-1 justify-center">
+                                                  <button
+                                                    onClick={() => handleSavePeriodeAmount(p.id, parseFloat(editingPeriode!.amount) || 0)}
+                                                    disabled={savingPeriode}
+                                                    className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                                                  >
+                                                    {savingPeriode ? '...' : 'Simpan'}
+                                                  </button>
+                                                  <button
+                                                    onClick={() => setEditingPeriode(null)}
+                                                    className="text-xs px-2 py-1 bg-gray-400 text-white rounded hover:bg-gray-500"
+                                                  >
+                                                    Batal
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <button
+                                                  onClick={() => setEditingPeriode({ prepaidId: item.id, periodeId: p.id, amount: p.amountPrepaid.toString() })}
+                                                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                                                >
+                                                  Input
+                                                </button>
+                                              )}
+                                            </td>
+                                          )}
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                       );
                     })}
                   </tbody>
