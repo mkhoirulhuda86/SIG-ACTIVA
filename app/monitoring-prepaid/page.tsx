@@ -561,6 +561,147 @@ export default function MonitoringPrepaidPage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadJurnalSAPPeriode = async (item: Prepaid, periode: PrepaidPeriode, amount: number) => {
+    if (!amount || amount <= 0) return;
+    try {
+      const ExcelJSLib = await loadExcelJS();
+      const workbook = new ExcelJSLib.Workbook();
+      const worksheet = workbook.addWorksheet('Jurnal SAP');
+
+      const yellowColumns = [7, 9, 13, 16, 17, 18];
+      const headers1 = ['xblnr','bukrs','blart','bldat','budat','waers','kursf','bktxt','zuonr','hkont','wrbtr','sgtxt','prctr','kostl','','nplnr','aufnr','valut','flag'];
+      const headers2 = ['Reference','company','doc type','doc date','posting date','currency','kurs','header text','Vendor/cu:','account','amount','line text','profit center','cost center','','Network','order numi','value date',''];
+
+      worksheet.getRow(1).height = 15;
+      worksheet.getRow(1).values = headers1;
+      worksheet.getRow(1).eachCell((cell: any, colNumber: any) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: yellowColumns.includes(colNumber) ? 'FFFFFF00' : 'FFFFE699' } };
+        cell.font = { name: 'Calibri', size: 11, bold: true };
+        cell.alignment = { horizontal: 'center', vertical: 'bottom' };
+      });
+      worksheet.getRow(2).height = 15;
+      worksheet.getRow(2).values = headers2;
+      worksheet.getRow(2).eachCell((cell: any, colNumber: any) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: yellowColumns.includes(colNumber) ? 'FFFFFF00' : 'FFFFE699' } };
+        cell.font = { name: 'Calibri', size: 11, bold: true };
+        cell.alignment = { horizontal: 'center', vertical: 'bottom' };
+      });
+      worksheet.columns = [
+        { width: 12 },{ width: 10 },{ width: 9 },{ width: 9 },{ width: 12 },{ width: 10 },
+        { width: 8 },{ width: 30 },{ width: 12 },{ width: 12 },{ width: 15 },{ width: 30 },
+        { width: 12 },{ width: 12 },{ width: 3 },{ width: 10 },{ width: 12 },{ width: 12 },{ width: 5 }
+      ];
+
+      // Derive posting date from period month
+      const parts = periode.bulan.split(' ');
+      const pm = bulanMap[parts[0]] ?? 0;
+      const py = parseInt(parts[1]);
+      const lastDay = new Date(py, pm + 1, 0).getDate();
+      const docDate = `${py}${String(pm + 1).padStart(2, '0')}${String(lastDay).padStart(2, '0')}`;
+
+      const applyRowStyle = (row: any) => {
+        for (let col = 1; col <= 19; col++) {
+          const cell = row.getCell(col);
+          cell.font = { name: 'Aptos Narrow', size: 12 };
+          cell.alignment = { horizontal: col === 11 ? 'right' : 'left', vertical: 'bottom' };
+        }
+      };
+
+      // Entry 1: DEBIT – Kode Akun Biaya (positive)
+      const row1 = worksheet.getRow(3);
+      row1.height = 15;
+      row1.getCell(1).value = '';
+      row1.getCell(2).value = item.companyCode || '';
+      row1.getCell(3).value = 'SA';
+      row1.getCell(4).value = docDate;
+      row1.getCell(5).value = docDate;
+      row1.getCell(6).value = 'IDR';
+      row1.getCell(7).value = '';
+      row1.getCell(8).value = item.headerText || '';
+      row1.getCell(9).value = '';
+      row1.getCell(10).value = item.namaAkun;
+      row1.getCell(11).value = amount;
+      row1.getCell(11).numFmt = '0';
+      row1.getCell(12).value = item.headerText || '';
+      row1.getCell(13).value = '';
+      row1.getCell(14).value = '';
+      row1.getCell(15).value = '';
+      row1.getCell(16).value = '';
+      row1.getCell(17).value = '';
+      row1.getCell(18).value = '';
+      row1.getCell(19).value = 'G';
+      applyRowStyle(row1);
+
+      // Entry 2: KREDIT – Kode Akun Prepaid (negative)
+      const row2 = worksheet.getRow(4);
+      row2.height = 15;
+      row2.getCell(1).value = '';
+      row2.getCell(2).value = item.companyCode || '';
+      row2.getCell(3).value = 'SA';
+      row2.getCell(4).value = docDate;
+      row2.getCell(5).value = docDate;
+      row2.getCell(6).value = 'IDR';
+      row2.getCell(7).value = '';
+      row2.getCell(8).value = item.headerText || '';
+      row2.getCell(9).value = '';
+      row2.getCell(10).value = item.kdAkr;
+      row2.getCell(11).value = -amount;
+      row2.getCell(11).numFmt = '0';
+      row2.getCell(12).value = item.headerText || '';
+      row2.getCell(13).value = '';
+      row2.getCell(14).value = item.alokasi || '';
+      row2.getCell(15).value = '';
+      row2.getCell(16).value = '';
+      row2.getCell(17).value = '';
+      row2.getCell(18).value = '';
+      row2.getCell(19).value = 'G';
+      applyRowStyle(row2);
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Jurnal_SAP_${item.kdAkr}_${periode.bulan.replace(' ', '_')}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error generating Jurnal SAP per periodo:', error);
+      alert('Gagal membuat jurnal SAP. Silakan coba lagi.');
+    }
+  };
+
+  const handleDownloadJurnalSAPTxtPeriode = (item: Prepaid, periode: PrepaidPeriode, amount: number) => {
+    if (!amount || amount <= 0) return;
+    const parts = periode.bulan.split(' ');
+    const pm = bulanMap[parts[0]] ?? 0;
+    const py = parseInt(parts[1]);
+    const lastDay = new Date(py, pm + 1, 0).getDate();
+    const docDate = `${py}${String(pm + 1).padStart(2, '0')}${String(lastDay).padStart(2, '0')}`;
+
+    const rows: string[][] = [
+      // Entry 1: DEBIT – Kode Akun Biaya (positive)
+      ['', item.companyCode || '', 'SA', docDate, docDate, 'IDR', '', item.headerText || '', '',
+        item.namaAkun, amount.toString(), item.headerText || '', '', '', '', '', '', '', 'G'],
+      // Entry 2: KREDIT – Kode Akun Prepaid (negative)
+      ['', item.companyCode || '', 'SA', docDate, docDate, 'IDR', '', item.headerText || '', '',
+        item.kdAkr, (-amount).toString(), item.headerText || '', '', item.alokasi || '', '', '', '', '', 'G'],
+    ];
+
+    const txtContent = rows.map(row => row.join('\t')).join('\n');
+    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Jurnal_SAP_${item.kdAkr}_${periode.bulan.replace(' ', '_')}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const handleExport = () => {
     const headers = ['kdAkr', 'namaAkun', 'alokasi', 'vendor', 'totalAmount', 'remaining', 'period', 'type'];
     exportToCSV(filteredData, 'Monitoring_Prepaid.csv', headers);
@@ -610,6 +751,10 @@ export default function MonitoringPrepaidPage() {
 
   const formatCurrency = (amount: number) => {
     return `Rp ${amount.toLocaleString('id-ID')}`;
+  };
+
+  const formatCurrencyPlain = (amount: number) => {
+    return `Rp ${Math.round(amount)}`;
   };
 
   return (
@@ -684,22 +829,6 @@ export default function MonitoringPrepaidPage() {
                   <Download size={16} className="sm:w-[18px] sm:h-[18px]" />
                   <span className="hidden sm:inline">Export Laporan Prepaid</span>
                   <span className="sm:hidden">Laporan</span>
-                </button>
-                <button
-                  onClick={handleDownloadJurnalSAP}
-                  className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center"
-                >
-                  <Download size={16} className="sm:w-[18px] sm:h-[18px]" />
-                  <span className="hidden sm:inline">Jurnal SAP (Excel)</span>
-                  <span className="sm:hidden">Excel</span>
-                </button>
-                <button
-                  onClick={handleDownloadJurnalSAPTxt}
-                  className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center"
-                >
-                  <Download size={16} className="sm:w-[18px] sm:h-[18px]" />
-                  <span className="hidden sm:inline">Jurnal SAP (TXT)</span>
-                  <span className="sm:hidden">TXT</span>
                 </button>
                 {canEdit && (
                   <button 
@@ -848,10 +977,10 @@ export default function MonitoringPrepaidPage() {
                             {formatCurrency(item.totalAmount)}
                           </td>
                           <td className="px-3 py-3 text-right font-medium text-gray-800">
-                            {formatCurrency(totalAmortisasi)}
+                            {formatCurrencyPlain(totalAmortisasi)}
                           </td>
                           <td className="px-3 py-3 text-right font-medium text-gray-800">
-                            {formatCurrency(saldo)}
+                            {formatCurrencyPlain(saldo)}
                           </td>
                           <td className="px-3 py-3 text-center">
                             <div className="flex items-center justify-center gap-1">
@@ -898,6 +1027,7 @@ export default function MonitoringPrepaidPage() {
                                       <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">Bulan</th>
                                       <th className="px-3 py-3 text-right text-xs font-semibold text-gray-700 whitespace-nowrap">Amortisasi</th>
                                       <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">Status</th>
+                                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">Jurnal SAP</th>
                                       {item.pembagianType === 'manual' && canEdit && (
                                         <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">Aksi</th>
                                       )}
@@ -933,7 +1063,7 @@ export default function MonitoringPrepaidPage() {
                                                 autoFocus
                                               />
                                             ) : (
-                                              formatCurrency(displayAmount)
+                                              formatCurrencyPlain(displayAmount)
                                             )}
                                           </td>
                                           <td className="px-3 py-3 text-center whitespace-nowrap">
@@ -945,6 +1075,29 @@ export default function MonitoringPrepaidPage() {
                                               p.amountPrepaid > 0
                                                 ? <span className="inline-flex items-center gap-1 text-green-600"><CheckCircle size={13} /> Diisi</span>
                                                 : <span className="inline-flex items-center gap-1 text-gray-400"><Clock size={13} /> Belum</span>
+                                            )}
+                                          </td>
+                                          {/* Jurnal SAP per periode */}
+                                          <td className="px-3 py-3 text-center whitespace-nowrap">
+                                            {displayAmount > 0 ? (
+                                              <div className="flex items-center justify-center gap-1">
+                                                <button
+                                                  onClick={() => handleDownloadJurnalSAPPeriode(item, p, displayAmount)}
+                                                  className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
+                                                  title="Download Jurnal SAP Excel"
+                                                >
+                                                  <Download size={11} /> XLS
+                                                </button>
+                                                <button
+                                                  onClick={() => handleDownloadJurnalSAPTxtPeriode(item, p, displayAmount)}
+                                                  className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                                                  title="Download Jurnal SAP TXT"
+                                                >
+                                                  <Download size={11} /> TXT
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <span className="text-gray-300 text-xs">—</span>
                                             )}
                                           </td>
                                           {item.pembagianType === 'manual' && canEdit && (
