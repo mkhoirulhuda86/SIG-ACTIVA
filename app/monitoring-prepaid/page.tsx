@@ -738,10 +738,10 @@ export default function MonitoringPrepaidPage() {
                 <p className="text-gray-500">Memuat data...</p>
               </div>
             ) : (
-              <div className="overflow-x-auto max-w-full bg-white custom-scrollbar" style={{ maxHeight: 'calc(100vh - 400px)', width: '100%' }}>
+              <div className="overflow-x-auto overflow-y-auto max-w-full bg-white custom-scrollbar" style={{ maxHeight: 'calc(100vh - 400px)', width: '100%' }}>
                 <table className="w-full text-sm bg-white min-w-max">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
+                  <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+                    <tr className="bg-gray-50">
                       <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">
                         Company Code
                       </th>
@@ -885,20 +885,21 @@ export default function MonitoringPrepaidPage() {
                         </tr>
                         {isExpanded && (
                           <tr>
-                            <td colSpan={16} className="px-0 py-0 bg-blue-50/40 border-b border-blue-100">
-                              <div className="px-6 py-4">
-                                <p className="text-xs font-semibold text-gray-600 mb-3 uppercase tracking-wide">
-                                  Detail Amortisasi — Mode: <span className="text-blue-700">{item.pembagianType === 'otomatis' ? 'Otomatis (berbasis tanggal)' : 'Manual'}</span>
+                            <td colSpan={16} className="px-0 py-0 bg-gray-50 border-b border-gray-200">
+                              <div className="px-8 pt-2 pb-4">
+                                <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+                                  Detail Amortisasi
                                 </p>
-                                <table className="text-xs w-auto">
-                                  <thead>
-                                    <tr className="bg-gray-200 text-gray-700">
-                                      <th className="px-3 py-2 text-center font-semibold">Periode</th>
-                                      <th className="px-3 py-2 text-center font-semibold">Bulan</th>
-                                      <th className="px-3 py-2 text-right font-semibold">Amortisasi</th>
-                                      <th className="px-3 py-2 text-center font-semibold">Status</th>
+                              </div>
+                              <table className="w-full text-sm bg-white">
+                                  <thead className="bg-gray-100 border-y border-gray-200">
+                                    <tr>
+                                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">Periode</th>
+                                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">Bulan</th>
+                                      <th className="px-3 py-3 text-right text-xs font-semibold text-gray-700 whitespace-nowrap">Amortisasi</th>
+                                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">Status</th>
                                       {item.pembagianType === 'manual' && canEdit && (
-                                        <th className="px-3 py-2 text-center font-semibold">Aksi</th>
+                                        <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">Aksi</th>
                                       )}
                                     </tr>
                                   </thead>
@@ -915,14 +916,14 @@ export default function MonitoringPrepaidPage() {
                                       const isEditing = editingPeriode?.periodeId === p.id;
 
                                       return (
-                                        <tr key={p.id} className={`${isPast || item.pembagianType === 'manual' ? 'bg-white' : 'bg-gray-50 text-gray-400'}`}>
-                                          <td className="px-3 py-2 text-center">{p.periodeKe}</td>
-                                          <td className="px-3 py-2 text-center whitespace-nowrap">{p.bulan}</td>
-                                          <td className="px-3 py-2 text-right font-medium">
+                                        <tr key={p.id} className={`hover:bg-gray-50 transition-colors ${!isPast && item.pembagianType === 'otomatis' ? 'text-gray-400' : 'text-gray-800'}`}>
+                                          <td className="px-3 py-3 text-center">{p.periodeKe}</td>
+                                          <td className="px-3 py-3 text-center whitespace-nowrap">{p.bulan}</td>
+                                          <td className="px-3 py-3 text-right font-medium">
                                             {item.pembagianType === 'manual' && isEditing ? (
                                               <input
                                                 type="number"
-                                                className="border border-blue-400 rounded px-2 py-1 text-xs w-40 text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                                className="border border-gray-300 rounded px-2 py-1 text-sm w-44 text-right focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
                                                 value={editingPeriode!.amount}
                                                 onChange={(e) => setEditingPeriode(prev => prev ? { ...prev, amount: e.target.value } : null)}
                                                 onKeyDown={(e) => {
@@ -935,31 +936,31 @@ export default function MonitoringPrepaidPage() {
                                               formatCurrency(displayAmount)
                                             )}
                                           </td>
-                                          <td className="px-3 py-2 text-center">
+                                          <td className="px-3 py-3 text-center whitespace-nowrap">
                                             {item.pembagianType === 'otomatis' ? (
                                               isPast
-                                                ? <span className="inline-flex items-center gap-1 text-green-600"><CheckCircle size={12} /> Teramortisasi</span>
-                                                : <span className="inline-flex items-center gap-1 text-gray-400"><Clock size={12} /> Belum</span>
+                                                ? <span className="inline-flex items-center gap-1 text-green-600"><CheckCircle size={13} /> Teramortisasi</span>
+                                                : <span className="inline-flex items-center gap-1 text-gray-400"><Clock size={13} /> Belum</span>
                                             ) : (
                                               p.amountPrepaid > 0
-                                                ? <span className="inline-flex items-center gap-1 text-green-600"><CheckCircle size={12} /> Diisi</span>
-                                                : <span className="inline-flex items-center gap-1 text-gray-400"><Clock size={12} /> Belum</span>
+                                                ? <span className="inline-flex items-center gap-1 text-green-600"><CheckCircle size={13} /> Diisi</span>
+                                                : <span className="inline-flex items-center gap-1 text-gray-400"><Clock size={13} /> Belum</span>
                                             )}
                                           </td>
                                           {item.pembagianType === 'manual' && canEdit && (
-                                            <td className="px-3 py-2 text-center">
+                                            <td className="px-3 py-3 text-center">
                                               {isEditing ? (
                                                 <div className="flex items-center gap-1 justify-center">
                                                   <button
                                                     onClick={() => handleSavePeriodeAmount(p.id, parseFloat(editingPeriode!.amount) || 0)}
                                                     disabled={savingPeriode}
-                                                    className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                                                    className="text-xs px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 transition-colors"
                                                   >
                                                     {savingPeriode ? '...' : 'Simpan'}
                                                   </button>
                                                   <button
                                                     onClick={() => setEditingPeriode(null)}
-                                                    className="text-xs px-2 py-1 bg-gray-400 text-white rounded hover:bg-gray-500"
+                                                    className="text-xs px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
                                                   >
                                                     Batal
                                                   </button>
@@ -967,7 +968,7 @@ export default function MonitoringPrepaidPage() {
                                               ) : (
                                                 <button
                                                   onClick={() => setEditingPeriode({ prepaidId: item.id, periodeId: p.id, amount: p.amountPrepaid.toString() })}
-                                                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                                                  className="text-xs px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
                                                 >
                                                   Input
                                                 </button>
@@ -979,7 +980,6 @@ export default function MonitoringPrepaidPage() {
                                     })}
                                   </tbody>
                                 </table>
-                              </div>
                             </td>
                           </tr>
                         )}
