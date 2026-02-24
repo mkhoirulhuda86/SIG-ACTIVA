@@ -2201,6 +2201,7 @@ export default function MonitoringAccrualPage() {
       if (isXml) {
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('periodeId', selectedPeriode.id.toString()); // Kirim periodeId untuk direct import
 
         const response = await fetch('/api/accrual/realisasi/import', {
           method: 'POST',

@@ -182,6 +182,7 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const periodeIdStr = formData.get('periodeId') as string | null;
     
     if (!file) {
       return NextResponse.json(
@@ -200,6 +201,25 @@ export async function POST(request: NextRequest) {
         { error: 'Invalid file type. Please upload an XML or Excel file (.xml, .xlsx, .xls)' },
         { status: 400 }
       );
+    }
+
+    // If periodeId is provided, verify it exists
+    let targetPeriode: any = null;
+    if (periodeIdStr) {
+      const periodeId = parseInt(periodeIdStr, 10);
+      if (!isNaN(periodeId)) {
+        targetPeriode = await prisma.accrualPeriode.findUnique({
+          where: { id: periodeId },
+          include: { accrual: true }
+        });
+        
+        if (!targetPeriode) {
+          return NextResponse.json(
+            { error: 'Periode tidak ditemukan' },
+            { status: 404 }
+          );
+        }
+      }
     }
 
     let rows: any[][];
@@ -265,20 +285,21 @@ export async function POST(request: NextRequest) {
       const row = dataRows[i];
       
       // Extract key fields
-      const poNumber = row[3]?.toString().trim(); // Purchasing Document
       const amountStr = row[9]?.toString().trim(); // Value in Obj. Crcy
       const postingDateStr = row[15]?.toString().trim(); // Posting Date
+      const costElement = row[8]?.toString().trim(); // Cost Element (Kode Akun Biaya)
+      const costCenter = row[10]?.toString().trim(); // Cost Center
+      
+      // Optional fields for keterangan
       const documentNumber = row[19]?.toString().trim(); // Document Number
       const headerText = row[12]?.toString().trim(); // Document Header Text
       const text = row[13]?.toString().trim(); // Text
       const material = row[17]?.toString().trim(); // Material
       const materialDesc = row[18]?.toString().trim(); // Material Description
-      const companyCode = row[0]?.toString().trim(); // Company Code
-      const costCenter = row[10]?.toString().trim(); // Cost Center
 
       // Validate required fields
-      if (!poNumber || !amountStr || !postingDateStr) {
-        errors.push(`Baris ${i + 2}: Missing required fields (PO Number, Amount, or Posting Date)`);
+      if (!amountStr || !postingDateStr) {
+        errors.push(`Baris ${i + 2}: Missing required fields (Amount or Posting Date)`);
         errorCount++;
         continue;
       }
@@ -312,18 +333,43 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      const match = await findAccrualAndPeriode({
-        poNumber,
-        companyCode: companyCode || undefined,
-        costCenter: costCenter || undefined,
-        headerText: headerText || undefined,
-        postingDate,
-      });
+      let periodeId: number;
+      let accrualId: number;
+      let periodeBulan: string;
 
-      if ('error' in match) {
-        errors.push(`Baris ${i + 2}: ${match.error}`);
-        errorCount++;
-        continue;
+      // If targetPeriode is provided, use it directly without matching
+      if (targetPeriode) {
+        periodeId = targetPeriode.id;
+        accrualId = targetPeriode.accrual.id;
+        periodeBulan = targetPeriode.bulan;
+      } else {
+        // Original matching logic for global import
+        const poNumber = row[3]?.toString().trim(); // Purchasing Document
+        const companyCode = row[0]?.toString().trim(); // Company Code
+        
+        if (!poNumber) {
+          errors.push(`Baris ${i + 2}: Missing PO Number for global import`);
+          errorCount++;
+          continue;
+        }
+
+        const match = await findAccrualAndPeriode({
+          poNumber,
+          companyCode: companyCode || undefined,
+          costCenter: costCenter || undefined,
+          headerText: headerText || undefined,
+          postingDate,
+        });
+
+        if ('error' in match) {
+          errors.push(`Baris ${i + 2}: ${match.error}`);
+          errorCount++;
+          continue;
+        }
+
+        periodeId = match.periodeId;
+        accrualId = match.accrualId;
+        periodeBulan = match.periodeBulan;
       }
 
       // Build keterangan from available fields
@@ -338,14 +384,11 @@ export async function POST(request: NextRequest) {
         ? keteranganParts.join(' | ')
         : `Import dari XML - Baris ${i + 2}`;
 
-      // Extract Cost Element for kdAkunBiaya
-      const costElement = row[8]?.toString().trim(); // Cost Element
-
       // Create realisasi entry
       try {
         const realisasi = await prisma.accrualRealisasi.create({
           data: {
-            accrualPeriodeId: match.periodeId,
+            accrualPeriodeId: periodeId,
             tanggalRealisasi: postingDate,
             amount: amount,
             keterangan: keterangan,
@@ -354,21 +397,28 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // Optional: jika accrual belum punya noPo, tapi XML punya PO dan match fallback sukses unik, kita isi noPo supaya berikutnya makin akurat.
-        if (poNumber && (!match.accrualNoPo || match.accrualNoPo.trim() === '')) {
-          await prisma.accrual.update({
-            where: { id: match.accrualId },
-            data: { noPo: poNumber },
+        // Optional: Update PO number if not present (only for non-targetPeriode imports)
+        if (!targetPeriode) {
+          const poNumber = row[3]?.toString().trim();
+          const accrual = await prisma.accrual.findUnique({
+            where: { id: accrualId },
+            select: { noPo: true }
           });
+          
+          if (poNumber && accrual && (!accrual.noPo || accrual.noPo.trim() === '')) {
+            await prisma.accrual.update({
+              where: { id: accrualId },
+              data: { noPo: poNumber },
+            });
+          }
         }
 
         successCount++;
         results.push({
           row: i + 2,
-          poNumber,
           amount,
           postingDate: postingDateStr,
-          periode: match.periodeBulan,
+          periode: periodeBulan,
           realisasiId: realisasi.id,
           status: 'success',
         });
