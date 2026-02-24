@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Download, Plus, MoreVertical, X, Edit2, Trash2, Upload, ChevronDown } from 'lucide-react';
+import { Search, Download, Plus, MoreVertical, X, Edit2, Trash2, Upload, ChevronDown, ChevronRight } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { exportToCSV } from '../utils/exportUtils';
 import { KODE_AKUN_KLASIFIKASI } from '../utils/accrualKlasifikasi';
@@ -213,6 +213,7 @@ export default function MonitoringAccrualPage() {
   const [uploadingGlobalExcel, setUploadingGlobalExcel] = useState(false);
   const [showImportExcelModal, setShowImportExcelModal] = useState(false);
   const [uploadingImportExcel, setUploadingImportExcel] = useState(false);
+  const [expandedCostElements, setExpandedCostElements] = useState<Set<string>>(new Set());
   // Portal dropdown Jurnal SAP (agar tidak tertutup header tabel)
   const [openJurnalRect, setOpenJurnalRect] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null);
   const [openJurnalItem, setOpenJurnalItem] = useState<Accrual | null>(null);
@@ -1461,6 +1462,210 @@ export default function MonitoringAccrualPage() {
       console.error('Error generating jurnal SAP per realisasi:', error);
       alert('Gagal membuat jurnal SAP per realisasi. Silakan coba lagi.');
     }
+  };
+
+  // Download Jurnal SAP Excel untuk Group Cost Element (semua realisasi dalam group)
+  const handleDownloadJurnalSAPPerCostElementGroup = async (realisasiItems: RealisasiData[], item: Accrual, costElement: string) => {
+    try {
+      const { ExcelJS: ExcelJSLib } = await loadExcelLibraries();
+      const companyCode = item.companyCode || '2000';
+      
+      const workbook = new ExcelJSLib.Workbook();
+      const worksheet = workbook.addWorksheet('Jurnal SAP');
+    
+      // Headers
+      worksheet.getRow(1).height = 15;
+      const headers1 = [
+        'xblnr', 'bukrs', 'blart', 'bldat', 'budat', 'waers', 'kursf', 'bktxt', 
+        'zuonr', 'hkont', 'wrbtr', 'sgtxt', 'prctr', 'kostl', '', 'nplnr', 'aufnr', 'valut', 'flag'
+      ];
+      
+      const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFE699' } };
+      
+      worksheet.getRow(1).values = headers1;
+      worksheet.getRow(1).eachCell((cell: any) => {
+        cell.fill = headerFill;
+        cell.font = { name: 'Calibri', size: 11, bold: true };
+        cell.alignment = { horizontal: 'center', vertical: 'bottom' };
+      });
+      
+      // Headers row 2
+      worksheet.getRow(2).height = 15;
+      const headers2 = [
+        'Reference', 'company', 'doc type', 'doc date', 'posting date', 'currency', 'kurs', 
+        'header text', 'Vendor/cu:', 'account', 'amount', 'line text', 'profit center', 
+        'cost center', '', 'Network', 'order numi', 'value date', ''
+      ];
+      
+      worksheet.getRow(2).values = headers2;
+      worksheet.getRow(2).eachCell((cell: any) => {
+        cell.fill = headerFill;
+        cell.font = { name: 'Calibri', size: 11, bold: true };
+        cell.alignment = { horizontal: 'center', vertical: 'bottom' };
+      });
+      
+      // Column widths
+      worksheet.columns = [
+        { width: 12 }, { width: 10 }, { width: 9 }, { width: 9 }, { width: 12 }, 
+        { width: 10 }, { width: 8 }, { width: 30 }, { width: 12 }, { width: 12 }, 
+        { width: 15 }, { width: 30 }, { width: 12 }, { width: 12 }, { width: 3 }, 
+        { width: 10 }, { width: 12 }, { width: 12 }, { width: 5 }
+      ];
+      
+      let currentRow = 3;
+      
+      // Loop through all realisasi items in the group
+      for (const realisasi of realisasiItems) {
+        // Parse tanggal realisasi
+        const realisasiDate = new Date(realisasi.tanggalRealisasi);
+        const docDate = `${realisasiDate.getFullYear()}${String(realisasiDate.getMonth() + 1).padStart(2, '0')}${String(realisasiDate.getDate()).padStart(2, '0')}`;
+        
+        // Entry 1: DEBIT - Kode Akun Biaya (dari realisasi)
+        const row1 = worksheet.getRow(currentRow);
+        row1.height = 15;
+        
+        row1.getCell(1).value = ''; // xblnr
+        row1.getCell(2).value = companyCode; // bukrs
+        row1.getCell(3).value = 'SA'; // blart
+        row1.getCell(4).value = docDate; // bldat
+        row1.getCell(5).value = docDate; // budat
+        row1.getCell(6).value = 'IDR'; // waers
+        row1.getCell(7).value = ''; // kursf
+        row1.getCell(8).value = realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`; // bktxt
+        row1.getCell(9).value = ''; // zuonr
+        row1.getCell(10).value = realisasi.kdAkunBiaya || item.kdAkunBiaya; // hkont
+        row1.getCell(11).value = -Math.round(Math.abs(realisasi.amount)); // wrbtr - NEGATIF untuk kode akun biaya
+        row1.getCell(11).numFmt = '0';
+        row1.getCell(12).value = realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`; // sgtxt
+        row1.getCell(13).value = ''; // prctr
+        row1.getCell(14).value = realisasi.costCenter || item.costCenter || ''; // kostl
+        row1.getCell(15).value = ''; // empty
+        row1.getCell(16).value = ''; // nplnr
+        row1.getCell(17).value = ''; // aufnr
+        row1.getCell(18).value = ''; // valut
+        row1.getCell(19).value = 'G'; // flag
+        
+        currentRow++;
+        
+        // Entry 2: CREDIT - Kode Akun Accrual
+        const row2 = worksheet.getRow(currentRow);
+        row2.height = 15;
+        
+        row2.getCell(1).value = ''; // xblnr
+        row2.getCell(2).value = companyCode; // bukrs
+        row2.getCell(3).value = 'SA'; // blart
+        row2.getCell(4).value = docDate; // bldat
+        row2.getCell(5).value = docDate; // budat
+        row2.getCell(6).value = 'IDR'; // waers
+        row2.getCell(7).value = ''; // kursf
+        row2.getCell(8).value = realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`; // bktxt
+        row2.getCell(9).value = ''; // zuonr
+        row2.getCell(10).value = item.kdAkr; // hkont
+        row2.getCell(11).value = Math.round(Math.abs(realisasi.amount)); // wrbtr - POSITIF untuk kode akun accrual
+        row2.getCell(11).numFmt = '0';
+        row2.getCell(12).value = realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`; // sgtxt
+        row2.getCell(13).value = ''; // prctr
+        row2.getCell(14).value = ''; // kostl
+        row2.getCell(15).value = ''; // empty
+        row2.getCell(16).value = ''; // nplnr
+        row2.getCell(17).value = ''; // aufnr
+        row2.getCell(18).value = ''; // valut
+        row2.getCell(19).value = 'G'; // flag
+        
+        currentRow++;
+      }
+      
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Jurnal_SAP_CostElement_${costElement}_${companyCode}_${realisasiItems.length}items.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error generating grouped jurnal SAP:', error);
+      alert('Gagal membuat jurnal SAP untuk group. Silakan coba lagi.');
+    }
+  };
+
+  // Download Jurnal SAP TXT untuk Group Cost Element (semua realisasi dalam group)
+  const handleDownloadJurnalSAPPerCostElementGroupTxt = (realisasiItems: RealisasiData[], item: Accrual, costElement: string) => {
+    const companyCode = item.companyCode || '2000';
+    
+    // Build TXT content (tab-separated)
+    const rows: string[][] = [];
+    
+    // Loop through all realisasi items in the group
+    for (const realisasi of realisasiItems) {
+      // Parse tanggal realisasi
+      const realisasiDate = new Date(realisasi.tanggalRealisasi);
+      const docDate = `${realisasiDate.getFullYear()}${String(realisasiDate.getMonth() + 1).padStart(2, '0')}${String(realisasiDate.getDate()).padStart(2, '0')}`;
+      
+      // Entry 1: DEBIT - Kode Akun Biaya (negative amount untuk realisasi)
+      rows.push([
+        '',
+        companyCode,
+        'SA',
+        docDate,
+        docDate,
+        'IDR',
+        '',
+        realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`,
+        '',
+        realisasi.kdAkunBiaya || item.kdAkunBiaya,
+        (-Math.round(Math.abs(realisasi.amount))).toString(),
+        realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`,
+        '',
+        realisasi.costCenter || item.costCenter || '',
+        '',
+        '',
+        '',
+        '',
+        'G'
+      ]);
+      
+      // Entry 2: KREDIT - Kode Akun Accrual (positive amount sebagai balancing)
+      rows.push([
+        '',
+        companyCode,
+        'SA',
+        docDate,
+        docDate,
+        'IDR',
+        '',
+        realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`,
+        '',
+        item.kdAkr,
+        Math.round(Math.abs(realisasi.amount)).toString(),
+        realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`,
+        '',
+        '', // Cost center kosong untuk akun accrual
+        '',
+        '',
+        '',
+        '',
+        'G'
+      ]);
+    }
+    
+    // Convert to TXT string (tab-separated)
+    const txtContent = rows.map(row => row.join('\t')).join('\n');
+    
+    // Create blob and download
+    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Jurnal_SAP_CostElement_${costElement}_${companyCode}_${realisasiItems.length}items.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   
@@ -3694,102 +3899,214 @@ export default function MonitoringAccrualPage() {
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-blue-50 border-b-2 border-blue-200">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-blue-900">Tanggal</th>
-                          <th className="px-4 py-3 text-right text-xs font-bold text-blue-900">Amount</th>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-blue-900 bg-yellow-50">Cost Element</th>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-blue-900 bg-yellow-50">Cost Center</th>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-blue-900">Keterangan</th>
-                          {!realisasiViewOnly && (
-                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Action</th>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {realisasiData.map((realisasi) => (
-                          <tr key={realisasi.id} className="hover:bg-blue-50 transition-colors">
-                            <td className="px-4 py-3 text-gray-700 border-b border-gray-100">{formatDate(realisasi.tanggalRealisasi)}</td>
-                            <td className="px-4 py-3 text-right text-blue-700 font-semibold border-b border-gray-100">{formatCurrency(Math.abs(realisasi.amount))}</td>
-                            <td className="px-4 py-3 text-gray-800 font-mono text-xs bg-yellow-50 border-b border-gray-100">
-                              <span className="font-semibold">{realisasi.kdAkunBiaya || '-'}</span>
-                            </td>
-                            <td className="px-4 py-3 text-gray-800 font-mono text-xs bg-yellow-50 border-b border-gray-100">
-                              <span className="font-semibold">{realisasi.costCenter || '-'}</span>
-                            </td>
-                            <td className="px-4 py-3 text-gray-600 text-xs border-b border-gray-100">{realisasi.keterangan || '-'}</td>
-                            {!realisasiViewOnly && (
-                              <td className="px-4 py-3 text-center">
-                                <div className="flex items-center justify-center gap-2">
+                    {/* Group realisasi by Cost Element */}
+                    {(() => {
+                      // Group by kdAkunBiaya
+                      const grouped = realisasiData.reduce((acc, realisasi) => {
+                        const key = realisasi.kdAkunBiaya || 'N/A';
+                        if (!acc[key]) acc[key] = [];
+                        acc[key].push(realisasi);
+                        return acc;
+                      }, {} as Record<string, RealisasiData[]>);
+
+                      return Object.entries(grouped).map(([costElement, items]) => {
+                        const hasMultiple = items.length > 1;
+                        const isExpanded = expandedCostElements.has(costElement);
+                        const totalAmount = items.reduce((sum, item) => sum + Math.abs(item.amount), 0);
+
+                        return (
+                          <div key={costElement} className="mb-4 border border-gray-200 rounded-lg overflow-hidden">
+                            {/* Header Row - Cost Element Summary */}
+                            <div className="bg-gradient-to-r from-blue-50 to-blue-100 px-4 py-3 flex items-center justify-between">
+                              <div 
+                                className={`flex items-center gap-3 flex-1 ${hasMultiple ? 'cursor-pointer' : ''}`}
+                                onClick={() => {
+                                  if (hasMultiple) {
+                                    const newExpanded = new Set(expandedCostElements);
+                                    if (newExpanded.has(costElement)) {
+                                      newExpanded.delete(costElement);
+                                    } else {
+                                      newExpanded.add(costElement);
+                                    }
+                                    setExpandedCostElements(newExpanded);
+                                  }
+                                }}
+                              >
+                                {hasMultiple && (
+                                  <div className="text-blue-600">
+                                    {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-medium text-blue-700">Cost Element:</span>
+                                    <span className="font-mono font-bold text-sm text-blue-900">{costElement}</span>
+                                    <span className="text-xs text-blue-600">({items.length} transaksi)</span>
+                                  </div>
+                                  {hasMultiple && (
+                                    <div className="text-xs text-blue-600 mt-1">
+                                      {items.length} Cost Center berbeda • Total: {formatCurrency(totalAmount)}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                {/* Download Button untuk semua transaksi dalam group */}
+                                {!realisasiViewOnly && (
                                   <div className="relative">
                                     <button
-                                      onClick={() => {
-                                        const dropdown = document.getElementById(`jurnal-realisasi-dropdown-${realisasi.id}`);
+                                      onClick={(e) => {
+                                        e.stopPropagation(); // Prevent expand/collapse
+                                        const dropdown = document.getElementById(`jurnal-group-dropdown-${costElement}`);
                                         if (dropdown) {
                                           dropdown.classList.toggle('hidden');
                                         }
                                       }}
-                                      className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded transition-colors flex items-center gap-1"
-                                      title="Download Jurnal SAP Realisasi"
+                                      className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded transition-colors flex items-center gap-1 shadow-sm"
+                                      title="Download Jurnal SAP untuk semua transaksi dalam Cost Element ini"
                                     >
-                                      <Download size={12} />
-                                      <ChevronDown size={10} />
+                                      <Download size={14} />
+                                      <span className="font-medium">Download Jurnal</span>
+                                      <ChevronDown size={12} />
                                     </button>
                                     <div
-                                      id={`jurnal-realisasi-dropdown-${realisasi.id}`}
-                                      className="hidden absolute right-0 mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-lg z-10"
+                                      id={`jurnal-group-dropdown-${costElement}`}
+                                      className="hidden absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-20"
                                     >
                                       <button
-                                        onClick={() => {
-                                          handleDownloadJurnalSAPPerRealisasi(realisasi, currentAccrualItem!);
-                                          document.getElementById(`jurnal-realisasi-dropdown-${realisasi.id}`)?.classList.add('hidden');
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDownloadJurnalSAPPerCostElementGroup(items, currentAccrualItem!, costElement);
+                                          document.getElementById(`jurnal-group-dropdown-${costElement}`)?.classList.add('hidden');
                                         }}
-                                        className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors"
+                                        className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors rounded-t-lg"
                                       >
-                                        Download Excel
+                                        <div className="font-medium">Download Excel</div>
+                                        <div className="text-[10px] text-gray-500">{items.length} transaksi</div>
                                       </button>
                                       <button
-                                        onClick={() => {
-                                          handleDownloadJurnalSAPPerRealisasiTxt(realisasi, currentAccrualItem!);
-                                          document.getElementById(`jurnal-realisasi-dropdown-${realisasi.id}`)?.classList.add('hidden');
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDownloadJurnalSAPPerCostElementGroupTxt(items, currentAccrualItem!, costElement);
+                                          document.getElementById(`jurnal-group-dropdown-${costElement}`)?.classList.add('hidden');
                                         }}
-                                        className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors"
+                                        className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors rounded-b-lg"
                                       >
-                                        Download TXT
+                                        <div className="font-medium">Download TXT</div>
+                                        <div className="text-[10px] text-gray-500">{items.length} transaksi</div>
                                       </button>
                                     </div>
                                   </div>
-                                  <button
-                                    onClick={() => {
-                                      setEditingRealisasiId(realisasi.id);
-                                      setRealisasiForm({
-                                        tanggalRealisasi: realisasi.tanggalRealisasi.split('T')[0],
-                                        amount: Math.abs(realisasi.amount).toString(),
-                                        keterangan: realisasi.keterangan || '',
-                                        kdAkunBiaya: realisasi.kdAkunBiaya || '',
-                                        costCenter: realisasi.costCenter || '',
-                                      });
-                                    }}
-                                    className="text-blue-600 hover:text-blue-800 transition-colors p-1 hover:bg-blue-50 rounded"
-                                    title="Edit"
-                                  >
-                                    <Edit2 size={16} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteRealisasi(realisasi.id)}
-                                    className="text-red-600 hover:text-red-800 transition-colors p-1 hover:bg-red-50 rounded"
-                                    title="Hapus"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
+                                )}
+                                <div className="text-right">
+                                  <div className="text-lg font-bold text-blue-900">{formatCurrency(totalAmount)}</div>
                                 </div>
-                              </td>
+                              </div>
+                            </div>
+
+                            {/* Detail Table - Show if single item OR expanded */}
+                            {(!hasMultiple || isExpanded) && (
+                              <table className="w-full text-sm">
+                                <thead className="bg-gray-50 border-b border-gray-200">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Tanggal</th>
+                                    <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">Amount</th>
+                                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 bg-yellow-50">Cost Center</th>
+                                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Keterangan</th>
+                                    {!realisasiViewOnly && (
+                                      <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700">Action</th>
+                                    )}
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {items.map((realisasi) => (
+                                    <tr key={realisasi.id} className="hover:bg-blue-50 transition-colors">
+                                      <td className="px-4 py-2 text-gray-700">{formatDate(realisasi.tanggalRealisasi)}</td>
+                                      <td className="px-4 py-2 text-right text-blue-700 font-semibold">{formatCurrency(Math.abs(realisasi.amount))}</td>
+                                      <td className="px-4 py-2 text-gray-800 font-mono text-xs bg-yellow-50">
+                                        <span className="font-semibold">{realisasi.costCenter || '-'}</span>
+                                      </td>
+                                      <td className="px-4 py-2 text-gray-600 text-xs">
+                                        <div className="max-w-xs truncate" title={realisasi.keterangan || ''}>
+                                          {realisasi.keterangan || '-'}
+                                        </div>
+                                      </td>
+                                      {!realisasiViewOnly && (
+                                        <td className="px-4 py-2 text-center">
+                                          <div className="flex items-center justify-center gap-2">
+                                            <div className="relative">
+                                              <button
+                                                onClick={() => {
+                                                  const dropdown = document.getElementById(`jurnal-realisasi-dropdown-${realisasi.id}`);
+                                                  if (dropdown) {
+                                                    dropdown.classList.toggle('hidden');
+                                                  }
+                                                }}
+                                                className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded transition-colors flex items-center gap-1"
+                                                title="Download Jurnal SAP Realisasi"
+                                              >
+                                                <Download size={12} />
+                                                <ChevronDown size={10} />
+                                              </button>
+                                              <div
+                                                id={`jurnal-realisasi-dropdown-${realisasi.id}`}
+                                                className="hidden absolute right-0 mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-lg z-10"
+                                              >
+                                                <button
+                                                  onClick={() => {
+                                                    handleDownloadJurnalSAPPerRealisasi(realisasi, currentAccrualItem!);
+                                                    document.getElementById(`jurnal-realisasi-dropdown-${realisasi.id}`)?.classList.add('hidden');
+                                                  }}
+                                                  className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors"
+                                                >
+                                                  Download Excel
+                                                </button>
+                                                <button
+                                                  onClick={() => {
+                                                    handleDownloadJurnalSAPPerRealisasiTxt(realisasi, currentAccrualItem!);
+                                                    document.getElementById(`jurnal-realisasi-dropdown-${realisasi.id}`)?.classList.add('hidden');
+                                                  }}
+                                                  className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors"
+                                                >
+                                                  Download TXT
+                                                </button>
+                                              </div>
+                                            </div>
+                                            <button
+                                              onClick={() => {
+                                                setEditingRealisasiId(realisasi.id);
+                                                setRealisasiForm({
+                                                  tanggalRealisasi: realisasi.tanggalRealisasi.split('T')[0],
+                                                  amount: Math.abs(realisasi.amount).toString(),
+                                                  keterangan: realisasi.keterangan || '',
+                                                  kdAkunBiaya: realisasi.kdAkunBiaya || '',
+                                                  costCenter: realisasi.costCenter || '',
+                                                });
+                                              }}
+                                              className="text-blue-600 hover:text-blue-800 transition-colors p-1 hover:bg-blue-50 rounded"
+                                              title="Edit"
+                                            >
+                                              <Edit2 size={16} />
+                                            </button>
+                                            <button
+                                              onClick={() => handleDeleteRealisasi(realisasi.id)}
+                                              className="text-red-600 hover:text-red-800 transition-colors p-1 hover:bg-red-50 rounded"
+                                              title="Hapus"
+                                            >
+                                              <Trash2 size={16} />
+                                            </button>
+                                          </div>
+                                        </td>
+                                      )}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 )}
               </div>
