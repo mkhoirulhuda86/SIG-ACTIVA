@@ -90,6 +90,67 @@ const extractKlasifikasi = (text: string): string => {
 };
 
 // Match text with keywords from database
+// Parse natural language keyword input
+const parseNaturalKeyword = (input: string): { keyword: string; type: string; result: string; priority: number } | null => {
+  if (!input.trim()) return null;
+  
+  const text = input.toLowerCase();
+  
+  // Pattern: "jika ada text "X" maka kolom Y berisi "Z""
+  // Variations: "if text X then column Y is Z", "By kolom A, jika ada text X maka kolom B berisi Y"
+  
+  // Extract keyword (text in quotes after "jika ada text" or "text")
+  let keywordMatch = text.match(/(?:jika ada text|text|keyword)\s*["']([^"']+)["']/i);
+  if (!keywordMatch) {
+    // Try without quotes: "jika ada text X maka"
+    keywordMatch = text.match(/(?:jika ada text|text)\s+([\w\s]+?)\s+(?:maka|then)/i);
+  }
+  
+  // Extract result/output (text in quotes after "berisi" or after "maka")
+  let resultMatch = text.match(/(?:berisi|is|result|output|hasil)\s*["']([^"']+)["']/i);
+  if (!resultMatch) {
+    // Try without quotes
+    resultMatch = text.match(/(?:berisi|is)\s+["']?([\w\s]+?)["']?$/i);
+  }
+  
+  // Detect type from column reference
+  let type = 'klasifikasi'; // default
+  if (text.includes('klasifikasi') || text.includes('kolom ad')) {
+    type = 'klasifikasi';
+  } else if (text.includes('remark') || text.includes('kolom ae')) {
+    type = 'remark';
+  }
+  
+  // Extract priority if mentioned
+  let priority = 5; // default
+  const priorityMatch = text.match(/priority\s*(\d+)/i);
+  if (priorityMatch) {
+    priority = parseInt(priorityMatch[1]);
+  }
+  
+  // If we have both keyword and result, return parsed object
+  if (keywordMatch && resultMatch) {
+    return {
+      keyword: keywordMatch[1].trim(),
+      type,
+      result: resultMatch[1].trim(),
+      priority
+    };
+  }
+  
+  // Fallback: try simpler parsing (keyword = result)
+  if (keywordMatch) {
+    return {
+      keyword: keywordMatch[1].trim(),
+      type,
+      result: keywordMatch[1].trim(),
+      priority
+    };
+  }
+  
+  return null;
+};
+
 const matchKeywords = (text: string, keywords: Keyword[], type: string): string => {
   if (!text || !keywords.length) return '';
   const textLower = String(text).toLowerCase().trim();
@@ -217,6 +278,8 @@ export default function FluktuasiOIPage() {
     priority: 0,
   });
   const [keywordFilter, setKeywordFilter] = useState<'all' | 'klasifikasi' | 'remark'>('all');
+  const [inputMode, setInputMode] = useState<'simple' | 'advanced'>('simple');
+  const [naturalInput, setNaturalInput] = useState('');
 
   // ── Load data from database on mount ──────────────────────────────────────
   useEffect(() => {
@@ -275,12 +338,13 @@ export default function FluktuasiOIPage() {
   };
 
   // ── Save/Update Keyword ────────────────────────────────────────────────────
-  const handleSaveKeyword = async () => {
+  const handleSaveKeyword = async (formOverride?: any) => {
     try {
+      const formToUse = formOverride || keywordForm;
       const method = editingKeyword ? 'PUT' : 'POST';
       const body = editingKeyword
-        ? { ...keywordForm, id: editingKeyword.id }
-        : keywordForm;
+        ? { ...formToUse, id: editingKeyword.id }
+        : formToUse;
 
       const res = await fetch('/api/fluktuasi/keywords', {
         method,
@@ -295,6 +359,8 @@ export default function FluktuasiOIPage() {
         setShowKeywordModal(false);
         setEditingKeyword(null);
         setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
+        setNaturalInput('');
+        setInputMode('simple');
       } else {
         alert(result.error);
       }
@@ -1250,73 +1316,152 @@ export default function FluktuasiOIPage() {
               <p className="text-sm text-gray-500 mt-1">
                 Keyword akan digunakan untuk matching otomatis saat upload file
               </p>
+              
+              {/* Input Mode Toggle */}
+              {!editingKeyword && (
+                <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={() => setInputMode('simple')}
+                    className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                      inputMode === 'simple'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    📝 Input Cepat
+                  </button>
+                  <button
+                    onClick={() => setInputMode('advanced')}
+                    className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                      inputMode === 'advanced'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    ⚙️ Input Detail
+                  </button>
+                </div>
+              )}
             </div>
             
             <div className="p-6 space-y-5">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Keyword <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={keywordForm.keyword}
-                  onChange={(e) => setKeywordForm({ ...keywordForm, keyword: e.target.value })}
-                  placeholder="Contoh: Sindikasi SLL, Bunga, Accrue"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                />
-                <p className="text-xs text-gray-500 mt-1.5">Kata kunci yang akan dicari di data Excel</p>
-              </div>
+              {/* Simple Natural Language Input */}
+              {inputMode === 'simple' && !editingKeyword && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Tulis Natural Language <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={naturalInput}
+                    onChange={(e) => setNaturalInput(e.target.value)}
+                    placeholder={'Contoh:\nBy kolom P, jika ada text "Sindikasi SLL" maka kolom AD/Klasifikasi berisi "Sindikasi SLL"\n\nAtau:\nJika ada text "Bunga" maka remark berisi "Beban Bunga" priority 5'}
+                    rows={4}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition font-mono text-sm"
+                  />
+                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-xs text-blue-700 font-semibold mb-1">💡 Tip Format:</p>
+                    <ul className="text-xs text-blue-600 space-y-0.5">
+                      <li>• Tulis: jika ada text &quot;X&quot; maka klasifikasi berisi &quot;Y&quot;</li>
+                      <li>• Atau: jika ada text &quot;X&quot; maka remark berisi &quot;Y&quot;</li>
+                      <li>• Tambah priority jika perlu: priority 10</li>
+                    </ul>
+                  </div>
+                  
+                  {/* Preview parsed result */}
+                  {naturalInput && (() => {
+                    const parsed = parseNaturalKeyword(naturalInput);
+                    if (parsed) {
+                      return (
+                        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <p className="text-xs font-semibold text-green-800 mb-2">✅ Terdeteksi:</p>
+                          <div className="space-y-1 text-xs text-green-700">
+                            <div><span className="font-semibold">Keyword:</span> {parsed.keyword}</div>
+                            <div><span className="font-semibold">Type:</span> {parsed.type}</div>
+                            <div><span className="font-semibold">Result:</span> {parsed.result}</div>
+                            <div><span className="font-semibold">Priority:</span> {parsed.priority}</div>
+                          </div>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <p className="text-xs text-yellow-700">⚠️ Format belum terdeteksi. Gunakan contoh format di atas.</p>
+                        </div>
+                      );
+                    }
+                  })()}
+                </div>
+              )}
+              
+              {/* Advanced Manual Input */}
+              {(inputMode === 'advanced' || editingKeyword) && (
+                <>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Keyword <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={keywordForm.keyword}
+                      onChange={(e) => setKeywordForm({ ...keywordForm, keyword: e.target.value })}
+                      placeholder="Contoh: Sindikasi SLL, Bunga, Accrue"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                    />
+                    <p className="text-xs text-gray-500 mt-1.5">Kata kunci yang akan dicari di data Excel</p>
+                  </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Type <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={keywordForm.type}
-                  onChange={(e) => setKeywordForm({ ...keywordForm, type: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                >
-                  <option value="klasifikasi">Klasifikasi</option>
-                  <option value="remark">Remark</option>
-                </select>
-                <p className="text-xs text-gray-500 mt-1.5">
-                  {keywordForm.type === 'klasifikasi' 
-                    ? 'Digunakan untuk kolom klasifikasi (header text / description)'
-                    : 'Digunakan untuk kolom remark (assignment / reference)'}
-                </p>
-              </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Type <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={keywordForm.type}
+                      onChange={(e) => setKeywordForm({ ...keywordForm, type: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                    >
+                      <option value="klasifikasi">Klasifikasi</option>
+                      <option value="remark">Remark</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1.5">
+                      {keywordForm.type === 'klasifikasi' 
+                        ? 'Digunakan untuk kolom klasifikasi (header text / description)'
+                        : 'Digunakan untuk kolom remark (assignment / reference)'}
+                    </p>
+                  </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Result/Output <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={keywordForm.result}
-                  onChange={(e) => setKeywordForm({ ...keywordForm, result: e.target.value })}
-                  placeholder="Contoh: Sindikasi SLL, Beban Bunga"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                />
-                <p className="text-xs text-gray-500 mt-1.5">Hasil yang akan ditampilkan jika keyword ditemukan</p>
-              </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Result/Output <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={keywordForm.result}
+                      onChange={(e) => setKeywordForm({ ...keywordForm, result: e.target.value })}
+                      placeholder="Contoh: Sindikasi SLL, Beban Bunga"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                    />
+                    <p className="text-xs text-gray-500 mt-1.5">Hasil yang akan ditampilkan jika keyword ditemukan</p>
+                  </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Priority
-                </label>
-                <input
-                  type="number"
-                  value={keywordForm.priority}
-                  onChange={(e) => setKeywordForm({ ...keywordForm, priority: parseInt(e.target.value) || 0 })}
-                  placeholder="0-100"
-                  min="0"
-                  max="100"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                />
-                <p className="text-xs text-gray-500 mt-1.5">
-                  Priority lebih tinggi akan diutamakan (0-100). Default: 0
-                </p>
-              </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Priority
+                    </label>
+                    <input
+                      type="number"
+                      value={keywordForm.priority}
+                      onChange={(e) => setKeywordForm({ ...keywordForm, priority: parseInt(e.target.value) || 0 })}
+                      placeholder="0-100"
+                      min="0"
+                      max="100"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                    />
+                    <p className="text-xs text-gray-500 mt-1.5">
+                      Priority lebih tinggi akan diutamakan (0-100). Default: 0
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex gap-3">
@@ -1325,14 +1470,30 @@ export default function FluktuasiOIPage() {
                   setShowKeywordModal(false);
                   setEditingKeyword(null);
                   setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
+                  setNaturalInput('');
+                  setInputMode('simple');
                 }}
                 className="flex-1 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition"
               >
                 Batal
               </button>
               <button
-                onClick={handleSaveKeyword}
-                disabled={!keywordForm.keyword || !keywordForm.result}
+                onClick={() => {
+                  // If simple mode, parse natural input first
+                  if (inputMode === 'simple' && !editingKeyword) {
+                    const parsed = parseNaturalKeyword(naturalInput);
+                    if (parsed) {
+                      handleSaveKeyword(parsed);
+                    }
+                  } else {
+                    handleSaveKeyword();
+                  }
+                }}
+                disabled={
+                  inputMode === 'simple' && !editingKeyword
+                    ? !naturalInput || !parseNaturalKeyword(naturalInput)
+                    : !keywordForm.keyword || !keywordForm.result
+                }
                 className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {editingKeyword ? 'Update' : 'Simpan'}
