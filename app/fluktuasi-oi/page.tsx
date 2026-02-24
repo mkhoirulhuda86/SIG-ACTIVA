@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -174,6 +174,33 @@ export default function FluktuasiOIPage() {
   const [activeSheetIdx, setActiveSheetIdx] = useState(0);
   const [kaPage,    setKaPage]    = useState(0);
   const [rekapPage, setRekapPage] = useState(0);
+
+  // ── Restore data from sessionStorage on mount ─────────────────────────────
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('fluktuasi_data');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.fileName)      setFileName(parsed.fileName);
+        if (parsed.sheetDataList) setSheetDataList(parsed.sheetDataList);
+        if (parsed.rekapSheetData) setRekapSheetData(parsed.rekapSheetData);
+      }
+    } catch {}
+  }, []);
+
+  // ── Save data to sessionStorage whenever it changes ───────────────────────
+  useEffect(() => {
+    if (!fileName && sheetDataList.length === 0 && !rekapSheetData) return;
+    try {
+      sessionStorage.setItem(
+        'fluktuasi_data',
+        JSON.stringify({ fileName, sheetDataList, rekapSheetData }),
+      );
+    } catch (e) {
+      // quota exceeded — data too large, silently skip
+      console.warn('sessionStorage quota exceeded for fluktuasi data', e);
+    }
+  }, [fileName, sheetDataList, rekapSheetData]);
 
   // ── Process file ─────────────────────────────────────────────────────────────
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
