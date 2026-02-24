@@ -216,6 +216,7 @@ export default function FluktuasiOIPage() {
     result: '',
     priority: 0,
   });
+  const [keywordFilter, setKeywordFilter] = useState<'all' | 'klasifikasi' | 'remark'>('all');
 
   // ── Load data from database on mount ──────────────────────────────────────
   useEffect(() => {
@@ -250,6 +251,26 @@ export default function FluktuasiOIPage() {
       }
     } catch (error) {
       console.error('Error loading keywords:', error);
+    }
+  };
+
+  // ── Load example keywords ──────────────────────────────────────────────────
+  const handleLoadExamples = async () => {
+    if (!confirm('Load contoh keywords? (Data existing tidak akan terhapus)')) return;
+    try {
+      const res = await fetch('/api/fluktuasi/keywords/seed', {
+        method: 'POST',
+      });
+      const result = await res.json();
+      if (result.success) {
+        alert(result.message);
+        loadKeywords();
+      } else {
+        alert(result.error);
+      }
+    } catch (error) {
+      console.error('Error loading examples:', error);
+      alert('Gagal load contoh keywords');
     }
   };
 
@@ -717,73 +738,149 @@ export default function FluktuasiOIPage() {
         <div className="p-3 sm:p-4 md:p-6 lg:p-8 space-y-4 sm:space-y-6">
 
           {/* ── Master Keywords Card ───────────────────────────────────────── */}
-          <div className="bg-white rounded-lg p-5 border border-gray-200 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800">Master Keywords</h2>
-                <p className="text-sm text-gray-500">Kelola keyword untuk klasifikasi dan remark</p>
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-gray-200">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-800">Master Keywords</h2>
+                  <p className="text-sm text-gray-500 mt-1">Kelola keyword untuk klasifikasi dan remark - digunakan otomatis saat upload file</p>
+                </div>
+                <div className="flex gap-2">
+                  {keywords.length === 0 && (
+                    <button
+                      onClick={handleLoadExamples}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
+                    >
+                      <Download size={16} />
+                      Load Contoh
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setEditingKeyword(null);
+                      setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
+                      setShowKeywordModal(true);
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
+                  >
+                    <span className="text-lg">+</span>
+                    Tambah Keyword
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => {
-                  setEditingKeyword(null);
-                  setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
-                  setShowKeywordModal(true);
-                }}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
-              >
-                + Tambah Keyword
-              </button>
+
+              {keywords.length > 0 && (
+                <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={() => setKeywordFilter('all')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                      keywordFilter === 'all'
+                        ? 'bg-gray-700 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    Semua ({keywords.length})
+                  </button>
+                  <button
+                    onClick={() => setKeywordFilter('klasifikasi')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                      keywordFilter === 'klasifikasi'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                    }`}
+                  >
+                    Klasifikasi ({keywords.filter(k => k.type === 'klasifikasi').length})
+                  </button>
+                  <button
+                    onClick={() => setKeywordFilter('remark')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                      keywordFilter === 'remark'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-purple-50 text-purple-600 hover:bg-purple-100'
+                    }`}
+                  >
+                    Remark ({keywords.filter(k => k.type === 'remark').length})
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm border-collapse">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border">Keyword</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border">Type</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border">Result</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-700 border">Priority</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-700 border">Aksi</th>
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Keyword
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Type
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Result/Output
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Priority
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Aksi
+                    </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-200">
                   {keywords.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-3 py-6 text-center text-gray-500 border">
-                        Belum ada keyword. Klik "Tambah Keyword" untuk mulai.
+                      <td colSpan={5} className="px-4 py-8 text-center">
+                        <div className="text-gray-400 mb-2">
+                          <FileSpreadsheet className="mx-auto mb-2" size={40} />
+                        </div>
+                        <p className="text-sm text-gray-500">Belum ada keyword.</p>
+                        <p className="text-xs text-gray-400 mt-1">Klik "Tambah Keyword" atau "Load Contoh" untuk mulai.</p>
                       </td>
                     </tr>
                   ) : (
-                    keywords.map((kw) => (
-                      <tr key={kw.id} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 border">{kw.keyword}</td>
-                        <td className="px-3 py-2 border">
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            kw.type === 'klasifikasi' 
-                              ? 'bg-blue-100 text-blue-700' 
-                              : 'bg-purple-100 text-purple-700'
-                          }`}>
-                            {kw.type}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 border">{kw.result}</td>
-                        <td className="px-3 py-2 border text-center">{kw.priority}</td>
-                        <td className="px-3 py-2 border text-center">
-                          <button
-                            onClick={() => handleEditKeyword(kw)}
-                            className="px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs mr-2"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteKeyword(kw.id)}
-                            className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
-                          >
-                            Hapus
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                    keywords
+                      .filter(kw => keywordFilter === 'all' || kw.type === keywordFilter)
+                      .sort((a, b) => b.priority - a.priority)
+                      .map((kw, index) => (
+                        <tr key={kw.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors`}>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                            {kw.keyword}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
+                              kw.type === 'klasifikasi' 
+                                ? 'bg-blue-100 text-blue-800' 
+                                : 'bg-purple-100 text-purple-800'
+                            }`}>
+                              {kw.type === 'klasifikasi' ? 'Klasifikasi' : 'Remark'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700">
+                            {kw.result}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-sm font-semibold text-gray-700">
+                              {kw.priority}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => handleEditKeyword(kw)}
+                                className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-xs font-medium"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteKeyword(kw.id)}
+                                className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-xs font-medium"
+                              >
+                                Hapus
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
                   )}
                 </tbody>
               </table>
@@ -1145,70 +1242,100 @@ export default function FluktuasiOIPage() {
       {/* ── Keyword Modal ─────────────────────────────────────────────────── */}
       {showKeywordModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold mb-4">
-              {editingKeyword ? 'Edit Keyword' : 'Tambah Keyword'}
-            </h3>
-            <div className="space-y-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-xl font-semibold text-gray-800">
+                {editingKeyword ? 'Edit Keyword' : 'Tambah Keyword Baru'}
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Keyword akan digunakan untuk matching otomatis saat upload file
+              </p>
+            </div>
+            
+            <div className="p-6 space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Keyword</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Keyword <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   value={keywordForm.keyword}
                   onChange={(e) => setKeywordForm({ ...keywordForm, keyword: e.target.value })}
-                  placeholder="Contoh: Accrue, Bunga"
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="Contoh: Sindikasi SLL, Bunga, Accrue"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                 />
+                <p className="text-xs text-gray-500 mt-1.5">Kata kunci yang akan dicari di data Excel</p>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Type <span className="text-red-500">*</span>
+                </label>
                 <select
                   value={keywordForm.type}
                   onChange={(e) => setKeywordForm({ ...keywordForm, type: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                 >
                   <option value="klasifikasi">Klasifikasi</option>
                   <option value="remark">Remark</option>
                 </select>
+                <p className="text-xs text-gray-500 mt-1.5">
+                  {keywordForm.type === 'klasifikasi' 
+                    ? 'Digunakan untuk kolom klasifikasi (header text / description)'
+                    : 'Digunakan untuk kolom remark (assignment / reference)'}
+                </p>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Result</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Result/Output <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   value={keywordForm.result}
                   onChange={(e) => setKeywordForm({ ...keywordForm, result: e.target.value })}
-                  placeholder="Hasil yang akan muncul"
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="Contoh: Sindikasi SLL, Beban Bunga"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                 />
+                <p className="text-xs text-gray-500 mt-1.5">Hasil yang akan ditampilkan jika keyword ditemukan</p>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Priority
+                </label>
                 <input
                   type="number"
                   value={keywordForm.priority}
                   onChange={(e) => setKeywordForm({ ...keywordForm, priority: parseInt(e.target.value) || 0 })}
-                  placeholder="0"
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="0-100"
+                  min="0"
+                  max="100"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                 />
-                <p className="text-xs text-gray-500 mt-1">Priority lebih tinggi = lebih diutamakan</p>
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Priority lebih tinggi akan diutamakan (0-100). Default: 0
+                </p>
               </div>
             </div>
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={handleSaveKeyword}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Simpan
-              </button>
+
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex gap-3">
               <button
                 onClick={() => {
                   setShowKeywordModal(false);
                   setEditingKeyword(null);
                   setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
                 }}
-                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                className="flex-1 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition"
               >
                 Batal
+              </button>
+              <button
+                onClick={handleSaveKeyword}
+                disabled={!keywordForm.keyword || !keywordForm.result}
+                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {editingKeyword ? 'Update' : 'Simpan'}
               </button>
             </div>
           </div>
