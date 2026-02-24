@@ -340,10 +340,33 @@ export default function FluktuasiOIPage() {
     }
   };
 
+  // ── Check Duplicate Keyword ────────────────────────────────────────────────
+  const checkDuplicateKeyword = (keyword: string, type: string, excludeId?: number): boolean => {
+    const keywordLower = keyword.toLowerCase().trim();
+    return keywords.some(kw => 
+      kw.keyword.toLowerCase().trim() === keywordLower && 
+      kw.type === type && 
+      (!excludeId || kw.id !== excludeId)
+    );
+  };
+
   // ── Save/Update Keyword ────────────────────────────────────────────────────
   const handleSaveKeyword = async (formOverride?: any) => {
     try {
       const formToUse = formOverride || keywordForm;
+      
+      // Frontend validation for duplicate
+      const isDuplicate = checkDuplicateKeyword(
+        formToUse.keyword, 
+        formToUse.type, 
+        editingKeyword?.id
+      );
+      
+      if (isDuplicate) {
+        alert(`Keyword "${formToUse.keyword}" dengan type "${formToUse.type}" sudah ada. Silakan gunakan keyword yang berbeda.`);
+        return;
+      }
+      
       const method = editingKeyword ? 'PUT' : 'POST';
       const body = editingKeyword
         ? { ...formToUse, id: editingKeyword.id }
@@ -1531,6 +1554,21 @@ export default function FluktuasiOIPage() {
                   {naturalInput && (() => {
                     const parsed = parseNaturalKeyword(naturalInput);
                     if (parsed) {
+                      const isDuplicate = checkDuplicateKeyword(parsed.keyword, parsed.type);
+                      if (isDuplicate) {
+                        return (
+                          <div className="mt-3 p-3 bg-red-50 border border-red-300 rounded-lg">
+                            <p className="text-xs font-semibold text-red-800 mb-2">⚠️ Keyword Sudah Ada:</p>
+                            <div className="space-y-1 text-xs text-red-700">
+                              <div><span className="font-semibold">Keyword:</span> {parsed.keyword}</div>
+                              <div><span className="font-semibold">Type:</span> {parsed.type}</div>
+                              <div className="mt-2 pt-2 border-t border-red-200">
+                                <p className="font-semibold">Keyword "{parsed.keyword}" dengan type "{parsed.type}" sudah terdaftar. Silakan gunakan keyword yang berbeda.</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
                       return (
                         <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
                           <p className="text-xs font-semibold text-green-800 mb-2">Terdeteksi:</p>
@@ -1565,9 +1603,20 @@ export default function FluktuasiOIPage() {
                       value={keywordForm.keyword}
                       onChange={(e) => setKeywordForm({ ...keywordForm, keyword: e.target.value })}
                       placeholder="Contoh: Sindikasi SLL, Bunga, Accrue"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                      className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 transition ${
+                        keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id)
+                          ? 'border-red-300 focus:ring-red-500 focus:border-red-500 bg-red-50'
+                          : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                      }`}
                     />
-                    <p className="text-xs text-gray-500 mt-1.5">Kata kunci yang akan dicari di data Excel</p>
+                    {keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id) && (
+                      <p className="text-xs text-red-600 mt-1.5 font-medium">
+                        ⚠️ Keyword ini sudah ada untuk type {keywordForm.type}
+                      </p>
+                    )}
+                    {(!keywordForm.keyword || !checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id)) && (
+                      <p className="text-xs text-gray-500 mt-1.5">Kata kunci yang akan dicari di data Excel</p>
+                    )}
                   </div>
 
                   <div>
@@ -1582,11 +1631,18 @@ export default function FluktuasiOIPage() {
                       <option value="klasifikasi">Klasifikasi</option>
                       <option value="remark">Remark</option>
                     </select>
-                    <p className="text-xs text-gray-500 mt-1.5">
-                      {keywordForm.type === 'klasifikasi' 
-                        ? 'Digunakan untuk kolom klasifikasi (header text / description)'
-                        : 'Digunakan untuk kolom remark (assignment / reference)'}
-                    </p>
+                    {keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id) && (
+                      <p className="text-xs text-red-600 mt-1.5 font-medium">
+                        Kombinasi keyword "{keywordForm.keyword}" dengan type "{keywordForm.type}" sudah ada
+                      </p>
+                    )}
+                    {(!keywordForm.keyword || !checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id)) && (
+                      <p className="text-xs text-gray-500 mt-1.5">
+                        {keywordForm.type === 'klasifikasi' 
+                          ? 'Digunakan untuk kolom klasifikasi (header text / description)'
+                          : 'Digunakan untuk kolom remark (assignment / reference)'}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -1649,11 +1705,18 @@ export default function FluktuasiOIPage() {
                     handleSaveKeyword();
                   }
                 }}
-                disabled={
-                  inputMode === 'simple' && !editingKeyword
-                    ? !naturalInput || !parseNaturalKeyword(naturalInput)
-                    : !keywordForm.keyword || !keywordForm.result
-                }
+                disabled={(() => {
+                  if (inputMode === 'simple' && !editingKeyword) {
+                    // Simple mode validation
+                    const parsed = parseNaturalKeyword(naturalInput);
+                    if (!parsed) return true;
+                    return checkDuplicateKeyword(parsed.keyword, parsed.type);
+                  } else {
+                    // Advanced mode validation
+                    if (!keywordForm.keyword || !keywordForm.result) return true;
+                    return checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id);
+                  }
+                })()}
                 className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {editingKeyword ? 'Update' : 'Simpan'}

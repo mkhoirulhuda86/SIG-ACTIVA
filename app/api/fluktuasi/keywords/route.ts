@@ -48,6 +48,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Check for duplicate keyword (case-insensitive) with same type
+    const existingKeyword = await prisma.fluktuasiKeyword.findFirst({
+      where: {
+        keyword: {
+          equals: keyword.trim(),
+          mode: 'insensitive',
+        },
+        type,
+      },
+    });
+
+    if (existingKeyword) {
+      return NextResponse.json(
+        { success: false, error: `Keyword "${keyword}" dengan type "${type}" sudah ada. Silakan gunakan keyword yang berbeda.` },
+        { status: 400 }
+      );
+    }
+
     const created = await prisma.fluktuasiKeyword.create({
       data: {
         keyword: keyword.trim(),
@@ -97,6 +115,29 @@ export async function PUT(req: NextRequest) {
     }
     if (result !== undefined) data.result = result.trim();
     if (priority !== undefined) data.priority = parseInt(priority, 10);
+
+    // Check for duplicate keyword when updating (exclude current record)
+    if (keyword !== undefined && type !== undefined) {
+      const existingKeyword = await prisma.fluktuasiKeyword.findFirst({
+        where: {
+          keyword: {
+            equals: keyword.trim(),
+            mode: 'insensitive',
+          },
+          type,
+          id: {
+            not: parseInt(id, 10),
+          },
+        },
+      });
+
+      if (existingKeyword) {
+        return NextResponse.json(
+          { success: false, error: `Keyword "${keyword}" dengan type "${type}" sudah ada. Silakan gunakan keyword yang berbeda.` },
+          { status: 400 }
+        );
+      }
+    }
 
     const updated = await prisma.fluktuasiKeyword.update({
       where: { id: parseInt(id, 10) },
