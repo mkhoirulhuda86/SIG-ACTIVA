@@ -89,6 +89,27 @@ const extractKlasifikasi = (text: string): string => {
   return cleaned || s;
 };
 
+// Match text with keywords from database
+const matchKeywords = (text: string, keywords: Keyword[], type: string): string => {
+  if (!text || !keywords.length) return '';
+  const textLower = String(text).toLowerCase().trim();
+  
+  // Filter by type and sort by priority (highest first)
+  const relevantKeywords = keywords
+    .filter((kw) => kw.type === type)
+    .sort((a, b) => b.priority - a.priority);
+
+  // Find first matching keyword
+  for (const kw of relevantKeywords) {
+    const keywordLower = kw.keyword.toLowerCase();
+    if (textLower.includes(keywordLower)) {
+      return kw.result;
+    }
+  }
+  
+  return '';
+};
+
 const findColIdx = (headers: string[], keywords: string[]): number => {
   for (const kw of keywords) {
     const idx = headers.findIndex((h) => h.toLowerCase().includes(kw.toLowerCase()));
@@ -166,6 +187,14 @@ const KA_PAGE_SIZE   = 100;
 const REKAP_PAGE_SIZE = 200;
 const ADDED_KA_HEADERS = ['Periode', 'Klasifikasi', 'Remark'];
 
+type Keyword = {
+  id: number;
+  keyword: string;
+  type: string;
+  result: string;
+  priority: number;
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function FluktuasiOIPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -176,6 +205,17 @@ export default function FluktuasiOIPage() {
   const [activeSheetIdx, setActiveSheetIdx] = useState(0);
   const [kaPage,    setKaPage]    = useState(0);
   const [rekapPage, setRekapPage] = useState(0);
+  
+  // ── Keyword Management States ──────────────────────────────────────────────
+  const [keywords, setKeywords] = useState<Keyword[]>([]);
+  const [showKeywordModal, setShowKeywordModal] = useState(false);
+  const [editingKeyword, setEditingKeyword] = useState<Keyword | null>(null);
+  const [keywordForm, setKeywordForm] = useState({
+    keyword: '',
+    type: 'klasifikasi',
+    result: '',
+    priority: 0,
+  });
 
   // ── Load data from database on mount ──────────────────────────────────────
   useEffect(() => {
@@ -195,7 +235,85 @@ export default function FluktuasiOIPage() {
       }
     };
     loadData();
+    loadKeywords();
   }, []);
+
+  // ── Load keywords ──────────────────────────────────────────────────────────
+  const loadKeywords = async () => {
+    try {
+      const res = await fetch('/api/fluktuasi/keywords');
+      if (res.ok) {
+        const result = await res.json();
+        if (result.success) {
+          setKeywords(result.data);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading keywords:', error);
+    }
+  };
+
+  // ── Save/Update Keyword ────────────────────────────────────────────────────
+  const handleSaveKeyword = async () => {
+    try {
+      const method = editingKeyword ? 'PUT' : 'POST';
+      const body = editingKeyword
+        ? { ...keywordForm, id: editingKeyword.id }
+        : keywordForm;
+
+      const res = await fetch('/api/fluktuasi/keywords', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        alert(result.message);
+        loadKeywords();
+        setShowKeywordModal(false);
+        setEditingKeyword(null);
+        setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
+      } else {
+        alert(result.error);
+      }
+    } catch (error) {
+      console.error('Error saving keyword:', error);
+      alert('Gagal menyimpan keyword');
+    }
+  };
+
+  // ── Delete Keyword ─────────────────────────────────────────────────────────
+  const handleDeleteKeyword = async (id: number) => {
+    if (!confirm('Yakin hapus keyword ini?')) return;
+    try {
+      const res = await fetch(`/api/fluktuasi/keywords?id=${id}`, {
+        method: 'DELETE',
+      });
+      const result = await res.json();
+      if (result.success) {
+        alert(result.message);
+        loadKeywords();
+      } else {
+        alert(result.error);
+      }
+    } catch (error) {
+      console.error('Error deleting keyword:', error);
+      alert('Gagal menghapus keyword');
+    }
+  };
+
+  // ── Open Edit Modal ────────────────────────────────────────────────────────
+  const handleEditKeyword = (kw: Keyword) => {
+    setEditingKeyword(kw);
+    setKeywordForm({
+      keyword: kw.keyword,
+      type: kw.type,
+      result: kw.result,
+      priority: kw.priority,
+    });
+    setShowKeywordModal(true);
+  };
 
   // ── Save data to database ──────────────────────────────────────────────────
   const saveToDatabase = async (fname: string, sheets: SheetData[], rekap: RekapSheetData | null) => {
@@ -340,8 +458,13 @@ export default function FluktuasiOIPage() {
           const obj: Record<string, any> = {};
           headers.forEach((h, idx) => { obj[h] = rawRow[idx] ?? ''; });
           obj['__periode']     = parseDateToPeriode(dateColIdx >= 0 ? rawRow[dateColIdx] : '');
-          obj['__klasifikasi'] = extractKlasifikasi(String(klasifikasiColIdx >= 0 ? rawRow[klasifikasiColIdx] : ''));
-          obj['__remark']      = String(remarkColIdx >= 0 ? rawRow[remarkColIdx] : '').trim();
+          
+          // Use keyword matching for klasifikasi and remark
+          const klasifikasiText = String(klasifikasiColIdx >= 0 ? rawRow[klasifikasiColIdx] : '');
+          const remarkText = String(remarkColIdx >= 0 ? rawRow[remarkColIdx] : '');
+          
+          obj['__klasifikasi'] = matchKeywords(klasifikasiText, keywords, 'klasifikasi') || extractKlasifikasi(klasifikasiText);
+          obj['__remark']      = matchKeywords(remarkText, keywords, 'remark') || remarkText.trim();
           rows.push(obj);
         }
         result.push({ sheetName, headers, originalHeaders, rows });
@@ -592,6 +715,80 @@ export default function FluktuasiOIPage() {
         />
 
         <div className="p-3 sm:p-4 md:p-6 lg:p-8 space-y-4 sm:space-y-6">
+
+          {/* ── Master Keywords Card ───────────────────────────────────────── */}
+          <div className="bg-white rounded-lg p-5 border border-gray-200 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800">Master Keywords</h2>
+                <p className="text-sm text-gray-500">Kelola keyword untuk klasifikasi dan remark</p>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingKeyword(null);
+                  setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
+                  setShowKeywordModal(true);
+                }}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
+              >
+                + Tambah Keyword
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border">Keyword</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border">Type</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border">Result</th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-700 border">Priority</th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-700 border">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {keywords.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-6 text-center text-gray-500 border">
+                        Belum ada keyword. Klik "Tambah Keyword" untuk mulai.
+                      </td>
+                    </tr>
+                  ) : (
+                    keywords.map((kw) => (
+                      <tr key={kw.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 border">{kw.keyword}</td>
+                        <td className="px-3 py-2 border">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            kw.type === 'klasifikasi' 
+                              ? 'bg-blue-100 text-blue-700' 
+                              : 'bg-purple-100 text-purple-700'
+                          }`}>
+                            {kw.type}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 border">{kw.result}</td>
+                        <td className="px-3 py-2 border text-center">{kw.priority}</td>
+                        <td className="px-3 py-2 border text-center">
+                          <button
+                            onClick={() => handleEditKeyword(kw)}
+                            className="px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs mr-2"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteKeyword(kw.id)}
+                            className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
+                          >
+                            Hapus
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
           {/* ── Upload Card ──────────────────────────────────────────────── */}
           <div className="bg-white rounded-lg p-5 border border-gray-200 shadow-sm">
@@ -944,6 +1141,80 @@ export default function FluktuasiOIPage() {
 
         </div>
       </div>
+
+      {/* ── Keyword Modal ─────────────────────────────────────────────────── */}
+      {showKeywordModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-4">
+              {editingKeyword ? 'Edit Keyword' : 'Tambah Keyword'}
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Keyword</label>
+                <input
+                  type="text"
+                  value={keywordForm.keyword}
+                  onChange={(e) => setKeywordForm({ ...keywordForm, keyword: e.target.value })}
+                  placeholder="Contoh: Accrue, Bunga"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                <select
+                  value={keywordForm.type}
+                  onChange={(e) => setKeywordForm({ ...keywordForm, type: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="klasifikasi">Klasifikasi</option>
+                  <option value="remark">Remark</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Result</label>
+                <input
+                  type="text"
+                  value={keywordForm.result}
+                  onChange={(e) => setKeywordForm({ ...keywordForm, result: e.target.value })}
+                  placeholder="Hasil yang akan muncul"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                <input
+                  type="number"
+                  value={keywordForm.priority}
+                  onChange={(e) => setKeywordForm({ ...keywordForm, priority: parseInt(e.target.value) || 0 })}
+                  placeholder="0"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Priority lebih tinggi = lebih diutamakan</p>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleSaveKeyword}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Simpan
+              </button>
+              <button
+                onClick={() => {
+                  setShowKeywordModal(false);
+                  setEditingKeyword(null);
+                  setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

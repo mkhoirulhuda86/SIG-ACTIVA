@@ -203,3 +203,18 @@ model FluktuasiImport {
   @@index([uploadedBy])
   @@index([createdAt])
 }
+
+model FluktuasiKeyword {
+  id          Int      @id @default(autoincrement())
+  keyword     String   // Keyword yang dicari (case-insensitive)
+  type        String   // "klasifikasi" atau "remark"
+  result      String   // Hasil yang akan ditampilkan
+  priority    Int      @default(0) // Prioritas (makin besar makin prioritas)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("fluktuasi_keywords")
+  @@index([type])
+  @@index([keyword])
+}
