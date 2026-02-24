@@ -214,6 +214,8 @@ export default function MonitoringAccrualPage() {
   const [showImportExcelModal, setShowImportExcelModal] = useState(false);
   const [uploadingImportExcel, setUploadingImportExcel] = useState(false);
   const [expandedCostElements, setExpandedCostElements] = useState<Set<string>>(new Set());
+  const [selectedRealisasiIds, setSelectedRealisasiIds] = useState<Set<number>>(new Set());
+  const [deletingBulkRealisasi, setDeletingBulkRealisasi] = useState(false);
   // Portal dropdown Jurnal SAP (agar tidak tertutup header tabel)
   const [openJurnalRect, setOpenJurnalRect] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null);
   const [openJurnalItem, setOpenJurnalItem] = useState<Accrual | null>(null);
@@ -2448,6 +2450,101 @@ export default function MonitoringAccrualPage() {
     }
   };
 
+  // Toggle selection realisasi
+  const handleToggleRealisasiSelection = (id: number) => {
+    setSelectedRealisasiIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Toggle select all realisasi
+  const handleToggleSelectAllRealisasi = () => {
+    if (selectedRealisasiIds.size === realisasiData.length) {
+      setSelectedRealisasiIds(new Set());
+    } else {
+      setSelectedRealisasiIds(new Set(realisasiData.map(r => r.id)));
+    }
+  };
+
+  // Bulk delete realisasi
+  const handleBulkDeleteRealisasi = async () => {
+    if (selectedRealisasiIds.size === 0) {
+      alert('Pilih minimal satu realisasi untuk dihapus');
+      return;
+    }
+
+    const count = selectedRealisasiIds.size;
+    if (!confirm(`Apakah Anda yakin ingin menghapus ${count} realisasi yang dipilih?`)) return;
+
+    setDeletingBulkRealisasi(true);
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Delete each selected realisasi
+      for (const id of selectedRealisasiIds) {
+        try {
+          const response = await fetch(`/api/accrual/realisasi?id=${id}`, {
+            method: 'DELETE',
+          });
+
+          if (response.ok) {
+            successCount++;
+          } else {
+            errorCount++;
+          }
+        } catch (error) {
+          errorCount++;
+        }
+      }
+
+      // Refresh realisasi list
+      if (selectedPeriode) {
+        const realisasiResponse = await fetch(`/api/accrual/realisasi?periodeId=${selectedPeriode.id}`);
+        if (realisasiResponse.ok) {
+          const data = await realisasiResponse.json();
+          setRealisasiData(data);
+        }
+      }
+
+      // Refresh main data and get updated periode
+      const accrualResponse = await fetch('/api/accrual');
+      if (accrualResponse.ok) {
+        const accruals = await accrualResponse.json();
+        setAccrualData(accruals);
+        
+        // Update selectedPeriode with fresh data
+        if (selectedPeriode) {
+          const updatedAccrual = accruals.find((acc: Accrual) => 
+            acc.periodes?.some(p => p.id === selectedPeriode.id)
+          );
+          if (updatedAccrual) {
+            const updatedPeriode = updatedAccrual.periodes?.find((p: AccrualPeriode) => p.id === selectedPeriode.id);
+            if (updatedPeriode) {
+              setSelectedPeriode(updatedPeriode);
+            }
+          }
+        }
+      }
+
+      // Clear selection
+      setSelectedRealisasiIds(new Set());
+      
+      alert(`Berhasil menghapus ${successCount} realisasi${errorCount > 0 ? `, gagal: ${errorCount}` : ''}!`);
+    } catch (error) {
+      console.error('Error bulk deleting realisasi:', error);
+      alert('Gagal menghapus realisasi');
+    } finally {
+      setDeletingBulkRealisasi(false);
+    }
+  };
+
   const handleGlobalExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -3764,6 +3861,7 @@ export default function MonitoringAccrualPage() {
                   setRealisasiViewOnly(false);
                   setRealisasiData([]);
                   setLoadingRealisasiData(false);
+                  setSelectedRealisasiIds(new Set());
                   setRealisasiForm({
                     tanggalRealisasi: new Date().toISOString().split('T')[0],
                     amount: '',
@@ -3943,8 +4041,39 @@ export default function MonitoringAccrualPage() {
 
               {/* List Realisasi */}
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                <div className="px-5 py-3 bg-gray-50 border-b border-gray-200">
-                  <h3 className="text-sm font-semibold text-gray-700">History Realisasi</h3>
+                <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-sm font-semibold text-gray-700">History Realisasi</h3>
+                    {realisasiData.length > 0 && (
+                      <span className="text-xs text-gray-500">({realisasiData.length} data)</span>
+                    )}
+                  </div>
+                  {!realisasiViewOnly && realisasiData.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleToggleSelectAllRealisasi}
+                        className="text-xs px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors"
+                        title={selectedRealisasiIds.size === realisasiData.length ? 'Batal Pilih Semua' : 'Pilih Semua'}
+                      >
+                        {selectedRealisasiIds.size === realisasiData.length ? '✓ Semua' : 'Pilih Semua'}
+                      </button>
+                      {selectedRealisasiIds.size > 0 && (
+                        <>
+                          <span className="text-xs text-gray-600">
+                            {selectedRealisasiIds.size} terpilih
+                          </span>
+                          <button
+                            onClick={handleBulkDeleteRealisasi}
+                            disabled={deletingBulkRealisasi}
+                            className="text-xs px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          >
+                            <Trash2 size={12} />
+                            {deletingBulkRealisasi ? 'Menghapus...' : 'Hapus Terpilih'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {loadingRealisasiData ? (
                   <div className="p-8 text-center">
@@ -4067,6 +4196,28 @@ export default function MonitoringAccrualPage() {
                               <table className="w-full text-sm">
                                 <thead className="bg-gray-50 border-b border-gray-200">
                                   <tr>
+                                    {!realisasiViewOnly && (
+                                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 w-10">
+                                        <input
+                                          type="checkbox"
+                                          checked={items.every(item => selectedRealisasiIds.has(item.id))}
+                                          onChange={() => {
+                                            const allSelected = items.every(item => selectedRealisasiIds.has(item.id));
+                                            const newSet = new Set(selectedRealisasiIds);
+                                            items.forEach(item => {
+                                              if (allSelected) {
+                                                newSet.delete(item.id);
+                                              } else {
+                                                newSet.add(item.id);
+                                              }
+                                            });
+                                            setSelectedRealisasiIds(newSet);
+                                          }}
+                                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                          title="Pilih semua dalam group ini"
+                                        />
+                                      </th>
+                                    )}
                                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Tanggal</th>
                                     <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">Amount</th>
                                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 bg-yellow-50">Cost Center</th>
@@ -4078,7 +4229,17 @@ export default function MonitoringAccrualPage() {
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                   {items.map((realisasi) => (
-                                    <tr key={realisasi.id} className="hover:bg-blue-50 transition-colors">
+                                    <tr key={realisasi.id} className={`hover:bg-blue-50 transition-colors ${selectedRealisasiIds.has(realisasi.id) ? 'bg-blue-50' : ''}`}>
+                                      {!realisasiViewOnly && (
+                                        <td className="px-3 py-2 text-center">
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedRealisasiIds.has(realisasi.id)}
+                                            onChange={() => handleToggleRealisasiSelection(realisasi.id)}
+                                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                          />
+                                        </td>
+                                      )}
                                       <td className="px-4 py-2 text-gray-700">{formatDate(realisasi.tanggalRealisasi)}</td>
                                       <td className="px-4 py-2 text-right text-blue-700 font-semibold">{formatCurrency(Math.abs(realisasi.amount))}</td>
                                       <td className="px-4 py-2 text-gray-800 font-mono text-xs bg-yellow-50">
@@ -4180,6 +4341,7 @@ export default function MonitoringAccrualPage() {
                   setRealisasiData([]);
                   setLoadingRealisasiData(false);
                   setEditingRealisasiId(null);
+                  setSelectedRealisasiIds(new Set());
                   setRealisasiForm({
                     tanggalRealisasi: new Date().toISOString().split('T')[0],
                     amount: '',
