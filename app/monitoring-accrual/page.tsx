@@ -2190,7 +2190,64 @@ export default function MonitoringAccrualPage() {
     if (!file || !selectedPeriode) return;
 
     setUploadingExcel(true);
+    
     try {
+      const fileName = file.name.toLowerCase();
+      const isXml = fileName.endsWith('.xml');
+
+      // Jika XML, kirim ke endpoint import yang support XML
+      if (isXml) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/accrual/realisasi/import', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          alert(`Gagal import realisasi: ${result.error}\n${result.details || ''}`);
+          return;
+        }
+
+        // Refresh realisasi list untuk periode ini
+        const realisasiResponse = await fetch(`/api/accrual/realisasi?periodeId=${selectedPeriode.id}`);
+        if (realisasiResponse.ok) {
+          const data = await realisasiResponse.json();
+          setRealisasiData(data);
+        }
+
+        // Refresh main accrual data
+        await fetchAccrualData();
+
+        // Update selected periode with new totals
+        const updatedAccrual = accrualData.find(a => 
+          a.periodes?.some(p => p.id === selectedPeriode.id)
+        );
+        if (updatedAccrual) {
+          const updatedPeriode = updatedAccrual.periodes?.find(p => p.id === selectedPeriode.id);
+          if (updatedPeriode) {
+            setSelectedPeriode(updatedPeriode);
+          }
+        }
+
+        let message = `Import XML selesai!\nBerhasil: ${result.successCount} data\nGagal: ${result.errorCount} data`;
+        if (result.errors && result.errors.length > 0) {
+          message += '\n\nDetail Error:\n' + result.errors.slice(0, 10).join('\n');
+          if (result.errors.length > 10) {
+            message += `\n... dan ${result.errors.length - 10} error lainnya`;
+          }
+        }
+        alert(message);
+
+        setUploadingExcel(false);
+        e.target.value = '';
+        return;
+      }
+
+      // Jika Excel, proses seperti biasa
       // Load XLSX on demand
       const { XLSX: XLSXLib } = await loadExcelLibraries();
       
@@ -2269,9 +2326,10 @@ export default function MonitoringAccrualPage() {
       };
       reader.readAsBinaryString(file);
     } catch (error) {
-      console.error('Error reading Excel file:', error);
-      alert('Gagal membaca file Excel.');
+      console.error('Error reading file:', error);
+      alert('Gagal membaca file.');
       setUploadingExcel(false);
+      e.target.value = '';
     }
   };
 
@@ -3752,21 +3810,21 @@ export default function MonitoringAccrualPage() {
                 </div>
               )}
 
-              {/* Upload Excel */}
+              {/* Upload Excel/XML */}
               {!realisasiViewOnly && (
               <div className="bg-white rounded-lg border border-gray-200 p-5 mb-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Import dari Excel</h3>
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Import dari File</h3>
                 <div className="flex items-center gap-3">
                   <label className="flex-1 cursor-pointer">
                     <div className="flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all">
                       <Upload size={18} />
                       <span className="text-sm font-medium">
-                        {uploadingExcel ? 'Mengupload...' : 'Upload File Excel'}
+                        {uploadingExcel ? 'Mengupload...' : 'Upload File (Excel/XML)'}
                       </span>
                     </div>
                     <input
                       type="file"
-                      accept=".xlsx,.xls"
+                      accept=".xlsx,.xls,.xml"
                       onChange={handleExcelUpload}
                       disabled={uploadingExcel}
                       className="hidden"
@@ -3774,7 +3832,7 @@ export default function MonitoringAccrualPage() {
                   </label>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                  * Nilai realisasi akan diambil dari kolom J pada file Excel
+                  * Support: Excel (.xlsx, .xls) dan XML SAP report
                 </p>
               </div>
               )}
