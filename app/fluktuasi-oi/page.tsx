@@ -251,10 +251,23 @@ export default function FluktuasiOIPage() {
         const raw: any[][] = XLSXLib.utils.sheet_to_json(ws, { header: 1, defval: '' });
         if (raw.length < 2) continue;
 
+        // Find header row: look for row with most non-empty text cells
         let headerRowIdx = 0;
-        for (let i = 0; i < raw.length; i++) {
-          if (raw[i].some((c: any) => c !== '' && c !== null)) { headerRowIdx = i; break; }
+        let maxTextCells = 0;
+        for (let i = 0; i < Math.min(raw.length, 10); i++) {
+          const row = raw[i];
+          const textCells = row.filter((c: any) => {
+            if (c === '' || c === null || c === undefined) return false;
+            const s = String(c).trim();
+            // Count as text if it has letters or is a typical header word
+            return s.length > 0 && (!/^\d+$/.test(s) || /[A-Za-z]/.test(s));
+          }).length;
+          if (textCells > maxTextCells) {
+            maxTextCells = textCells;
+            headerRowIdx = i;
+          }
         }
+        
         const rawHeaders = (raw[headerRowIdx] as any[]).map((h) =>
           h !== null && h !== undefined ? String(h).trim() : '');
         const originalHeaders: string[] = rawHeaders.map((h, i) => h || `Col_${i + 1}`);
