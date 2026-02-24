@@ -311,6 +311,9 @@ export async function POST(request: NextRequest) {
         ? keteranganParts.join(' | ')
         : `Import dari XML - Baris ${i + 2}`;
 
+      // Extract Cost Element for kdAkunBiaya
+      const costElement = row[8]?.toString().trim(); // Cost Element
+
       // Create realisasi entry
       try {
         const realisasi = await prisma.accrualRealisasi.create({
@@ -319,6 +322,8 @@ export async function POST(request: NextRequest) {
             tanggalRealisasi: postingDate,
             amount: amount,
             keterangan: keterangan,
+            kdAkunBiaya: costElement || undefined,
+            costCenter: costCenter || undefined,
           },
         });
 
