@@ -177,32 +177,47 @@ export default function FluktuasiOIPage() {
   const [kaPage,    setKaPage]    = useState(0);
   const [rekapPage, setRekapPage] = useState(0);
 
-  // ── Restore data from sessionStorage on mount ─────────────────────────────
+  // ── Load data from database on mount ──────────────────────────────────────
   useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem('fluktuasi_data');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.fileName)      setFileName(parsed.fileName);
-        if (parsed.sheetDataList) setSheetDataList(parsed.sheetDataList);
-        if (parsed.rekapSheetData) setRekapSheetData(parsed.rekapSheetData);
+    const loadData = async () => {
+      try {
+        const res = await fetch('/api/fluktuasi?uploadedBy=system');
+        if (res.ok) {
+          const result = await res.json();
+          if (result.success && result.data) {
+            setFileName(result.data.fileName);
+            setSheetDataList(result.data.sheetDataList);
+            setRekapSheetData(result.data.rekapSheetData);
+          }
+        }
+      } catch (error) {
+        console.log('Tidak ada data fluktuasi sebelumnya');
       }
-    } catch {}
+    };
+    loadData();
   }, []);
 
-  // ── Save data to sessionStorage whenever it changes ───────────────────────
-  useEffect(() => {
-    if (!fileName && sheetDataList.length === 0 && !rekapSheetData) return;
+  // ── Save data to database ──────────────────────────────────────────────────
+  const saveToDatabase = async (fname: string, sheets: SheetData[], rekap: RekapSheetData | null) => {
     try {
-      sessionStorage.setItem(
-        'fluktuasi_data',
-        JSON.stringify({ fileName, sheetDataList, rekapSheetData }),
-      );
-    } catch (e) {
-      // quota exceeded — data too large, silently skip
-      console.warn('sessionStorage quota exceeded for fluktuasi data', e);
+      const res = await fetch('/api/fluktuasi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: fname,
+          sheetDataList: sheets,
+          rekapSheetData: rekap,
+          uploadedBy: 'system',
+        }),
+      });
+      const result = await res.json();
+      if (!result.success) {
+        console.error('Gagal menyimpan ke database:', result.error);
+      }
+    } catch (error) {
+      console.error('Error menyimpan ke database:', error);
     }
-  }, [fileName, sheetDataList, rekapSheetData]);
+  };
 
   // ── Process file ─────────────────────────────────────────────────────────────
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -336,6 +351,7 @@ export default function FluktuasiOIPage() {
       }
 
       // ── Process rekap sheet ───────────────────────────────────────────────
+      let rekapData: RekapSheetData | null = null;
       if (rekapSheetName) {
         const wsR = workbook.Sheets[rekapSheetName];
         if (wsR) {
@@ -457,7 +473,7 @@ export default function FluktuasiOIPage() {
             rekapRows.push({ values, type, gapMoM, pctMoM, gapYoY, pctYoY, reasonMoM, reasonYoY });
           }
 
-          setRekapSheetData({
+          rekapData = {
             sheetName: rekapSheetName,
             headers,
             originalHeaders,
@@ -468,9 +484,14 @@ export default function FluktuasiOIPage() {
             yoyCurrIdx,
             yoyPrevIdx,
             rows: rekapRows,
-          });
+          };
+          setRekapSheetData(rekapData);
         }
       }
+
+      // ── Save to database ───────────────────────────────────────────────────
+      await saveToDatabase(file.name, result, rekapData);
+
     } catch (err: any) {
       console.error(err);
       alert('Gagal membaca file: ' + (err?.message || err));
@@ -678,7 +699,7 @@ export default function FluktuasiOIPage() {
                           {activeSheet.headers.map((h, idx) => (
                             <th key={h} className="px-3 py-2 text-left font-semibold text-white whitespace-nowrap"
                               style={{ backgroundColor: '#4472C4', border: '1px solid #3a62a8' }}>
-                              {activeSheet.originalHeaders[idx]}
+                              {activeSheet.originalHeaders?.[idx] ?? h}
                             </th>
                           ))}
                           {ADDED_KA_HEADERS.map((h) => (
@@ -784,7 +805,7 @@ export default function FluktuasiOIPage() {
                       {rekapSheetData.headers.map((h, ci) => {
                         const ac = amtColMap.get(ci);
                         const bg = ac ? amtColBg(ac) : '#244185';
-                        const label = ac ? ac.dateLabel : rekapSheetData.originalHeaders[ci];
+                        const label = ac ? ac.dateLabel : (rekapSheetData.originalHeaders?.[ci] ?? h);
                         return (
                           <th key={ci} className="px-3 py-1.5 text-center text-white text-[10px] font-semibold whitespace-nowrap"
                             style={{ backgroundColor: bg, border: '1px solid rgba(255,255,255,0.15)' }}>

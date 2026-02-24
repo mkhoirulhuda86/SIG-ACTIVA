@@ -188,3 +188,18 @@ model PrepaidPeriode {
   @@index([prepaidId])
   @@index([bulan, tahun])
 }
+
+model FluktuasiImport {
+  id              Int      @id @default(autoincrement())
+  fileName        String   // Nama file Excel yang diupload
+  uploadedBy      String   // Username atau email user yang upload
+  sheetDataList   Json     // Array of SheetData (kode akun sheets)
+  rekapSheetData  Json?    // RekapSheetData (rekap sheet)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("fluktuasi_imports")
+  @@index([uploadedBy])
+  @@index([createdAt])
+}
