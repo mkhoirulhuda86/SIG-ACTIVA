@@ -9,6 +9,7 @@ import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight } from 'lu
 type SheetData = {
   sheetName: string;
   headers: string[];
+  originalHeaders: string[]; // for display
   rows: Record<string, any>[];
 };
 
@@ -35,6 +36,7 @@ type RekapSheetRow = {
 type RekapSheetData = {
   sheetName: string;
   headers: string[];
+  originalHeaders: string[]; // for display
   amountCols: AmountCol[];
   accountColIdx: number;
   momCurrIdx: number;   // index in amountCols for MoM current
@@ -240,6 +242,7 @@ export default function FluktuasiOIPage() {
         }
         const rawHeaders = (raw[headerRowIdx] as any[]).map((h) =>
           h !== null && h !== undefined ? String(h).trim() : '');
+        const originalHeaders: string[] = rawHeaders.map((h, i) => h || `Col_${i + 1}`);
         const headers: string[] = [];
         const seen: Record<string, number> = {};
         rawHeaders.forEach((h, i) => {
@@ -313,7 +316,7 @@ export default function FluktuasiOIPage() {
           obj['__remark']      = String(remarkColIdx >= 0 ? rawRow[remarkColIdx] : '').trim();
           rows.push(obj);
         }
-        result.push({ sheetName, headers, rows });
+        result.push({ sheetName, headers, originalHeaders, rows });
       }
       setSheetDataList(result);
 
@@ -369,6 +372,7 @@ export default function FluktuasiOIPage() {
           }
 
           // Deduplicate headers
+          const originalHeaders = fullHeaders.slice(); // Keep original for display
           const headers: string[] = [];
           const seenR: Record<string, number> = {};
           fullHeaders.forEach((h, i) => {
@@ -456,6 +460,7 @@ export default function FluktuasiOIPage() {
           setRekapSheetData({
             sheetName: rekapSheetName,
             headers,
+            originalHeaders,
             amountCols,
             accountColIdx,
             momCurrIdx,
@@ -670,9 +675,11 @@ export default function FluktuasiOIPage() {
                     <table className="min-w-full text-[11px] border-collapse">
                       <thead>
                         <tr>
-                          {activeSheet.headers.map((h) => (
+                          {activeSheet.headers.map((h, idx) => (
                             <th key={h} className="px-3 py-2 text-left font-semibold text-white whitespace-nowrap"
-                              style={{ backgroundColor: '#4472C4', border: '1px solid #3a62a8' }}>{h}</th>
+                              style={{ backgroundColor: '#4472C4', border: '1px solid #3a62a8' }}>
+                              {activeSheet.originalHeaders[idx]}
+                            </th>
                           ))}
                           {ADDED_KA_HEADERS.map((h) => (
                             <th key={h} className="px-3 py-2 text-left font-semibold text-white whitespace-nowrap"
@@ -777,7 +784,7 @@ export default function FluktuasiOIPage() {
                       {rekapSheetData.headers.map((h, ci) => {
                         const ac = amtColMap.get(ci);
                         const bg = ac ? amtColBg(ac) : '#244185';
-                        const label = ac ? ac.dateLabel : h;
+                        const label = ac ? ac.dateLabel : rekapSheetData.originalHeaders[ci];
                         return (
                           <th key={ci} className="px-3 py-1.5 text-center text-white text-[10px] font-semibold whitespace-nowrap"
                             style={{ backgroundColor: bg, border: '1px solid rgba(255,255,255,0.15)' }}>
