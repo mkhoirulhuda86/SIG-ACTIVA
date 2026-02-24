@@ -281,6 +281,8 @@ export default function FluktuasiOIPage() {
   const [inputMode, setInputMode] = useState<'simple' | 'advanced'>('simple');
   const [naturalInput, setNaturalInput] = useState('');
   const [keywordSearch, setKeywordSearch] = useState('');
+  const [keywordPage, setKeywordPage] = useState(0);
+  const KEYWORD_PAGE_SIZE = 20;
 
   // ── Load data from database on mount ──────────────────────────────────────
   useEffect(() => {
@@ -840,7 +842,7 @@ export default function FluktuasiOIPage() {
                 <>
                   <div className="flex gap-2 mt-4">
                     <button
-                      onClick={() => setKeywordFilter('all')}
+                      onClick={() => { setKeywordFilter('all'); setKeywordPage(0); }}
                       className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
                         keywordFilter === 'all'
                           ? 'bg-gray-700 text-white'
@@ -850,7 +852,7 @@ export default function FluktuasiOIPage() {
                       Semua ({keywords.length})
                     </button>
                     <button
-                      onClick={() => setKeywordFilter('klasifikasi')}
+                      onClick={() => { setKeywordFilter('klasifikasi'); setKeywordPage(0); }}
                       className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
                         keywordFilter === 'klasifikasi'
                           ? 'bg-blue-600 text-white'
@@ -860,7 +862,7 @@ export default function FluktuasiOIPage() {
                       Klasifikasi ({keywords.filter(k => k.type === 'klasifikasi').length})
                     </button>
                     <button
-                      onClick={() => setKeywordFilter('remark')}
+                      onClick={() => { setKeywordFilter('remark'); setKeywordPage(0); }}
                       className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
                         keywordFilter === 'remark'
                           ? 'bg-purple-600 text-white'
@@ -876,7 +878,7 @@ export default function FluktuasiOIPage() {
                     <input
                       type="text"
                       value={keywordSearch}
-                      onChange={(e) => setKeywordSearch(e.target.value)}
+                      onChange={(e) => { setKeywordSearch(e.target.value); setKeywordPage(0); }}
                       placeholder="Cari keyword..."
                       className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                     />
@@ -893,9 +895,9 @@ export default function FluktuasiOIPage() {
               )}
             </div>
 
-            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+            <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+                <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Keyword
@@ -953,7 +955,12 @@ export default function FluktuasiOIPage() {
                       );
                     }
                     
-                    return filteredKeywords.map((kw, index) => (
+                    // Pagination
+                    const startIdx = keywordPage * KEYWORD_PAGE_SIZE;
+                    const endIdx = startIdx + KEYWORD_PAGE_SIZE;
+                    const paginatedKeywords = filteredKeywords.slice(startIdx, endIdx);
+                    
+                    return paginatedKeywords.map((kw, index) => (
                         <tr key={kw.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors`}>
                           <td className="px-4 py-3 text-sm font-medium text-gray-900">
                             {kw.keyword}
@@ -997,6 +1004,113 @@ export default function FluktuasiOIPage() {
                 </tbody>
               </table>
             </div>
+            
+            {/* Pagination Controls */}
+            {(() => {
+              const filteredKeywords = keywords
+                .filter(kw => keywordFilter === 'all' || kw.type === keywordFilter)
+                .filter(kw => {
+                  if (!keywordSearch) return true;
+                  const search = keywordSearch.toLowerCase();
+                  return (
+                    kw.keyword.toLowerCase().includes(search) ||
+                    kw.result.toLowerCase().includes(search)
+                  );
+                });
+              
+              const totalPages = Math.ceil(filteredKeywords.length / KEYWORD_PAGE_SIZE);
+              
+              if (totalPages <= 1) return null;
+              
+              const maxVisiblePages = 5;
+              let startPage = Math.max(0, keywordPage - Math.floor(maxVisiblePages / 2));
+              let endPage = Math.min(totalPages - 1, startPage + maxVisiblePages - 1);
+              
+              if (endPage - startPage < maxVisiblePages - 1) {
+                startPage = Math.max(0, endPage - maxVisiblePages + 1);
+              }
+              
+              const pages = [];
+              for (let i = startPage; i <= endPage; i++) {
+                pages.push(i);
+              }
+              
+              return (
+                <div className="px-5 py-4 border-t border-gray-200 bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-gray-600">
+                      Menampilkan {keywordPage * KEYWORD_PAGE_SIZE + 1} - {Math.min((keywordPage + 1) * KEYWORD_PAGE_SIZE, filteredKeywords.length)} dari {filteredKeywords.length} keyword
+                    </p>
+                    <div className="flex items-center gap-1">
+                      {/* First Page */}
+                      {keywordPage > 0 && (
+                        <button
+                          onClick={() => setKeywordPage(0)}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition"
+                        >
+                          ««
+                        </button>
+                      )}
+                      
+                      {/* Previous */}
+                      {keywordPage > 0 && (
+                        <button
+                          onClick={() => setKeywordPage(keywordPage - 1)}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition"
+                        >
+                          ‹
+                        </button>
+                      )}
+                      
+                      {/* Start ellipsis */}
+                      {startPage > 0 && (
+                        <span className="px-2 text-gray-500">...</span>
+                      )}
+                      
+                      {/* Page Numbers */}
+                      {pages.map((page) => (
+                        <button
+                          key={page}
+                          onClick={() => setKeywordPage(page)}
+                          className={`px-3 py-1.5 text-sm border rounded-md transition ${
+                            page === keywordPage
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          {page + 1}
+                        </button>
+                      ))}
+                      
+                      {/* End ellipsis */}
+                      {endPage < totalPages - 1 && (
+                        <span className="px-2 text-gray-500">...</span>
+                      )}
+                      
+                      {/* Next */}
+                      {keywordPage < totalPages - 1 && (
+                        <button
+                          onClick={() => setKeywordPage(keywordPage + 1)}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition"
+                        >
+                          ›
+                        </button>
+                      )}
+                      
+                      {/* Last Page */}
+                      {keywordPage < totalPages - 1 && (
+                        <button
+                          onClick={() => setKeywordPage(totalPages - 1)}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition"
+                        >
+                          »»
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* ── Upload Card ──────────────────────────────────────────────── */}
