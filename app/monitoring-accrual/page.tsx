@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Download, Plus, MoreVertical, X, Edit2, Trash2, Upload, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, Download, Plus, MoreVertical, X, Edit2, Trash2, Upload, ChevronDown } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { exportToCSV } from '../utils/exportUtils';
 import { KODE_AKUN_KLASIFIKASI } from '../utils/accrualKlasifikasi';
@@ -170,7 +170,6 @@ export default function MonitoringAccrualPage() {
   const [expandedRows, setExpandedRows] = useState<Set<number | string>>(new Set());
   const [expandedKodeAkun, setExpandedKodeAkun] = useState<Set<string>>(new Set());
   const [expandedVendor, setExpandedVendor] = useState<Set<string>>(new Set());
-  const [expandedPeriodeRealisasi, setExpandedPeriodeRealisasi] = useState<Set<number>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [formData, setFormData] = useState<AccrualFormData>({
     companyCode: '',
@@ -3047,32 +3046,9 @@ export default function MonitoringAccrualPage() {
                                           )}
                                         </td>
                                         <td className="px-3 py-2 text-right text-blue-700 bg-white" style={{ maxWidth: '130px' }}>
-                                          <div className="flex items-center justify-end gap-2">
-                                            {periode.realisasis && periode.realisasis.length > 0 && (
-                                              <button
-                                                onClick={() => {
-                                                  const newExpanded = new Set(expandedPeriodeRealisasi);
-                                                  if (newExpanded.has(periode.id)) {
-                                                    newExpanded.delete(periode.id);
-                                                  } else {
-                                                    newExpanded.add(periode.id);
-                                                  }
-                                                  setExpandedPeriodeRealisasi(newExpanded);
-                                                }}
-                                                className="text-blue-600 hover:text-blue-800 transition-colors"
-                                                title="Lihat detail realisasi"
-                                              >
-                                                {expandedPeriodeRealisasi.has(periode.id) ? (
-                                                  <ChevronDown size={14} />
-                                                ) : (
-                                                  <ChevronRight size={14} />
-                                                )}
-                                              </button>
-                                            )}
-                                            <span className="truncate block overflow-hidden text-ellipsis" title={formatCurrency(periode.totalRealisasi || 0)}>
-                                              {formatCurrency(periode.totalRealisasi || 0)}
-                                            </span>
-                                          </div>
+                                          <span className="truncate block overflow-hidden text-ellipsis" title={formatCurrency(periode.totalRealisasi || 0)}>
+                                            {formatCurrency(periode.totalRealisasi || 0)}
+                                          </span>
                                         </td>
                                         <td className="px-3 py-2 text-right text-gray-800 font-semibold bg-white" style={{ maxWidth: '130px' }}>
                                           <span className="truncate block overflow-hidden text-ellipsis" title={formatCurrency(periode.saldo || 0)}>
@@ -3139,71 +3115,6 @@ export default function MonitoringAccrualPage() {
                                           </div>
                                         </td>
                                       </tr>
-                                      
-                                      {/* Detail Realisasi Row */}
-                                      {expandedPeriodeRealisasi.has(periode.id) && periode.realisasis && periode.realisasis.length > 0 && (
-                                        <tr className="bg-blue-50">
-                                          <td colSpan={8} className="px-3 py-3">
-                                            <div className="bg-white rounded-lg border border-blue-200 overflow-hidden">
-                                              <div className="px-4 py-2 bg-blue-100 border-b border-blue-200">
-                                                <h4 className="text-sm font-semibold text-blue-900">
-                                                  Detail Realisasi - {periode.bulan}
-                                                  <span className="ml-2 text-xs font-normal text-blue-700">
-                                                    ({periode.realisasis.length} transaksi)
-                                                  </span>
-                                                </h4>
-                                              </div>
-                                              <div className="overflow-x-auto max-h-64 overflow-y-auto">
-                                                <table className="w-full text-xs">
-                                                  <thead className="bg-gray-50 sticky top-0">
-                                                    <tr>
-                                                      <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Tanggal</th>
-                                                      <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Cost Element</th>
-                                                      <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Cost Center</th>
-                                                      <th className="px-3 py-2 text-right font-semibold text-gray-700 border-b">Amount</th>
-                                                      <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Keterangan</th>
-                                                    </tr>
-                                                  </thead>
-                                                  <tbody>
-                                                    {periode.realisasis.map((realisasi: RealisasiData, idx: number) => (
-                                                      <tr 
-                                                        key={realisasi.id} 
-                                                        className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors`}
-                                                      >
-                                                        <td className="px-3 py-2 text-gray-800 border-b border-gray-100">
-                                                          {new Date(realisasi.tanggalRealisasi).toLocaleDateString('id-ID', {
-                                                            day: '2-digit',
-                                                            month: 'short',
-                                                            year: 'numeric'
-                                                          })}
-                                                        </td>
-                                                        <td className="px-3 py-2 text-gray-800 border-b border-gray-100">
-                                                          <span className="font-mono text-xs">
-                                                            {realisasi.kdAkunBiaya || '-'}
-                                                          </span>
-                                                        </td>
-                                                        <td className="px-3 py-2 text-gray-800 border-b border-gray-100">
-                                                          <span className="font-mono text-xs">
-                                                            {realisasi.costCenter || '-'}
-                                                          </span>
-                                                        </td>
-                                                        <td className="px-3 py-2 text-right text-blue-700 font-semibold border-b border-gray-100">
-                                                          {formatCurrency(realisasi.amount)}
-                                                        </td>
-                                                        <td className="px-3 py-2 text-gray-600 border-b border-gray-100">
-                                                          <div className="max-w-md truncate" title={realisasi.keterangan || ''}>
-                                                            {realisasi.keterangan || '-'}
-                                                          </div>
-                                                        </td>
-                                                      </tr>
-                                                    ))}
-                                                  </tbody>
-                                                </table>
-                                              </div>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      )}
                                       </React.Fragment>
                                     ))}
                                   </tbody>
@@ -3784,13 +3695,13 @@ export default function MonitoringAccrualPage() {
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b border-gray-200">
+                      <thead className="bg-blue-50 border-b-2 border-blue-200">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Tanggal</th>
-                          <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700">Amount</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Kode Akun Biaya</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Cost Center</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Keterangan</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-blue-900">Tanggal</th>
+                          <th className="px-4 py-3 text-right text-xs font-bold text-blue-900">Amount</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-blue-900 bg-yellow-50">Cost Element</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-blue-900 bg-yellow-50">Cost Center</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-blue-900">Keterangan</th>
                           {!realisasiViewOnly && (
                             <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Action</th>
                           )}
@@ -3798,12 +3709,16 @@ export default function MonitoringAccrualPage() {
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {realisasiData.map((realisasi) => (
-                          <tr key={realisasi.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-gray-700">{formatDate(realisasi.tanggalRealisasi)}</td>
-                            <td className="px-4 py-3 text-right text-gray-800 font-medium">{formatCurrency(Math.abs(realisasi.amount))}</td>
-                            <td className="px-4 py-3 text-gray-600">{realisasi.kdAkunBiaya || '-'}</td>
-                            <td className="px-4 py-3 text-gray-600">{realisasi.costCenter || '-'}</td>
-                            <td className="px-4 py-3 text-gray-600">{realisasi.keterangan || '-'}</td>
+                          <tr key={realisasi.id} className="hover:bg-blue-50 transition-colors">
+                            <td className="px-4 py-3 text-gray-700 border-b border-gray-100">{formatDate(realisasi.tanggalRealisasi)}</td>
+                            <td className="px-4 py-3 text-right text-blue-700 font-semibold border-b border-gray-100">{formatCurrency(Math.abs(realisasi.amount))}</td>
+                            <td className="px-4 py-3 text-gray-800 font-mono text-xs bg-yellow-50 border-b border-gray-100">
+                              <span className="font-semibold">{realisasi.kdAkunBiaya || '-'}</span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-800 font-mono text-xs bg-yellow-50 border-b border-gray-100">
+                              <span className="font-semibold">{realisasi.costCenter || '-'}</span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 text-xs border-b border-gray-100">{realisasi.keterangan || '-'}</td>
                             {!realisasiViewOnly && (
                               <td className="px-4 py-3 text-center">
                                 <div className="flex items-center justify-center gap-2">
