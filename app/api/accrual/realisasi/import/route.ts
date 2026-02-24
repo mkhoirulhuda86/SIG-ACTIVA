@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import * as XLSX from 'xlsx';
 
 // Simple XML parser for SpreadsheetML format
 function parseSpreadsheetML(xmlText: string): any[][] {
@@ -63,6 +64,22 @@ function parseSpreadsheetML(xmlText: string): any[][] {
       rows.push(row);
     }
   }
+  
+  return rows;
+}
+
+// Parse Excel file (.xlsx, .xls)
+function parseExcelFile(buffer: ArrayBuffer): any[][] {
+  const workbook = XLSX.read(buffer, { type: 'array' });
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  
+  // Convert to 2D array, keep raw values
+  const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { 
+    header: 1,
+    raw: false, // Convert to strings for easier handling
+    defval: '' // Default value for empty cells
+  });
   
   return rows;
 }
@@ -160,7 +177,7 @@ async function findAccrualAndPeriode(params: {
   };
 }
 
-// POST - Import realisasi from XML file
+// POST - Import realisasi from XML or Excel file
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -173,23 +190,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const fileName = file.name.toLowerCase();
+    const isXml = fileName.endsWith('.xml');
+    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
     // Validate file type
-    if (!file.name.toLowerCase().endsWith('.xml')) {
+    if (!isXml && !isExcel) {
       return NextResponse.json(
-        { error: 'Invalid file type. Please upload an XML file (.xml)' },
+        { error: 'Invalid file type. Please upload an XML or Excel file (.xml, .xlsx, .xls)' },
         { status: 400 }
       );
     }
 
-    // Parse XML file
-    const text = await file.text();
-    
-    // Parse rows from XML (Excel SpreadsheetML format)
-    const rows = parseSpreadsheetML(text);
+    let rows: any[][];
+
+    if (isXml) {
+      // Parse XML file
+      const text = await file.text();
+      rows = parseSpreadsheetML(text);
+    } else {
+      // Parse Excel file
+      const buffer = await file.arrayBuffer();
+      rows = parseExcelFile(buffer);
+    }
     
     if (rows.length < 2) {
       return NextResponse.json(
-        { error: 'XML file must contain at least a header row and data rows' },
+        { error: 'File must contain at least a header row and data rows' },
         { status: 400 }
       );
     }

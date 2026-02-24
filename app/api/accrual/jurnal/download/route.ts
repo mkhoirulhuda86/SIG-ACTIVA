@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     const periode = searchParams.get('periode'); // e.g., "Jan 2026"
     const costCenter = searchParams.get('costCenter');
     const format = searchParams.get('format') || 'tsv'; // 'tsv' or 'csv'
+    const detail = searchParams.get('detail') === 'true'; // true for grouped format
 
     // Build query filter
     const filter: any = {};
@@ -87,7 +88,115 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Define SAP journal columns
+    // If detail format is requested, generate grouped format
+    if (detail) {
+      // Group by Kode Akun (G/L Account)
+      const groupedByGL = new Map<string, any[]>();
+      
+      realisasiData.forEach((realisasi) => {
+        const accrual = realisasi.accrualPeriode.accrual;
+        const glAccount = realisasi.kdAkunBiaya || accrual.kdAkunBiaya || 'N/A';
+        
+        if (!groupedByGL.has(glAccount)) {
+          groupedByGL.set(glAccount, []);
+        }
+        
+        groupedByGL.get(glAccount)!.push({
+          ...realisasi,
+          accrual,
+        });
+      });
+
+      // Build detailed report
+      const lines: string[] = [];
+      const delimiter = format === 'csv' ? ',' : '\t';
+      
+      lines.push('='.repeat(80));
+      lines.push('JURNAL REALISASI ACCRUAL - DETAIL PER KODE AKUN');
+      if (periode) lines.push(`Periode: ${periode}`);
+      if (startDate || endDate) {
+        lines.push(`Tanggal: ${startDate || 'N/A'} s/d ${endDate || 'N/A'}`);
+      }
+      lines.push(`Digenerate: ${new Date().toLocaleString('id-ID')}`);
+      lines.push('='.repeat(80));
+      lines.push('');
+
+      let grandTotal = 0;
+
+      // Process each GL Account group
+      for (const [glAccount, items] of Array.from(groupedByGL.entries()).sort()) {
+        const firstItem = items[0];
+        const accrual = firstItem.accrual;
+        
+        lines.push('');
+        lines.push(`G/L Account: ${glAccount}`);
+        lines.push(`PO Number: ${accrual.noPo || 'N/A'} | Vendor: ${accrual.vendor || 'N/A'}`);
+        lines.push(`Description: ${accrual.deskripsi || accrual.headerText || 'N/A'}`);
+        lines.push('-'.repeat(80));
+        
+        // Header for details
+        if (format === 'csv') {
+          lines.push(['Tanggal', 'Cost Center', 'Amount', 'Keterangan'].join(delimiter));
+        } else {
+          lines.push('Tanggal          Cost Center      Amount              Keterangan');
+        }
+        lines.push('-'.repeat(80));
+
+        let subtotal = 0;
+
+        // List all transactions for this GL Account
+        items.forEach((item) => {
+          const date = formatDate(item.tanggalRealisasi);
+          const cc = item.costCenter || item.accrual.costCenter || '-';
+          const amount = item.amount;
+          const keterangan = (item.keterangan || '').substring(0, 30);
+          
+          subtotal += amount;
+
+          if (format === 'csv') {
+            lines.push([date, cc, formatAmount(amount), keterangan].join(delimiter));
+          } else {
+            const amountStr = formatAmount(amount).padStart(15);
+            lines.push(`${date}     ${cc.padEnd(15)} ${amountStr}     ${keterangan}`);
+          }
+        });
+
+        grandTotal += subtotal;
+
+        // Subtotal for this GL Account
+        lines.push('-'.repeat(80));
+        if (format === 'csv') {
+          lines.push(['', '', formatAmount(subtotal), `Subtotal G/L ${glAccount}`].join(delimiter));
+        } else {
+          lines.push(`${''.padEnd(35)} ${formatAmount(subtotal).padStart(15)}     Subtotal G/L ${glAccount}`);
+        }
+        lines.push('='.repeat(80));
+      }
+
+      // Grand Total
+      lines.push('');
+      lines.push('');
+      if (format === 'csv') {
+        lines.push(['', '', formatAmount(grandTotal), 'GRAND TOTAL'].join(delimiter));
+      } else {
+        lines.push(`${''.padEnd(35)} ${formatAmount(grandTotal).padStart(15)}     GRAND TOTAL`);
+      }
+      lines.push('='.repeat(80));
+
+      const fileContent = lines.join('\n');
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `jurnal_detail_${timestamp}.txt`;
+
+      return new NextResponse(fileContent, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+        },
+      });
+    }
+
+    // Default flat format (existing logic)
     const headers = [
       'Doc. Date',
       'Pstng Date',

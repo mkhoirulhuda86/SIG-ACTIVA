@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Download, Plus, MoreVertical, X, Edit2, Trash2, Upload, ChevronDown } from 'lucide-react';
+import { Search, Download, Plus, MoreVertical, X, Edit2, Trash2, Upload, ChevronDown, ChevronRight } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { exportToCSV } from '../utils/exportUtils';
 import { KODE_AKUN_KLASIFIKASI } from '../utils/accrualKlasifikasi';
@@ -170,6 +170,7 @@ export default function MonitoringAccrualPage() {
   const [expandedRows, setExpandedRows] = useState<Set<number | string>>(new Set());
   const [expandedKodeAkun, setExpandedKodeAkun] = useState<Set<string>>(new Set());
   const [expandedVendor, setExpandedVendor] = useState<Set<string>>(new Set());
+  const [expandedPeriodeRealisasi, setExpandedPeriodeRealisasi] = useState<Set<number>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [formData, setFormData] = useState<AccrualFormData>({
     companyCode: '',
@@ -1698,6 +1699,47 @@ export default function MonitoringAccrualPage() {
     }
   };
 
+  // Download Jurnal Detail per Cost Center (grouped by Kode Akun)
+  const handleDownloadJurnalDetail = async (kodeAkun?: string, periode?: string) => {
+    try {
+      // Build query parameters
+      const params = new URLSearchParams();
+      params.append('detail', 'true');
+      params.append('format', 'txt');
+      
+      if (periode) {
+        params.append('periode', periode);
+      }
+      
+      // Note: Backend akan auto-group by kode akun, tidak perlu filter by kodeAkun disini
+      // Karena kita ingin lihat semua breakdown
+
+      const response = await fetch(`/api/accrual/jurnal/download?${params.toString()}`);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to download jurnal');
+      }
+
+      // Download file
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const timestamp = new Date().toISOString().split('T')[0];
+      link.download = `jurnal_detail_${kodeAkun || 'all'}_${timestamp}.txt`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading jurnal detail:', error);
+      alert('Gagal download jurnal detail. Silakan coba lagi.');
+    }
+  };
+
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     
@@ -2150,160 +2192,43 @@ export default function MonitoringAccrualPage() {
 
     setUploadingGlobalExcel(true);
     try {
-      const isXml = file.name.toLowerCase().endsWith('.xml');
-      
-      // Untuk XML, gunakan API route yang sudah handle parsing dan matching periode
-      if (isXml) {
-        const formData = new FormData();
-        formData.append('file', file);
+      // Kirim file ke backend untuk parsing (support XML dan Excel)
+      const formData = new FormData();
+      formData.append('file', file);
 
-        const response = await fetch('/api/accrual/realisasi/import', {
-          method: 'POST',
-          body: formData,
-        });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-          alert(`Gagal import realisasi: ${result.error}\n${result.details || ''}`);
-          return;
-        }
-
-        await fetchAccrualData();
-
-        let message = `Import selesai!\nBerhasil: ${result.successCount} data\nGagal: ${result.errorCount} data`;
-        if (result.errors && result.errors.length > 0) {
-          message += '\n\nDetail Error:\n' + result.errors.slice(0, 10).join('\n');
-          if (result.errors.length > 10) {
-            message += `\n... dan ${result.errors.length - 10} error lainnya`;
-          }
-        }
-        alert(message);
-
-        setShowImportGlobalModal(false);
-        return;
-      }
-
-      // Untuk Excel, tetap gunakan logic lama
-      const { XLSX: XLSXLib } = await loadExcelLibraries();
-      const reader = new FileReader();
-      const data: string | ArrayBuffer = await new Promise((resolve, reject) => {
-        reader.onload = (event) => {
-          if (event.target?.result == null) {
-            reject(new Error('Gagal membaca file'));
-          } else {
-            resolve(event.target.result);
-          }
-        };
-        reader.onerror = () => reject(new Error('Gagal membaca file'));
-        reader.readAsBinaryString(file);
+      const response = await fetch('/api/accrual/realisasi/import', {
+        method: 'POST',
+        body: formData,
       });
 
-      const workbook = XLSXLib.read(data, { type: 'binary' });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSXLib.utils.sheet_to_json(worksheet, { header: 1 });
+      const result = await response.json();
 
-      if (!jsonData || jsonData.length <= 1) {
-        alert('File tidak berisi data realisasi yang valid.');
+      if (!response.ok) {
+        alert(`Gagal import realisasi: ${result.error}\n${result.details || ''}`);
         return;
-      }
-
-      let successCount = 0;
-      let errorCount = 0;
-      const errors: string[] = [];
-      const processedPos: Set<string> = new Set();
-
-      // Skip header row dan proses data baris demi baris
-      for (let i = 1; i < jsonData.length; i++) {
-        const row = jsonData[i];
-
-        // Kolom C = PO/PR, kolom J = Amount (index 2 dan 9)
-        const noPo = row[2]?.toString().trim();
-        const realisasiAmount = row[9];
-
-        if (!noPo || !realisasiAmount || isNaN(Number(realisasiAmount)) || Number(realisasiAmount) === 0) {
-          continue;
-        }
-
-        const matchingAccrual = accrualData.find(acc => acc.noPo?.trim() === noPo);
-
-        if (!matchingAccrual) {
-          if (!processedPos.has(noPo)) {
-            errors.push(`Baris ${i + 1}: PO ${noPo} tidak ditemukan`);
-            processedPos.add(noPo);
-          }
-          errorCount++;
-          continue;
-        }
-
-        const today = new Date();
-        const currentPeriode = matchingAccrual.periodes?.find(p => {
-          const [bulanName, tahunStr] = p.bulan.split(' ');
-          const bulanMap: Record<string, number> = {
-            Jan: 0, Feb: 1, Mar: 2, Apr: 3, Mei: 4, Jun: 5,
-            Jul: 6, Agu: 7, Sep: 8, Okt: 9, Nov: 10, Des: 11,
-          };
-          const periodeBulan = bulanMap[bulanName];
-          const periodeTahun = parseInt(tahunStr);
-          const periodeDate = new Date(periodeTahun, periodeBulan, 1);
-          return today >= periodeDate && today.getMonth() === periodeBulan && today.getFullYear() === periodeTahun;
-        });
-
-        const targetPeriode = currentPeriode || matchingAccrual.periodes?.find(p => {
-          const accrualAbs = Math.abs(p.amountAccrual);
-          const saldo = accrualAbs - (p.totalRealisasi || 0); // accrual dikurangi realisasi (semua positif)
-          return saldo > 0; // masih ada sisa accrual yang belum direalisasi
-        });
-
-        if (!targetPeriode) {
-          errors.push(`Baris ${i + 1}: PO ${noPo} tidak ada periode aktif`);
-          errorCount++;
-          continue;
-        }
-
-        try {
-          const response = await fetch('/api/accrual/realisasi', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              accrualPeriodeId: targetPeriode.id,
-              tanggalRealisasi: new Date().toISOString().split('T')[0],
-              amount: Number(realisasiAmount),
-              keterangan: `Import Global - PO: ${noPo}`,
-            }),
-          });
-
-          if (response.ok) {
-            successCount++;
-          } else {
-            errors.push(`Baris ${i + 1}: Gagal menyimpan realisasi PO ${noPo}`);
-            errorCount++;
-          }
-        } catch (error) {
-          errors.push(`Baris ${i + 1}: Error pada PO ${noPo}`);
-          errorCount++;
-        }
       }
 
       await fetchAccrualData();
 
-      let message = `Import selesai!\nBerhasil: ${successCount} data\nGagal: ${errorCount} data`;
-      if (errors.length > 0) {
-        message += '\n\nDetail Error:\n' + errors.slice(0, 10).join('\n');
-        if (errors.length > 10) {
-          message += `\n... dan ${errors.length - 10} error lainnya`;
+      let message = `Import selesai!\nBerhasil: ${result.successCount} data\nGagal: ${result.errorCount} data`;
+      if (result.errors && result.errors.length > 0) {
+        message += '\n\nDetail Error:\n' + result.errors.slice(0, 10).join('\n');
+        if (result.errors.length > 10) {
+          message += `\n... dan ${result.errors.length - 10} error lainnya`;
         }
       }
       alert(message);
 
       setShowImportGlobalModal(false);
     } catch (error) {
-      console.error('Error processing global realisasi file:', error);
-      alert('Gagal memproses file realisasi global. Pastikan format file benar.');
+      console.error('Error uploading file:', error);
+      alert('Gagal mengupload file. Silakan coba lagi.');
     } finally {
       setUploadingGlobalExcel(false);
-      e.target.value = '';
+      // Reset input
+      if (e.target) {
+        e.target.value = '';
+      }
     }
   };
 
@@ -2847,6 +2772,21 @@ export default function MonitoringAccrualPage() {
                                           </button>
                                         </div>
                                       </div>
+                                      
+                                      <div className="space-y-1 pt-2 border-t border-gray-200">
+                                        <div className="text-xs font-medium text-gray-600">Detail per Cost Center:</div>
+                                        <div className="flex gap-1">
+                                          <button
+                                            onClick={() => {
+                                              handleDownloadJurnalDetail(kodeAkun);
+                                              setOpenKodeAkunDropdown(null);
+                                            }}
+                                            className="text-xs bg-purple-500 hover:bg-purple-600 text-white px-2 py-1 rounded transition-colors flex-1"
+                                          >
+                                            Download Detail (TXT)
+                                          </button>
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
                                 )}
@@ -3052,7 +2992,8 @@ export default function MonitoringAccrualPage() {
                                   </thead>
                                   <tbody className="bg-white divide-y divide-gray-200">
                                     {item.periodes?.map((periode) => (
-                                      <tr key={periode.id} className="hover:bg-gray-50">
+                                      <React.Fragment key={periode.id}>
+                                      <tr className="hover:bg-gray-50">
                                         <td className="px-3 py-2 text-gray-700 bg-white">Periode {periode.periodeKe}</td>
                                         <td className="px-3 py-2 text-gray-700 bg-white">{periode.bulan}</td>
                                         <td className="px-3 py-2 text-right text-gray-800 font-medium bg-white" style={{ maxWidth: '130px' }}>
@@ -3106,9 +3047,32 @@ export default function MonitoringAccrualPage() {
                                           )}
                                         </td>
                                         <td className="px-3 py-2 text-right text-blue-700 bg-white" style={{ maxWidth: '130px' }}>
-                                          <span className="truncate block overflow-hidden text-ellipsis" title={formatCurrency(periode.totalRealisasi || 0)}>
-                                            {formatCurrency(periode.totalRealisasi || 0)}
-                                          </span>
+                                          <div className="flex items-center justify-end gap-2">
+                                            {periode.realisasis && periode.realisasis.length > 0 && (
+                                              <button
+                                                onClick={() => {
+                                                  const newExpanded = new Set(expandedPeriodeRealisasi);
+                                                  if (newExpanded.has(periode.id)) {
+                                                    newExpanded.delete(periode.id);
+                                                  } else {
+                                                    newExpanded.add(periode.id);
+                                                  }
+                                                  setExpandedPeriodeRealisasi(newExpanded);
+                                                }}
+                                                className="text-blue-600 hover:text-blue-800 transition-colors"
+                                                title="Lihat detail realisasi"
+                                              >
+                                                {expandedPeriodeRealisasi.has(periode.id) ? (
+                                                  <ChevronDown size={14} />
+                                                ) : (
+                                                  <ChevronRight size={14} />
+                                                )}
+                                              </button>
+                                            )}
+                                            <span className="truncate block overflow-hidden text-ellipsis" title={formatCurrency(periode.totalRealisasi || 0)}>
+                                              {formatCurrency(periode.totalRealisasi || 0)}
+                                            </span>
+                                          </div>
                                         </td>
                                         <td className="px-3 py-2 text-right text-gray-800 font-semibold bg-white" style={{ maxWidth: '130px' }}>
                                           <span className="truncate block overflow-hidden text-ellipsis" title={formatCurrency(periode.saldo || 0)}>
@@ -3133,7 +3097,7 @@ export default function MonitoringAccrualPage() {
                                               </button>
                                               <div
                                                 id={`jurnal-dropdown-${item.id}-${periode.id}`}
-                                                className="hidden absolute right-0 mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-lg z-10"
+                                                className="hidden absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-10"
                                               >
                                                 <button
                                                   onClick={() => {
@@ -3153,6 +3117,16 @@ export default function MonitoringAccrualPage() {
                                                 >
                                                   Download TXT
                                                 </button>
+                                                <div className="border-t border-gray-200 my-1"></div>
+                                                <button
+                                                  onClick={() => {
+                                                    handleDownloadJurnalDetail(undefined, periode.bulan);
+                                                    document.getElementById(`jurnal-dropdown-${item.id}-${periode.id}`)?.classList.add('hidden');
+                                                  }}
+                                                  className="block w-full text-left px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 transition-colors font-medium"
+                                                >
+                                                  Detail per Cost Center
+                                                </button>
                                               </div>
                                             </div>
                                             <button
@@ -3165,6 +3139,72 @@ export default function MonitoringAccrualPage() {
                                           </div>
                                         </td>
                                       </tr>
+                                      
+                                      {/* Detail Realisasi Row */}
+                                      {expandedPeriodeRealisasi.has(periode.id) && periode.realisasis && periode.realisasis.length > 0 && (
+                                        <tr className="bg-blue-50">
+                                          <td colSpan={8} className="px-3 py-3">
+                                            <div className="bg-white rounded-lg border border-blue-200 overflow-hidden">
+                                              <div className="px-4 py-2 bg-blue-100 border-b border-blue-200">
+                                                <h4 className="text-sm font-semibold text-blue-900">
+                                                  Detail Realisasi - {periode.bulan}
+                                                  <span className="ml-2 text-xs font-normal text-blue-700">
+                                                    ({periode.realisasis.length} transaksi)
+                                                  </span>
+                                                </h4>
+                                              </div>
+                                              <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                                                <table className="w-full text-xs">
+                                                  <thead className="bg-gray-50 sticky top-0">
+                                                    <tr>
+                                                      <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Tanggal</th>
+                                                      <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Cost Element</th>
+                                                      <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Cost Center</th>
+                                                      <th className="px-3 py-2 text-right font-semibold text-gray-700 border-b">Amount</th>
+                                                      <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Keterangan</th>
+                                                    </tr>
+                                                  </thead>
+                                                  <tbody>
+                                                    {periode.realisasis.map((realisasi: RealisasiData, idx: number) => (
+                                                      <tr 
+                                                        key={realisasi.id} 
+                                                        className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors`}
+                                                      >
+                                                        <td className="px-3 py-2 text-gray-800 border-b border-gray-100">
+                                                          {new Date(realisasi.tanggalRealisasi).toLocaleDateString('id-ID', {
+                                                            day: '2-digit',
+                                                            month: 'short',
+                                                            year: 'numeric'
+                                                          })}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-gray-800 border-b border-gray-100">
+                                                          <span className="font-mono text-xs">
+                                                            {realisasi.kdAkunBiaya || '-'}
+                                                          </span>
+                                                        </td>
+                                                        <td className="px-3 py-2 text-gray-800 border-b border-gray-100">
+                                                          <span className="font-mono text-xs">
+                                                            {realisasi.costCenter || '-'}
+                                                          </span>
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right text-blue-700 font-semibold border-b border-gray-100">
+                                                          {formatCurrency(realisasi.amount)}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-gray-600 border-b border-gray-100">
+                                                          <div className="max-w-md truncate" title={realisasi.keterangan || ''}>
+                                                            {realisasi.keterangan || '-'}
+                                                          </div>
+                                                        </td>
+                                                      </tr>
+                                                    ))}
+                                                  </tbody>
+                                                </table>
+                                              </div>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      )}
+                                      </React.Fragment>
                                     ))}
                                   </tbody>
                                 </table>
@@ -3899,11 +3939,11 @@ export default function MonitoringAccrualPage() {
               </div>
 
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Upload File Excel</h3>
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Upload File Excel/XML</h3>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                   <Upload className="mx-auto mb-3 text-gray-400" size={48} />
                   <p className="text-sm text-gray-600 mb-4">
-                    Pilih file Excel untuk import realisasi
+                    Pilih file Excel (.xlsx, .xls) atau XML untuk import realisasi
                   </p>
                   <input
                     type="file"
@@ -3922,7 +3962,7 @@ export default function MonitoringAccrualPage() {
                     }`}
                   >
                     <Upload size={18} />
-                    {uploadingGlobalExcel ? 'Mengupload...' : 'Pilih File Excel'}
+                    {uploadingGlobalExcel ? 'Mengupload...' : 'Pilih File'}
                   </label>
                 </div>
               </div>
@@ -3930,8 +3970,9 @@ export default function MonitoringAccrualPage() {
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-gray-700">
                 <p className="font-semibold mb-2">Perhatian:</p>
                 <ul className="list-disc list-inside space-y-1">
-                  <li>Pastikan nomor PO di file Excel sama persis dengan data accrual</li>
-                  <li>Import akan memproses semua baris yang memiliki PO dan amount valid</li>
+                  <li>Pastikan nomor PO di file sama persis dengan data accrual</li>
+                  <li>File XML atau Excel (.xlsx, .xls) dengan format SAP Report</li>
+                  <li>Import akan memproses semua baris yang valid</li>
                   <li>Proses import mungkin memakan waktu untuk file besar</li>
                 </ul>
               </div>
