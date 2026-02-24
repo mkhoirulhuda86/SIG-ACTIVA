@@ -280,6 +280,7 @@ export default function FluktuasiOIPage() {
   const [keywordFilter, setKeywordFilter] = useState<'all' | 'klasifikasi' | 'remark'>('all');
   const [inputMode, setInputMode] = useState<'simple' | 'advanced'>('simple');
   const [naturalInput, setNaturalInput] = useState('');
+  const [keywordSearch, setKeywordSearch] = useState('');
 
   // ── Load data from database on mount ──────────────────────────────────────
   useEffect(() => {
@@ -836,44 +837,65 @@ export default function FluktuasiOIPage() {
               </div>
 
               {keywords.length > 0 && (
-                <div className="flex gap-2 mt-4">
-                  <button
-                    onClick={() => setKeywordFilter('all')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
-                      keywordFilter === 'all'
-                        ? 'bg-gray-700 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    Semua ({keywords.length})
-                  </button>
-                  <button
-                    onClick={() => setKeywordFilter('klasifikasi')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
-                      keywordFilter === 'klasifikasi'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                    }`}
-                  >
-                    Klasifikasi ({keywords.filter(k => k.type === 'klasifikasi').length})
-                  </button>
-                  <button
-                    onClick={() => setKeywordFilter('remark')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
-                      keywordFilter === 'remark'
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-purple-50 text-purple-600 hover:bg-purple-100'
-                    }`}
-                  >
-                    Remark ({keywords.filter(k => k.type === 'remark').length})
-                  </button>
-                </div>
+                <>
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={() => setKeywordFilter('all')}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                        keywordFilter === 'all'
+                          ? 'bg-gray-700 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      Semua ({keywords.length})
+                    </button>
+                    <button
+                      onClick={() => setKeywordFilter('klasifikasi')}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                        keywordFilter === 'klasifikasi'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                      }`}
+                    >
+                      Klasifikasi ({keywords.filter(k => k.type === 'klasifikasi').length})
+                    </button>
+                    <button
+                      onClick={() => setKeywordFilter('remark')}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                        keywordFilter === 'remark'
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-purple-50 text-purple-600 hover:bg-purple-100'
+                      }`}
+                    >
+                      Remark ({keywords.filter(k => k.type === 'remark').length})
+                    </button>
+                  </div>
+                  
+                  {/* Search Box */}
+                  <div className="mt-3">
+                    <input
+                      type="text"
+                      value={keywordSearch}
+                      onChange={(e) => setKeywordSearch(e.target.value)}
+                      placeholder="Cari keyword..."
+                      className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    />
+                    {keywordSearch && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Menampilkan {keywords.filter(kw => keywordFilter === 'all' || kw.type === keywordFilter).filter(kw => {
+                          const search = keywordSearch.toLowerCase();
+                          return kw.keyword.toLowerCase().includes(search) || kw.result.toLowerCase().includes(search);
+                        }).length} dari {keywords.filter(kw => keywordFilter === 'all' || kw.type === keywordFilter).length} keyword
+                      </p>
+                    )}
+                  </div>
+                </>
               )}
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Keyword
@@ -893,21 +915,45 @@ export default function FluktuasiOIPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {keywords.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center">
-                        <div className="text-gray-400 mb-2">
-                          <FileSpreadsheet className="mx-auto mb-2" size={40} />
-                        </div>
-                        <p className="text-sm text-gray-500">Belum ada keyword.</p>
-                        <p className="text-xs text-gray-400 mt-1">Klik "Tambah Keyword" atau "Load Contoh" untuk mulai.</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    keywords
+                  {(() => {
+                    const filteredKeywords = keywords
                       .filter(kw => keywordFilter === 'all' || kw.type === keywordFilter)
-                      .sort((a, b) => b.priority - a.priority)
-                      .map((kw, index) => (
+                      .filter(kw => {
+                        if (!keywordSearch) return true;
+                        const search = keywordSearch.toLowerCase();
+                        return (
+                          kw.keyword.toLowerCase().includes(search) ||
+                          kw.result.toLowerCase().includes(search)
+                        );
+                      })
+                      .sort((a, b) => b.priority - a.priority);
+                    
+                    if (keywords.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-8 text-center">
+                            <div className="text-gray-400 mb-2">
+                              <FileSpreadsheet className="mx-auto mb-2" size={40} />
+                            </div>
+                            <p className="text-sm text-gray-500">Belum ada keyword.</p>
+                            <p className="text-xs text-gray-400 mt-1">Klik "Tambah Keyword" atau "Load Contoh" untuk mulai.</p>
+                          </td>
+                        </tr>
+                      );
+                    }
+                    
+                    if (filteredKeywords.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-8 text-center">
+                            <p className="text-sm text-gray-500">Tidak ada keyword yang cocok dengan pencarian.</p>
+                            <p className="text-xs text-gray-400 mt-1">Coba kata kunci pencarian lain atau ubah filter.</p>
+                          </td>
+                        </tr>
+                      );
+                    }
+                    
+                    return filteredKeywords.map((kw, index) => (
                         <tr key={kw.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors`}>
                           <td className="px-4 py-3 text-sm font-medium text-gray-900">
                             {kw.keyword}
@@ -947,7 +993,7 @@ export default function FluktuasiOIPage() {
                           </td>
                         </tr>
                       ))
-                  )}
+                  })()}
                 </tbody>
               </table>
             </div>
