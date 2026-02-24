@@ -4254,44 +4254,6 @@ export default function MonitoringAccrualPage() {
                                       {!realisasiViewOnly && (
                                         <td className="px-4 py-2 text-center">
                                           <div className="flex items-center justify-center gap-2">
-                                            <div className="relative">
-                                              <button
-                                                onClick={() => {
-                                                  const dropdown = document.getElementById(`jurnal-realisasi-dropdown-${realisasi.id}`);
-                                                  if (dropdown) {
-                                                    dropdown.classList.toggle('hidden');
-                                                  }
-                                                }}
-                                                className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded transition-colors flex items-center gap-1"
-                                                title="Download Jurnal SAP Realisasi"
-                                              >
-                                                <Download size={12} />
-                                                <ChevronDown size={10} />
-                                              </button>
-                                              <div
-                                                id={`jurnal-realisasi-dropdown-${realisasi.id}`}
-                                                className="hidden absolute right-0 mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-lg z-10"
-                                              >
-                                                <button
-                                                  onClick={() => {
-                                                    handleDownloadJurnalSAPPerRealisasi(realisasi, currentAccrualItem!);
-                                                    document.getElementById(`jurnal-realisasi-dropdown-${realisasi.id}`)?.classList.add('hidden');
-                                                  }}
-                                                  className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors"
-                                                >
-                                                  Download Excel
-                                                </button>
-                                                <button
-                                                  onClick={() => {
-                                                    handleDownloadJurnalSAPPerRealisasiTxt(realisasi, currentAccrualItem!);
-                                                    document.getElementById(`jurnal-realisasi-dropdown-${realisasi.id}`)?.classList.add('hidden');
-                                                  }}
-                                                  className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors"
-                                                >
-                                                  Download TXT
-                                                </button>
-                                              </div>
-                                            </div>
                                             <button
                                               onClick={() => {
                                                 setEditingRealisasiId(realisasi.id);
