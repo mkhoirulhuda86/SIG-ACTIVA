@@ -849,12 +849,12 @@ export default function MonitoringAccrualPage() {
               row1.getCell(5).value = docDate; // budat
               row1.getCell(6).value = 'IDR'; // waers
               row1.getCell(7).value = ''; // kursf
-              row1.getCell(8).value = headerText; // bktxt
+              row1.getCell(8).value = item.headerText || ''; // bktxt
               row1.getCell(9).value = ''; // zuonr
               row1.getCell(10).value = item.kdAkunBiaya; // hkont
               row1.getCell(11).value = Math.round(totalAccrual); // wrbtr
               row1.getCell(11).numFmt = '0';
-              row1.getCell(12).value = lineText; // sgtxt
+              row1.getCell(12).value = item.headerText || ''; // sgtxt
               row1.getCell(13).value = ''; // prctr
               row1.getCell(14).value = item.costCenter || ''; // kostl
               row1.getCell(15).value = ''; // empty
@@ -872,12 +872,12 @@ export default function MonitoringAccrualPage() {
               row2.getCell(5).value = docDate; // budat
               row2.getCell(6).value = 'IDR'; // waers
               row2.getCell(7).value = ''; // kursf
-              row2.getCell(8).value = headerText; // bktxt
+              row2.getCell(8).value = item.headerText || ''; // bktxt
               row2.getCell(9).value = ''; // zuonr
               row2.getCell(10).value = item.kdAkr; // hkont
               row2.getCell(11).value = -Math.round(totalAccrual); // wrbtr
               row2.getCell(11).numFmt = '0';
-              row2.getCell(12).value = lineText; // sgtxt
+              row2.getCell(12).value = item.headerText || ''; // sgtxt
               row2.getCell(13).value = ''; // prctr
               row2.getCell(14).value = ''; // kostl
               row2.getCell(15).value = ''; // empty
@@ -913,15 +913,15 @@ export default function MonitoringAccrualPage() {
               // Entry 1: DEBIT - Kode Akun Biaya
               rows.push([
                 '', companyCode, 'SA', docDate, docDate, 'IDR', '',
-                headerText, '', item.kdAkunBiaya, Math.round(totalAccrual).toString(),
-                lineText, '', item.costCenter || '', '', '', '', '', 'G'
+                item.headerText || '', '', item.kdAkunBiaya, Math.round(totalAccrual).toString(),
+                item.headerText || '', '', item.costCenter || '', '', '', '', '', 'G'
               ]);
               
               // Entry 2: KREDIT - Kode Akun Accrual
               rows.push([
                 '', companyCode, 'SA', docDate, docDate, 'IDR', '',
-                headerText, '', item.kdAkr, (-Math.round(totalAccrual)).toString(),
-                lineText, '', '', '', '', '', '', 'G'
+                item.headerText || '', '', item.kdAkr, (-Math.round(totalAccrual)).toString(),
+                item.headerText || '', '', '', '', '', '', '', 'G'
               ]);
             }
           });
@@ -3126,7 +3126,7 @@ export default function MonitoringAccrualPage() {
                                           <button
                                             onClick={() => {
                                               const allItems = Object.values(vendorGroups).flat();
-                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '2000', 'accrual', ht, lt));
+                                              handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '2000', 'accrual');
                                               setOpenKodeAkunDropdown(null);
                                             }}
                                             className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded transition-colors"
@@ -3136,7 +3136,7 @@ export default function MonitoringAccrualPage() {
                                           <button
                                             onClick={() => {
                                               const allItems = Object.values(vendorGroups).flat();
-                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '7000', 'accrual', ht, lt));
+                                              handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '7000', 'accrual');
                                               setOpenKodeAkunDropdown(null);
                                             }}
                                             className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded transition-colors"
@@ -3146,7 +3146,7 @@ export default function MonitoringAccrualPage() {
                                           <button
                                             onClick={() => {
                                               const allItems = Object.values(vendorGroups).flat();
-                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '2000', 'accrual', ht, lt));
+                                              handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '2000', 'accrual');
                                               setOpenKodeAkunDropdown(null);
                                             }}
                                             className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded transition-colors"
@@ -3156,7 +3156,7 @@ export default function MonitoringAccrualPage() {
                                           <button
                                             onClick={() => {
                                               const allItems = Object.values(vendorGroups).flat();
-                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '7000', 'accrual', ht, lt));
+                                              handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '7000', 'accrual');
                                               setOpenKodeAkunDropdown(null);
                                             }}
                                             className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded transition-colors"
@@ -3472,7 +3472,7 @@ export default function MonitoringAccrualPage() {
                                               >
                                                 <button
                                                   onClick={() => {
-                                                    promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriode(item, periode, ht, lt));
+                                                    handleDownloadJurnalSAPPerPeriode(item, periode, item.headerText || '', item.headerText || '');
                                                     document.getElementById(`jurnal-dropdown-${item.id}-${periode.id}`)?.classList.add('hidden');
                                                   }}
                                                   className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors"
@@ -3481,7 +3481,7 @@ export default function MonitoringAccrualPage() {
                                                 </button>
                                                 <button
                                                   onClick={() => {
-                                                    promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriodeTxt(item, periode, ht, lt));
+                                                    handleDownloadJurnalSAPPerPeriodeTxt(item, periode, item.headerText || '', item.headerText || '');
                                                     document.getElementById(`jurnal-dropdown-${item.id}-${periode.id}`)?.classList.add('hidden');
                                                   }}
                                                   className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors"
