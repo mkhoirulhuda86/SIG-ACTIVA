@@ -93,61 +93,63 @@ const extractKlasifikasi = (text: string): string => {
 // Parse natural language keyword input
 const parseNaturalKeyword = (input: string): { keyword: string; type: string; result: string; priority: number } | null => {
   if (!input.trim()) return null;
-  
+
   const text = input.toLowerCase();
-  
-  // Pattern: "jika ada text "X" maka kolom Y berisi "Z""
-  // Variations: "if text X then column Y is Z", "By kolom A, jika ada text X maka kolom B berisi Y"
-  
-  // Extract keyword (text in quotes after "jika ada text" or "text")
-  let keywordMatch = text.match(/(?:jika ada text|text|keyword)\s*["']([^"']+)["']/i);
-  if (!keywordMatch) {
-    // Try without quotes: "jika ada text X maka"
-    keywordMatch = text.match(/(?:jika ada text|text)\s+([\w\s]+?)\s+(?:maka|then)/i);
-  }
-  
-  // Extract result/output (text in quotes after "berisi" or after "maka")
+  const original = input;
+
+  // ── Extract result/output (text in quotes after "berisi", "maka berisi", etc.)
   let resultMatch = text.match(/(?:berisi|is|result|output|hasil)\s*["']([^"']+)["']/i);
-  if (!resultMatch) {
-    // Try without quotes
-    resultMatch = text.match(/(?:berisi|is)\s+["']?([\w\s]+?)["']?$/i);
+  if (!resultMatch) resultMatch = text.match(/(?:berisi|is)\s+["']?([\w\s]+?)["']?$/i);
+
+  // ── Detect output type (klasifikasi vs remark)
+  let type = 'klasifikasi';
+  if (text.includes('remark') || text.includes('kolom ae')) type = 'remark';
+  else if (text.includes('klasifikasi') || text.includes('kolom ad')) type = 'klasifikasi';
+
+  // ── Extract priority if mentioned
+  let priority = 5;
+  const prioM = text.match(/priority\s*(\d+)/i);
+  if (prioM) priority = parseInt(prioM[1]);
+
+  // ── DocNo mode: "jika nomor dokumen / no dok / belegnummer diawali/= X maka berisi Y"
+  const docnoM = original.match(
+    /(?:nomor\s+dokumen|no\.?\s*dok(?:umen)?|doc(?:ument)?\s*no\.?|belegnummer)\s+(?:diawali|=|starts?\s*with|adalah|berisi|sama\s+dengan)\s+["']?([\w\d\*]+)["']?/i
+  );
+  if (docnoM && resultMatch) {
+    const val = docnoM[1].replace(/\*$/, ''); // strip trailing wildcard — docno: always uses startsWith
+    return { keyword: `docno:${val}`, type, result: resultMatch[1].trim(), priority };
   }
-  
-  // Detect type from column reference
-  let type = 'klasifikasi'; // default
-  if (text.includes('klasifikasi') || text.includes('kolom ad')) {
-    type = 'klasifikasi';
-  } else if (text.includes('remark') || text.includes('kolom ae')) {
-    type = 'remark';
+
+  // ── Col mode: "jika kolom X diawali/mengandung/= Y maka berisi Z"
+  // Support: "By kolom 'Document No.', jika nilainya diawali 18 maka klasifikasi berisi ..."
+  const colM = original.match(
+    /(?:jika\s+)?(?:di\s+)?kolom\s+["']?(.+?)["']?\s+(?:(?:jika\s+)?nilainya?\s+)?(?:diawali|mengandung|berisi[^\s]|sama\s*dengan|=|startswith|contains|\*)\s+["']?([\w\d\*\-\.\/ ]+?)["']?(?:\s|$|maka)/i
+  );
+  if (colM && resultMatch) {
+    const colName = colM[1].trim();
+    const colVal  = colM[2].trim();
+    const opText  = colM[0].toLowerCase();
+    const isSW    = /diawali|startswith/.test(opText);
+    const isContains = /mengandung|contains/.test(opText);
+    const pattern = isSW ? `${colVal}*` : isContains ? `*${colVal}*` : colVal;
+    // Avoid matching header text columns (kolom P/AD/AE) being treated as col:
+    const skipCols = ['p', 'ad', 'ae', 'header', 'text', 'klasifikasi', 'remark', 'keterangan', 'uraian'];
+    if (!skipCols.includes(colName.toLowerCase())) {
+      return { keyword: `col:${colName}:${pattern}`, type, result: resultMatch[1].trim(), priority };
+    }
   }
-  
-  // Extract priority if mentioned
-  let priority = 5; // default
-  const priorityMatch = text.match(/priority\s*(\d+)/i);
-  if (priorityMatch) {
-    priority = parseInt(priorityMatch[1]);
-  }
-  
-  // If we have both keyword and result, return parsed object
+
+  // ── Normal text mode: "jika ada text 'X' maka berisi 'Y'"
+  let keywordMatch = original.match(/(?:jika ada text|text|keyword)\s*["']([^"']+)["']/i);
+  if (!keywordMatch) keywordMatch = original.match(/(?:jika ada text|text)\s+([\w\s]+?)\s+(?:maka|then)/i);
+
   if (keywordMatch && resultMatch) {
-    return {
-      keyword: keywordMatch[1].trim(),
-      type,
-      result: resultMatch[1].trim(),
-      priority
-    };
+    return { keyword: keywordMatch[1].trim(), type, result: resultMatch[1].trim(), priority };
   }
-  
-  // Fallback: try simpler parsing (keyword = result)
   if (keywordMatch) {
-    return {
-      keyword: keywordMatch[1].trim(),
-      type,
-      result: keywordMatch[1].trim(),
-      priority
-    };
+    return { keyword: keywordMatch[1].trim(), type, result: keywordMatch[1].trim(), priority };
   }
-  
+
   return null;
 };
 
@@ -378,6 +380,9 @@ export default function FluktuasiOIPage() {
   const [keywordSearch, setKeywordSearch] = useState('');
   const [keywordPage, setKeywordPage] = useState(0);
   const KEYWORD_PAGE_SIZE = 20;
+  const [kwMode, setKwMode] = useState<'normal' | 'regex' | 'not' | 'docno' | 'col'>('normal');
+  const [colHeader, setColHeader] = useState('');
+  const [colPattern, setColPattern] = useState('');
 
   // ── Load data from database on mount ──────────────────────────────────────
   useEffect(() => {
@@ -482,6 +487,9 @@ export default function FluktuasiOIPage() {
         setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
         setNaturalInput('');
         setInputMode('simple');
+        setKwMode('normal');
+        setColHeader('');
+        setColPattern('');
       } else {
         alert(result.error);
       }
@@ -514,12 +522,24 @@ export default function FluktuasiOIPage() {
   // ── Open Edit Modal ────────────────────────────────────────────────────────
   const handleEditKeyword = (kw: Keyword) => {
     setEditingKeyword(kw);
-    setKeywordForm({
-      keyword: kw.keyword,
-      type: kw.type,
-      result: kw.result,
-      priority: kw.priority,
-    });
+    setKeywordForm({ keyword: kw.keyword, type: kw.type, result: kw.result, priority: kw.priority });
+    // Detect and sync kwMode
+    const lk = kw.keyword.toLowerCase();
+    if (lk.startsWith('col:')) {
+      const without = kw.keyword.slice(4);
+      const ci = without.indexOf(':');
+      setColHeader(ci >= 0 ? without.slice(0, ci) : without);
+      setColPattern(ci >= 0 ? without.slice(ci + 1) : '');
+      setKwMode('col');
+    } else if (lk.startsWith('regex:')) {
+      setKwMode('regex');
+    } else if (lk.startsWith('not:')) {
+      setKwMode('not');
+    } else if (lk.startsWith('docno:')) {
+      setKwMode('docno');
+    } else {
+      setKwMode('normal');
+    }
     setShowKeywordModal(true);
   };
 
@@ -888,6 +908,22 @@ export default function FluktuasiOIPage() {
   // ── Derived / memoized values ──────────────────────────────────────────────
   const activeSheet = useMemo(() => sheetDataList[activeSheetIdx] ?? null, [sheetDataList, activeSheetIdx]);
 
+  // Available columns for col: dropdown — real headers if data loaded, else SAP defaults
+  const availableColumns = useMemo(() => {
+    const SAP_DEFAULTS = [
+      'Document No.', 'Belegnummer', 'Posting Date', 'Document Date',
+      'G/L Account', 'Sachkonto', 'Cost Center', 'Kostenstelle',
+      'Profit Center', 'Assignment', 'Zuordnung', 'Text',
+      'Document Header Text', 'Reference', 'Amount in LC',
+      'Company Code', 'Plant', 'Vendor', 'Customer', 'Material',
+    ];
+    if (sheetDataList.length > 0) {
+      const from = [...new Set(sheetDataList.flatMap(sd => sd.headers).filter(h => !h.startsWith('__')))];
+      if (from.length > 0) return from;
+    }
+    return SAP_DEFAULTS;
+  }, [sheetDataList]);
+
   // Paginated kode-akun rows
   const kaRows = useMemo(() => activeSheet?.rows ?? [], [activeSheet]);
   const kaTotalPages = Math.ceil(kaRows.length / KA_PAGE_SIZE);
@@ -954,6 +990,11 @@ export default function FluktuasiOIPage() {
                     onClick={() => {
                       setEditingKeyword(null);
                       setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
+                      setKwMode('normal');
+                      setColHeader('');
+                      setColPattern('');
+                      setInputMode('simple');
+                      setNaturalInput('');
                       setShowKeywordModal(true);
                     }}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
@@ -1674,16 +1715,17 @@ export default function FluktuasiOIPage() {
                   <textarea
                     value={naturalInput}
                     onChange={(e) => setNaturalInput(e.target.value)}
-                    placeholder={'Contoh:\nBy kolom P, jika ada text "Sindikasi SLL" maka kolom AD/Klasifikasi berisi "Sindikasi SLL"\n\nAtau:\nJika ada text "Bunga" maka remark berisi "Beban Bunga" priority 5'}
+                    placeholder={'Contoh 1 (teks):\nJika ada text "Sindikasi SLL" maka klasifikasi berisi "Sindikasi SLL"\n\nContoh 2 (nomor dokumen):\nJika nomor dokumen diawali 18 maka klasifikasi berisi "Tag. Klaim Asuransi"\n\nContoh 3 (kolom bebas):\nJika kolom Cost Center diawali 0001 maka klasifikasi berisi "Denda Keterlambatan"\n\nContoh 4 (remark, priority):\nJika ada text "Bunga" maka remark berisi "Beban Bunga" priority 5'}
                     rows={4}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition font-mono text-sm"
                   />
                   <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-xs text-blue-700 font-semibold mb-1">Tip Format:</p>
                     <ul className="text-xs text-blue-600 space-y-0.5">
-                      <li>• Tulis: jika ada text &quot;X&quot; maka klasifikasi berisi &quot;Y&quot;</li>
-                      <li>• Atau: jika ada text &quot;X&quot; maka remark berisi &quot;Y&quot;</li>
-                      <li>• Tambah priority jika perlu: priority 10</li>
+                      <li>• Teks: jika ada text &quot;X&quot; maka klasifikasi berisi &quot;Y&quot;</li>
+                      <li>• Nomor dok: jika nomor dokumen diawali 18 maka berisi &quot;Y&quot;</li>
+                      <li>• Kolom bebas: jika kolom Account diawali 18 maka berisi &quot;Y&quot;</li>
+                      <li>• Tambah: remark / priority 10</li>
                     </ul>
                   </div>
                   
@@ -1731,78 +1773,176 @@ export default function FluktuasiOIPage() {
               {/* Advanced Manual Input */}
               {(inputMode === 'advanced' || editingKeyword) && (
                 <>
+                  {/* ── Mode Selector ─────────────────────────────────────── */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Mode Matching</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {([
+                        { value: 'normal', label: 'Teks Biasa',   ring: 'ring-gray-400',   active: 'bg-gray-700 text-white border-gray-700',   inactive: 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50' },
+                        { value: 'regex',  label: 'Regex/Pola',   ring: 'ring-indigo-400', active: 'bg-indigo-600 text-white border-indigo-600', inactive: 'bg-white text-indigo-600 border-indigo-300 hover:bg-indigo-50' },
+                        { value: 'not',    label: 'NOT (negatif)',ring: 'ring-orange-400', active: 'bg-orange-500 text-white border-orange-500', inactive: 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50' },
+                        { value: 'docno',  label: 'Nomor Dok.',   ring: 'ring-green-400',  active: 'bg-green-600 text-white border-green-600',  inactive: 'bg-white text-green-700 border-green-300 hover:bg-green-50' },
+                        { value: 'col',    label: 'Kolom Excel',  ring: 'ring-teal-400',   active: 'bg-teal-600 text-white border-teal-600',   inactive: 'bg-white text-teal-700 border-teal-300 hover:bg-teal-50' },
+                      ] as const).map((m) => (
+                        <button
+                          key={m.value}
+                          type="button"
+                          onClick={() => {
+                            // Compute current raw value (strip existing prefix)
+                            const cur = keywordForm.keyword;
+                            const rawPart = cur.toLowerCase().startsWith('regex:') ? cur.slice(6).trim()
+                              : cur.toLowerCase().startsWith('not:')   ? cur.slice(4).trim()
+                              : cur.toLowerCase().startsWith('docno:') ? cur.slice(6).trim()
+                              : cur.toLowerCase().startsWith('col:')   ? ''
+                              : cur;
+                            setKwMode(m.value);
+                            if (m.value === 'col') {
+                              // Keep existing col parts if already col mode, else reset
+                              if (!cur.toLowerCase().startsWith('col:')) { setColHeader(''); setColPattern(''); }
+                              setKeywordForm({ ...keywordForm, keyword: `col:${colHeader}:${colPattern}` });
+                            } else {
+                              const prefix: Record<string, string> = { normal: '', regex: 'regex:', not: 'not:', docno: 'docno:' };
+                              setKeywordForm({ ...keywordForm, keyword: (prefix[m.value] || '') + rawPart });
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                            kwMode === m.value ? `${m.active} ring-2 ${m.ring} ring-offset-1` : m.inactive
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── Keyword / Column Input ────────────────────────────── */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Keyword <span className="text-red-500">*</span>
+                      {kwMode === 'col'    ? 'Kolom & Nilai'
+                       : kwMode === 'docno' ? 'Pola Nomor Dokumen'
+                       : kwMode === 'not'   ? 'Kata yang TIDAK boleh ada'
+                       : kwMode === 'regex' ? 'Pola Regex'
+                       : 'Keyword'} <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="text"
-                      value={keywordForm.keyword}
-                      onChange={(e) => setKeywordForm({ ...keywordForm, keyword: e.target.value })}
-                      placeholder="Contoh: Sindikasi SLL  /  regex:RoU \d+  /  docno:18  /  col:Account:18*"
-                      className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 transition font-mono text-sm ${
-                        keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id)
-                          ? 'border-red-300 focus:ring-red-500 focus:border-red-500 bg-red-50'
-                          : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
-                      }`}
-                    />
-                    {keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id) && (
-                      <p className="text-xs text-red-600 mt-1.5 font-medium">
-                        Keyword ini sudah ada untuk type {keywordForm.type}
-                      </p>
-                    )}
-                    {/* Regex helper */}
-                    {keywordForm.keyword.toLowerCase().startsWith('regex:') && (
-                      <div className="mt-2 p-2.5 bg-indigo-50 border border-indigo-200 rounded-lg">
-                        <p className="text-xs text-indigo-700 font-semibold mb-1">Mode Pattern (Regex) aktif</p>
-                        <ul className="text-xs text-indigo-600 space-y-0.5">
-                          <li>• <code>\d+</code> = satu atau lebih angka</li>
-                          <li>• <code>\d&#123;8&#125;</code> = tepat 8 angka</li>
-                          <li>• <code>(RoU \d+)</code> = capture group, gunakan <code>&#123;1&#125;</code> di Result</li>
-                          <li>• Contoh: <code>regex:RoU \d+</code> → cocok dengan &quot;RoU 380000000077&quot;</li>
-                        </ul>
+
+                    {kwMode === 'col' ? (
+                      // ── Col mode: dropdown + pattern input
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="text-[10px] text-teal-600 font-semibold uppercase tracking-wide mb-1 block">Nama Kolom Excel</label>
+                            <select
+                              value={colHeader}
+                              onChange={(e) => {
+                                setColHeader(e.target.value);
+                                setKeywordForm({ ...keywordForm, keyword: `col:${e.target.value}:${colPattern}` });
+                              }}
+                              className="w-full px-3 py-2 border border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500 text-sm bg-teal-50"
+                            >
+                              <option value="">-- Pilih kolom --</option>
+                              {availableColumns.map(col => (
+                                <option key={col} value={col}>{col}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-[10px] text-teal-600 font-semibold uppercase tracking-wide mb-1 block">Pola Nilai</label>
+                            <input
+                              type="text"
+                              value={colPattern}
+                              onChange={(e) => {
+                                setColPattern(e.target.value);
+                                setKeywordForm({ ...keywordForm, keyword: `col:${colHeader}:${e.target.value}` });
+                              }}
+                              placeholder="18*  /  *0001*  /  0001"
+                              className="w-full px-3 py-2 border border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500 text-sm font-mono bg-teal-50"
+                            />
+                          </div>
+                        </div>
+                        <div className="p-2.5 bg-teal-50 border border-teal-200 rounded-lg">
+                          <p className="text-xs text-teal-600 font-mono font-semibold mb-1">
+                            Preview: <span className="text-teal-800">{keywordForm.keyword || 'col:...:...'}</span>
+                          </p>
+                          <ul className="text-xs text-teal-600 space-y-0.5">
+                            <li>• <code>18*</code> = diawali &quot;18&quot; &nbsp;|&nbsp; <code>*18*</code> = mengandung &quot;18&quot; &nbsp;|&nbsp; <code>18</code> = mengandung &quot;18&quot;</li>
+                            <li>• <code>regex:^18\d+</code> = gunakan pola regex pada nilai kolom</li>
+                            {!sheetDataList.length && <li className="text-teal-500 italic">• Upload file Excel agar daftar kolom terisi otomatis dari header file</li>}
+                          </ul>
+                        </div>
                       </div>
-                    )}
-                    {/* NOT helper */}
-                    {keywordForm.keyword.toLowerCase().startsWith('not:') && (
-                      <div className="mt-2 p-2.5 bg-orange-50 border border-orange-200 rounded-lg">
-                        <p className="text-xs text-orange-700 font-semibold mb-1">Mode NOT aktif — berlaku jika teks TIDAK mengandung kata ini</p>
-                        <ul className="text-xs text-orange-600 space-y-0.5">
-                          <li>• <code>not:K3</code> → aktif jika teks tidak mengandung &quot;K3&quot;</li>
-                          <li>• <code>not:K3,SLA</code> → aktif jika teks tidak mengandung &quot;K3&quot; DAN tidak mengandung &quot;SLA&quot;</li>
-                          <li>• Gunakan koma (,) atau pipe (|) untuk memisahkan beberapa kata</li>
-                          <li>• NOT keyword dicek SETELAH semua keyword biasa tidak cocok</li>
-                        </ul>
-                      </div>
-                    )}
-                    {/* DocNo helper */}
-                    {keywordForm.keyword.toLowerCase().startsWith('docno:') && (
-                      <div className="mt-2 p-2.5 bg-green-50 border border-green-200 rounded-lg">
-                        <p className="text-xs text-green-700 font-semibold mb-1">Mode DocNo aktif — cocok berdasarkan Nomor Dokumen (kolom B Excel)</p>
-                        <ul className="text-xs text-green-600 space-y-0.5">
-                          <li>• <code>docno:18</code> → aktif jika nomor dokumen <strong>diawali</strong> &quot;18&quot; (mis. 1800001234)</li>
-                          <li>• <code>docno:100</code> → aktif jika nomor dokumen diawali &quot;100&quot;</li>
-                          <li>• <code>docno:regex:^18\d+</code> → gunakan pola regex terhadap nomor dokumen</li>
-                          <li>• Kolom yang dibaca: Belegnummer / Doc. No. / Document Number</li>
-                        </ul>
-                      </div>
-                    )}
-                    {/* Col helper */}
-                    {keywordForm.keyword.toLowerCase().startsWith('col:') && (
-                      <div className="mt-2 p-2.5 bg-teal-50 border border-teal-200 rounded-lg">
-                        <p className="text-xs text-teal-700 font-semibold mb-1">Mode Col aktif — cocok berdasarkan kolom Excel manapun by nama header</p>
-                        <p className="text-xs text-teal-600 font-mono mb-1">Format: <strong>col:NamaHeader:polaPencarian</strong></p>
-                        <ul className="text-xs text-teal-600 space-y-0.5">
-                          <li>• <code>col:Account:18*</code> → kolom &quot;Account&quot; diawali &quot;18&quot;</li>
-                          <li>• <code>col:Account:*1800*</code> → kolom &quot;Account&quot; mengandung &quot;1800&quot;</li>
-                          <li>• <code>col:Cost Center:0001</code> → kolom &quot;Cost Center&quot; mengandung &quot;0001&quot;</li>
-                          <li>• <code>col:G/L:regex:^18\d+</code> → gunakan regex pada kolom &quot;G/L&quot;</li>
-                          <li>• Nama header <strong>case-insensitive</strong>, sesuaikan dengan header di file Excel</li>
-                        </ul>
-                      </div>
-                    )}
-                    {(!keywordForm.keyword || (!checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id) && !keywordForm.keyword.toLowerCase().startsWith('regex:') && !keywordForm.keyword.toLowerCase().startsWith('not:') && !keywordForm.keyword.toLowerCase().startsWith('docno:') && !keywordForm.keyword.toLowerCase().startsWith('col:'))) && (
-                      <p className="text-xs text-gray-500 mt-1.5">Kata kunci biasa, atau prefix <code className="bg-gray-100 px-1 rounded">regex:</code> pola teks, <code className="bg-gray-100 px-1 rounded">not:</code> kondisi tidak mengandung, <code className="bg-gray-100 px-1 rounded">docno:</code> nomor dokumen, <code className="bg-gray-100 px-1 rounded">col:Header:nilai</code> kolom bebas</p>
+                    ) : (
+                      // ── Other modes: single text input
+                      <>
+                        <div className="relative">
+                          {kwMode !== 'normal' && (
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-mono pointer-events-none select-none">
+                              {kwMode === 'regex' ? 'regex:' : kwMode === 'not' ? 'not:' : 'docno:'}
+                            </span>
+                          )}
+                          <input
+                            type="text"
+                            value={
+                              kwMode === 'normal' ? keywordForm.keyword
+                              : kwMode === 'regex' ? (keywordForm.keyword.toLowerCase().startsWith('regex:') ? keywordForm.keyword.slice(6) : keywordForm.keyword)
+                              : kwMode === 'not'   ? (keywordForm.keyword.toLowerCase().startsWith('not:')   ? keywordForm.keyword.slice(4) : keywordForm.keyword)
+                              : kwMode === 'docno' ? (keywordForm.keyword.toLowerCase().startsWith('docno:') ? keywordForm.keyword.slice(6) : keywordForm.keyword)
+                              : keywordForm.keyword
+                            }
+                            onChange={(e) => {
+                              const prefix: Record<string, string> = { normal: '', regex: 'regex:', not: 'not:', docno: 'docno:' };
+                              setKeywordForm({ ...keywordForm, keyword: (prefix[kwMode] || '') + e.target.value });
+                            }}
+                            placeholder={
+                              kwMode === 'normal' ? 'Contoh: Sindikasi SLL, Beban Bunga'
+                              : kwMode === 'regex' ? 'Contoh: RoU \d+  atau  ^Bunga\s+(\w+)'
+                              : kwMode === 'not'   ? 'Contoh: K3,SLA  atau  K3|SLA'
+                              : 'Contoh: 18  (diawali 18)  atau  100005'
+                            }
+                            className={`w-full py-2.5 border rounded-lg focus:ring-2 transition font-mono text-sm ${
+                              kwMode !== 'normal' ? 'pl-[4.5rem] pr-4' : 'px-4'
+                            } ${
+                              keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id)
+                                ? 'border-red-300 focus:ring-red-500 focus:border-red-500 bg-red-50'
+                                : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                            }`}
+                          />
+                        </div>
+                        {keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id) && (
+                          <p className="text-xs text-red-600 mt-1.5 font-medium">Keyword ini sudah ada untuk type {keywordForm.type}</p>
+                        )}
+                        {kwMode === 'regex' && (
+                          <div className="mt-2 p-2.5 bg-indigo-50 border border-indigo-200 rounded-lg">
+                            <p className="text-xs text-indigo-700 font-semibold mb-1">Regex — cocok terhadap kolom teks (Header Text)</p>
+                            <ul className="text-xs text-indigo-600 space-y-0.5">
+                              <li>• <code>\d+</code> = satu atau lebih angka &nbsp;|&nbsp; <code>\d&#123;8&#125;</code> = tepat 8 angka</li>
+                              <li>• <code>(RoU \d+)</code> = capture group → gunakan <code>&#123;1&#125;</code> di Result</li>
+                              <li>• Kosongkan Result → otomatis pakai teks yang cocok</li>
+                            </ul>
+                          </div>
+                        )}
+                        {kwMode === 'not' && (
+                          <div className="mt-2 p-2.5 bg-orange-50 border border-orange-200 rounded-lg">
+                            <p className="text-xs text-orange-700 font-semibold mb-1">NOT — aktif jika kolom teks TIDAK mengandung kata berikut</p>
+                            <ul className="text-xs text-orange-600 space-y-0.5">
+                              <li>• <code>K3</code> → tidak ada &quot;K3&quot; &nbsp;|&nbsp; <code>K3,SLA</code> → tidak ada &quot;K3&quot; DAN tidak ada &quot;SLA&quot;</li>
+                              <li>• Gunakan koma (,) atau pipe (|) sebagai pemisah</li>
+                              <li>• Dicek setelah semua keyword positif tidak cocok</li>
+                            </ul>
+                          </div>
+                        )}
+                        {kwMode === 'docno' && (
+                          <div className="mt-2 p-2.5 bg-green-50 border border-green-200 rounded-lg">
+                            <p className="text-xs text-green-700 font-semibold mb-1">Nomor Dokumen — cocok terhadap kolom Belegnummer / Doc. No.</p>
+                            <ul className="text-xs text-green-600 space-y-0.5">
+                              <li>• <code>18</code> → nomor dokumen <strong>diawali</strong> &quot;18&quot; (misal 1800001234)</li>
+                              <li>• <code>regex:^18\d+</code> → gunakan pola regex terhadap nomor dokumen</li>
+                            </ul>
+                          </div>
+                        )}
+                        {kwMode === 'normal' && !keywordForm.keyword && (
+                          <p className="text-xs text-gray-500 mt-1.5">Cocok jika kolom teks <strong>mengandung</strong> keyword ini (case insensitive)</p>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -1835,7 +1975,7 @@ export default function FluktuasiOIPage() {
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       Result/Output
-                      {!keywordForm.keyword.toLowerCase().startsWith('regex:') && !keywordForm.keyword.toLowerCase().startsWith('col:') && <span className="text-red-500"> *</span>}
+                      {!keywordForm.keyword.toLowerCase().startsWith('regex:') && !keywordForm.keyword.toLowerCase().startsWith('col:') && !keywordForm.keyword.toLowerCase().startsWith('docno:') && <span className="text-red-500"> *</span>}
                     </label>
                     <input
                       type="text"
@@ -1890,6 +2030,9 @@ export default function FluktuasiOIPage() {
                   setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
                   setNaturalInput('');
                   setInputMode('simple');
+                  setKwMode('normal');
+                  setColHeader('');
+                  setColPattern('');
                 }}
                 className="flex-1 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition"
               >
@@ -1916,6 +2059,8 @@ export default function FluktuasiOIPage() {
                   } else {
                     // Advanced mode validation
                     if (!keywordForm.keyword) return true;
+                    // col mode: need colHeader to be set
+                    if (kwMode === 'col' && !colHeader) return true;
                     // Regex, NOT, col modes: result is optional
                     const isSpecialMode = keywordForm.keyword.toLowerCase().startsWith('regex:') || keywordForm.keyword.toLowerCase().startsWith('not:') || keywordForm.keyword.toLowerCase().startsWith('col:');
                     if (!isSpecialMode && !keywordForm.result) return true;
