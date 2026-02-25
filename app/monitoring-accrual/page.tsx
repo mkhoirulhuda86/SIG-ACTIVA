@@ -235,6 +235,7 @@ export default function MonitoringAccrualPage() {
   const [submittingCostCenter, setSubmittingCostCenter] = useState(false);
   const [selectedCostCenterIds, setSelectedCostCenterIds] = useState<Set<number>>(new Set());
   const [deletingBulkCostCenter, setDeletingBulkCostCenter] = useState(false);
+  const [uploadingCostCenterFile, setUploadingCostCenterFile] = useState(false);
   // Portal dropdown Jurnal SAP (agar tidak tertutup header tabel)
   const [openJurnalRect, setOpenJurnalRect] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null);
   const [openJurnalItem, setOpenJurnalItem] = useState<Accrual | null>(null);
@@ -2616,6 +2617,52 @@ export default function MonitoringAccrualPage() {
 
   // ─────────────────────────────────────────────────────────────────────────
 
+  const handleCostCenterFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !costCenterModalPeriode) return;
+    setUploadingCostCenterFile(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('periodeId', costCenterModalPeriode.id.toString());
+      const response = await fetch('/api/accrual/periode-costcenter/import', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        alert(`Gagal import: ${result.error}\n${result.details || ''}`);
+        return;
+      }
+      let message = `Import selesai!\nBerhasil: ${result.successCount} data\nGagal: ${result.errorCount} data`;
+      if (result.errors && result.errors.length > 0) {
+        message += `\n\nDetail error:\n${result.errors.slice(0, 5).join('\n')}`;
+        if (result.errors.length > 5) message += `\n...dan ${result.errors.length - 5} error lainnya`;
+      }
+      alert(message);
+
+      const periodeId = costCenterModalPeriode.id;
+      const [listRes, accrualRes] = await Promise.all([
+        fetch(`/api/accrual/periode-costcenter?periodeId=${periodeId}`),
+        fetch('/api/accrual'),
+      ]);
+      if (listRes.ok) setCostCenterData(await listRes.json());
+      if (accrualRes.ok) {
+        const accruals = await accrualRes.json();
+        setAccrualData(accruals);
+        const updatedAccrual = accruals.find((a: Accrual) => a.periodes?.some((p: AccrualPeriode) => p.id === periodeId));
+        const updatedPeriode = updatedAccrual?.periodes?.find((p: AccrualPeriode) => p.id === periodeId);
+        if (updatedPeriode) setCostCenterModalPeriode(updatedPeriode);
+      }
+    } catch (error) {
+      console.error('Error uploading cost center file:', error);
+      alert('Gagal mengupload file. Silakan coba lagi.');
+    } finally {
+      setUploadingCostCenterFile(false);
+      e.target.value = '';
+    }
+  };
+
   const handleGlobalExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -3431,54 +3478,9 @@ export default function MonitoringAccrualPage() {
                                         <td className="px-3 py-2 text-gray-700 bg-white">Periode {periode.periodeKe}</td>
                                         <td className="px-3 py-2 text-gray-700 bg-white">{periode.bulan}</td>
                                         <td className="px-3 py-2 text-right text-gray-800 font-medium bg-white" style={{ maxWidth: '130px' }}>
-                                          {editingPeriodeId === periode.id ? (
-                                            <div className="flex items-center gap-1">
-                                              <input
-                                                type="number"
-                                                value={editPeriodeAmount}
-                                                onChange={(e) => setEditPeriodeAmount(e.target.value)}
-                                                step="0.01"
-                                                className="w-28 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                autoFocus
-                                                placeholder="Amount"
-                                              />
-                                              <button
-                                                onClick={() => handleUpdatePeriodeAmount(periode.id, editPeriodeAmount)}
-                                                className="text-green-600 hover:text-green-800 p-1"
-                                                title="Simpan"
-                                              >
-                                                ✓
-                                              </button>
-                                              <button
-                                                onClick={() => {
-                                                  setEditingPeriodeId(null);
-                                                  setEditPeriodeAmount('');
-                                                }}
-                                                className="text-red-600 hover:text-red-800 p-1"
-                                                title="Batal"
-                                              >
-                                                ✕
-                                              </button>
-                                            </div>
-                                          ) : (
-                                            <div className="flex items-center justify-end gap-2">
-                                              <span className="truncate overflow-hidden text-ellipsis" style={{ maxWidth: '100px' }} title={formatCurrency(Math.abs(periode.amountAccrual))}>
-                                                {formatCurrency(Math.abs(periode.amountAccrual))}
-                                              </span>
-                                              {canEdit && (
-                                                <button
-                                                  onClick={() => {
-                                                    setEditingPeriodeId(periode.id);
-                                                    setEditPeriodeAmount(Math.abs(periode.amountAccrual).toString());
-                                                  }}
-                                                  className="text-blue-600 hover:text-blue-800 transition-colors flex-shrink-0"
-                                                  title="Edit Amount"
-                                                >
-                                                  <Edit2 size={12} />
-                                                </button>
-                                              )}
-                                            </div>
-                                          )}
+                                          <span className="truncate overflow-hidden text-ellipsis" title={formatCurrency(Math.abs(periode.amountAccrual))}>
+                                            {formatCurrency(Math.abs(periode.amountAccrual))}
+                                          </span>
                                         </td>
                                         <td className="px-3 py-2 text-right text-blue-700 bg-white" style={{ maxWidth: '130px' }}>
                                           <span className="truncate block overflow-hidden text-ellipsis" title={formatCurrency(periode.totalRealisasi || 0)}>
@@ -4437,6 +4439,30 @@ export default function MonitoringAccrualPage() {
                 </div>
               </div>
 
+              {/* Import dari File */}
+              <div className="bg-white rounded-lg border border-gray-200 p-5 mb-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Import dari File</h3>
+                <label className={`inline-flex cursor-pointer ${uploadingCostCenterFile ? 'opacity-60 pointer-events-none' : ''}`}>
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors">
+                    <Upload size={16} />
+                    <span>{uploadingCostCenterFile ? 'Mengupload...' : 'Upload File (Excel / XML SAP)'}</span>
+                  </div>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.xml"
+                    onChange={handleCostCenterFileUpload}
+                    disabled={uploadingCostCenterFile}
+                    className="hidden"
+                  />
+                </label>
+                <p className="text-xs text-gray-400 mt-2">
+                  Excel: Kolom A = Amount · B = Cost Center · C = Kode Akun Biaya · D = Keterangan
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  XML SAP: kolom J (Amount) · K (Cost Center) · I (Kode Akun Biaya)
+                </p>
+              </div>
+
               {/* Form tambah/edit */}
               <form onSubmit={handleCostCenterSubmit} className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
                 <h3 className="text-sm font-semibold text-gray-700 mb-4">
@@ -4735,7 +4761,7 @@ export default function MonitoringAccrualPage() {
       )}
 
       {/* Loading Overlay untuk proses export/import */}
-      {(uploadingExcel || uploadingGlobalExcel || uploadingImportExcel || submitting) && (
+      {(uploadingExcel || uploadingGlobalExcel || uploadingImportExcel || submitting || uploadingCostCenterFile) && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 sm:p-8 shadow-2xl flex flex-col items-center space-y-4 max-w-sm mx-4">
             <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-4 border-red-600 border-t-transparent"></div>
