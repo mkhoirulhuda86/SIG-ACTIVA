@@ -4443,7 +4443,7 @@ export default function MonitoringAccrualPage() {
               <div className="bg-white rounded-lg border border-gray-200 p-5 mb-4">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">Import dari File</h3>
                 <label className={`inline-flex cursor-pointer ${uploadingCostCenterFile ? 'opacity-60 pointer-events-none' : ''}`}>
-                  <div className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors">
+                  <div className="flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors">
                     <Upload size={16} />
                     <span>{uploadingCostCenterFile ? 'Mengupload...' : 'Upload File (Excel / XML SAP)'}</span>
                   </div>
