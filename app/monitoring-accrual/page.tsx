@@ -228,6 +228,7 @@ export default function MonitoringAccrualPage() {
   // State untuk modal Rincian Accrual per Cost Center
   const [showCostCenterModal, setShowCostCenterModal] = useState(false);
   const [costCenterModalPeriode, setCostCenterModalPeriode] = useState<AccrualPeriode | null>(null);
+  const [costCenterModalAccrual, setCostCenterModalAccrual] = useState<Accrual | null>(null);
   const [costCenterData, setCostCenterData] = useState<CostCenterEntry[]>([]);
   const [loadingCostCenterData, setLoadingCostCenterData] = useState(false);
   const [costCenterForm, setCostCenterForm] = useState({ costCenter: '', kdAkunBiaya: '', amount: '', keterangan: '' });
@@ -236,6 +237,11 @@ export default function MonitoringAccrualPage() {
   const [selectedCostCenterIds, setSelectedCostCenterIds] = useState<Set<number>>(new Set());
   const [deletingBulkCostCenter, setDeletingBulkCostCenter] = useState(false);
   const [uploadingCostCenterFile, setUploadingCostCenterFile] = useState(false);
+  // Dialog header/line text untuk jurnal realisasi
+  const [showJurnalHeaderModal, setShowJurnalHeaderModal] = useState(false);
+  const [jurnalHeaderInput, setJurnalHeaderInput] = useState('');
+  const [jurnalLineInput, setJurnalLineInput] = useState('');
+  const [jurnalPendingCallback, setJurnalPendingCallback] = useState<((h: string, l: string) => void) | null>(null);
   // Portal dropdown Jurnal SAP (agar tidak tertutup header tabel)
   const [openJurnalRect, setOpenJurnalRect] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null);
   const [openJurnalItem, setOpenJurnalItem] = useState<Accrual | null>(null);
@@ -764,8 +770,14 @@ export default function MonitoringAccrualPage() {
     }
   };
 
+  // Tampilkan dialog header/line text sebelum download jurnal realisasi
+  const promptJurnalTexts = (callback: (headerText: string, lineText: string) => void) => {
+    setJurnalPendingCallback(() => callback);
+    setShowJurnalHeaderModal(true);
+  };
+
   // Download Jurnal SAP per Kode Akun
-  const handleDownloadJurnalSAPPerKodeAkun = async (kodeAkun: string, items: Accrual[], format: 'excel' | 'txt', companyCode: string, jenis: 'accrual' | 'realisasi') => {
+  const handleDownloadJurnalSAPPerKodeAkun = async (kodeAkun: string, items: Accrual[], format: 'excel' | 'txt', companyCode: string, jenis: 'accrual' | 'realisasi', headerText = '', lineText = '') => {
     try {
       if (jenis === 'accrual') {
         // Download Jurnal Accrual untuk semua item dalam kode akun
@@ -818,8 +830,8 @@ export default function MonitoringAccrualPage() {
           items.forEach((item) => {
             const totalAccrual = calculateAccrualAmount(item);
             if (totalAccrual > 0) {
-              const startDate = new Date(item.startDate);
-              const docDate = `${startDate.getFullYear()}${String(startDate.getMonth() + 1).padStart(2, '0')}${String(startDate.getDate()).padStart(2, '0')}`;
+              const todayAcc = new Date();
+              const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
               
               // Entry 1: DEBIT - Kode Akun Biaya
               const row1 = worksheet.getRow(currentRow++);
@@ -830,12 +842,12 @@ export default function MonitoringAccrualPage() {
               row1.getCell(5).value = docDate; // budat
               row1.getCell(6).value = 'IDR'; // waers
               row1.getCell(7).value = ''; // kursf
-              row1.getCell(8).value = item.headerText || ''; // bktxt
+              row1.getCell(8).value = headerText; // bktxt
               row1.getCell(9).value = ''; // zuonr
               row1.getCell(10).value = item.kdAkunBiaya; // hkont
               row1.getCell(11).value = Math.round(totalAccrual); // wrbtr
               row1.getCell(11).numFmt = '0';
-              row1.getCell(12).value = item.headerText || ''; // sgtxt
+              row1.getCell(12).value = lineText; // sgtxt
               row1.getCell(13).value = ''; // prctr
               row1.getCell(14).value = item.costCenter || ''; // kostl
               row1.getCell(15).value = ''; // empty
@@ -853,12 +865,12 @@ export default function MonitoringAccrualPage() {
               row2.getCell(5).value = docDate; // budat
               row2.getCell(6).value = 'IDR'; // waers
               row2.getCell(7).value = ''; // kursf
-              row2.getCell(8).value = item.headerText || ''; // bktxt
+              row2.getCell(8).value = headerText; // bktxt
               row2.getCell(9).value = ''; // zuonr
               row2.getCell(10).value = item.kdAkr; // hkont
               row2.getCell(11).value = -Math.round(totalAccrual); // wrbtr
               row2.getCell(11).numFmt = '0';
-              row2.getCell(12).value = item.headerText || ''; // sgtxt
+              row2.getCell(12).value = lineText; // sgtxt
               row2.getCell(13).value = ''; // prctr
               row2.getCell(14).value = ''; // kostl
               row2.getCell(15).value = ''; // empty
@@ -888,21 +900,21 @@ export default function MonitoringAccrualPage() {
           items.forEach((item) => {
             const totalAccrual = calculateAccrualAmount(item);
             if (totalAccrual > 0) {
-              const startDate = new Date(item.startDate);
-              const docDate = `${startDate.getFullYear()}${String(startDate.getMonth() + 1).padStart(2, '0')}${String(startDate.getDate()).padStart(2, '0')}`;
+              const todayAcc = new Date();
+              const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
               
               // Entry 1: DEBIT - Kode Akun Biaya
               rows.push([
                 '', companyCode, 'SA', docDate, docDate, 'IDR', '',
-                item.headerText || '', '', item.kdAkunBiaya, Math.round(totalAccrual).toString(),
-                item.headerText || '', '', item.costCenter || '', '', '', '', '', 'G'
+                headerText, '', item.kdAkunBiaya, Math.round(totalAccrual).toString(),
+                lineText, '', item.costCenter || '', '', '', '', '', 'G'
               ]);
               
               // Entry 2: KREDIT - Kode Akun Accrual
               rows.push([
                 '', companyCode, 'SA', docDate, docDate, 'IDR', '',
-                item.headerText || '', '', item.kdAkr, (-Math.round(totalAccrual)).toString(),
-                item.headerText || '', '', '', '', '', '', '', 'G'
+                headerText, '', item.kdAkr, (-Math.round(totalAccrual)).toString(),
+                lineText, '', '', '', '', '', '', 'G'
               ]);
             }
           });
@@ -983,58 +995,41 @@ export default function MonitoringAccrualPage() {
             { width: 10 }, { width: 12 }, { width: 12 }, { width: 5 }
           ];
           
-          let currentRow = 3;
-          
+          // Grup: kode akun accrual (sum) + kode akun biaya per kombinasi
+          const akrGroupsE = new Map<string, number>();
+          const biayaGroupsE = new Map<string, { kdAkunBiaya: string; costCenter: string; amount: number }>();
+          let maxDateE = new Date(0);
           allRealisasi.forEach(({ item, realisasi }) => {
-            const realisasiDate = new Date(realisasi.tanggalRealisasi);
-            const docDate = `${realisasiDate.getFullYear()}${String(realisasiDate.getMonth() + 1).padStart(2, '0')}${String(realisasiDate.getDate()).padStart(2, '0')}`;
-            
-            // Entry 1: KREDIT - Kode Akun Accrual (di atas)
-            const row1 = worksheet.getRow(currentRow++);
-            row1.getCell(1).value = ''; // xblnr
-            row1.getCell(2).value = companyCode; // bukrs
-            row1.getCell(3).value = 'SA'; // blart
-            row1.getCell(4).value = docDate; // bldat
-            row1.getCell(5).value = docDate; // budat
-            row1.getCell(6).value = 'IDR'; // waers
-            row1.getCell(7).value = ''; // kursf
-            row1.getCell(8).value = realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`; // bktxt
-            row1.getCell(9).value = ''; // zuonr
-            row1.getCell(10).value = item.kdAkr; // hkont
-            row1.getCell(11).value = Math.round(Math.abs(realisasi.amount)); // wrbtr - POSITIF untuk kode akun accrual
-            row1.getCell(11).numFmt = '0';
-            row1.getCell(12).value = realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`; // sgtxt
-            row1.getCell(13).value = ''; // prctr
-            row1.getCell(14).value = ''; // kostl
-            row1.getCell(15).value = ''; // empty
-            row1.getCell(16).value = ''; // nplnr
-            row1.getCell(17).value = ''; // aufnr
-            row1.getCell(18).value = ''; // valut
-            row1.getCell(19).value = 'G'; // flag
-            
-            // Entry 2: DEBIT - Kode Akun Biaya (di bawah)
-            const row2 = worksheet.getRow(currentRow++);
-            row2.getCell(1).value = ''; // xblnr
-            row2.getCell(2).value = companyCode; // bukrs
-            row2.getCell(3).value = 'SA'; // blart
-            row2.getCell(4).value = docDate; // bldat
-            row2.getCell(5).value = docDate; // budat
-            row2.getCell(6).value = 'IDR'; // waers
-            row2.getCell(7).value = ''; // kursf
-            row2.getCell(8).value = realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`; // bktxt
-            row2.getCell(9).value = ''; // zuonr
-            row2.getCell(10).value = realisasi.kdAkunBiaya || item.kdAkunBiaya; // hkont
-            row2.getCell(11).value = -Math.round(Math.abs(realisasi.amount)); // wrbtr - NEGATIF untuk kode akun biaya
-            row2.getCell(11).numFmt = '0';
-            row2.getCell(12).value = realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`; // sgtxt
-            row2.getCell(13).value = ''; // prctr
-            row2.getCell(14).value = realisasi.costCenter || item.costCenter || ''; // kostl
-            row2.getCell(15).value = ''; // empty
-            row2.getCell(16).value = ''; // nplnr
-            row2.getCell(17).value = ''; // aufnr
-            row2.getCell(18).value = ''; // valut
-            row2.getCell(19).value = 'G'; // flag
+            const amt = Math.abs(realisasi.amount);
+            akrGroupsE.set(item.kdAkr, (akrGroupsE.get(item.kdAkr) ?? 0) + amt);
+            const kdBiaya = realisasi.kdAkunBiaya || item.kdAkunBiaya || '';
+            const cc = realisasi.costCenter || item.costCenter || '';
+            const bKey = `${kdBiaya}||${cc}`;
+            const eb = biayaGroupsE.get(bKey);
+            if (eb) eb.amount += amt; else biayaGroupsE.set(bKey, { kdAkunBiaya: kdBiaya, costCenter: cc, amount: amt });
+            const d = new Date(realisasi.tanggalRealisasi);
+            if (d > maxDateE) maxDateE = d;
           });
+          const docDateR = `${maxDateE.getFullYear()}${String(maxDateE.getMonth() + 1).padStart(2, '0')}${String(maxDateE.getDate()).padStart(2, '0')}`;
+          let currentRow = 3;
+          const fillRow = (row: any, hkont: string, wrbtr: number, kostl: string) => {
+            row.getCell(1).value = ''; row.getCell(2).value = companyCode; row.getCell(3).value = 'SA';
+            row.getCell(4).value = docDateR; row.getCell(5).value = docDateR; row.getCell(6).value = 'IDR';
+            row.getCell(7).value = ''; row.getCell(8).value = headerText; row.getCell(9).value = '';
+            row.getCell(10).value = hkont; row.getCell(11).value = Math.round(Math.abs(wrbtr)) * (wrbtr < 0 ? -1 : 1);
+            row.getCell(11).numFmt = '0';
+            row.getCell(12).value = lineText; row.getCell(13).value = ''; row.getCell(14).value = kostl;
+            row.getCell(15).value = ''; row.getCell(16).value = ''; row.getCell(17).value = '';
+            row.getCell(18).value = ''; row.getCell(19).value = 'G';
+          };
+          // Kode akun accrual (KREDIT, positif) - satu baris per kdAkr
+          for (const [kdAkr, total] of akrGroupsE) {
+            fillRow(worksheet.getRow(currentRow++), kdAkr, Math.round(total), '');
+          }
+          // Kode akun biaya (DEBIT, negatif) - satu baris per kombinasi kdAkunBiaya+costCenter
+          for (const [, g] of biayaGroupsE) {
+            fillRow(worksheet.getRow(currentRow++), g.kdAkunBiaya, -Math.round(g.amount), g.costCenter);
+          }
           
           const buffer = await workbook.xlsx.writeBuffer();
           const blob = new Blob([buffer], { 
@@ -1049,30 +1044,31 @@ export default function MonitoringAccrualPage() {
           document.body.removeChild(link);
           URL.revokeObjectURL(url);
         } else {
-          // Format TXT
-          const rows: string[][] = [];
-          
+          // Format TXT - grup kode akun accrual (sum) + kode akun biaya per kombinasi
+          const akrGroupsT = new Map<string, number>();
+          const biayaGroupsT = new Map<string, { kdAkunBiaya: string; costCenter: string; amount: number }>();
+          let maxDateT = new Date(0);
           allRealisasi.forEach(({ item, realisasi }) => {
-            const realisasiDate = new Date(realisasi.tanggalRealisasi);
-            const docDate = `${realisasiDate.getFullYear()}${String(realisasiDate.getMonth() + 1).padStart(2, '0')}${String(realisasiDate.getDate()).padStart(2, '0')}`;
-            
-            // Entry 1: KREDIT - Kode Akun Accrual
-            rows.push([
-              '', companyCode, 'SA', docDate, docDate, 'IDR', '',
-              realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`, '', item.kdAkr,
-              Math.round(Math.abs(realisasi.amount)).toString(),
-              realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`, '', '', '', '', '', '', 'G'
-            ]);
-            
-            // Entry 2: DEBIT - Kode Akun Biaya
-            rows.push([
-              '', companyCode, 'SA', docDate, docDate, 'IDR', '',
-              realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`, '',
-              realisasi.kdAkunBiaya || item.kdAkunBiaya, (-Math.round(Math.abs(realisasi.amount))).toString(),
-              realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`, '',
-              realisasi.costCenter || item.costCenter || '', '', '', '', '', 'G'
-            ]);
+            const amt = Math.abs(realisasi.amount);
+            akrGroupsT.set(item.kdAkr, (akrGroupsT.get(item.kdAkr) ?? 0) + amt);
+            const kdBiaya = realisasi.kdAkunBiaya || item.kdAkunBiaya || '';
+            const cc = realisasi.costCenter || item.costCenter || '';
+            const bKey = `${kdBiaya}||${cc}`;
+            const eb = biayaGroupsT.get(bKey);
+            if (eb) eb.amount += amt; else biayaGroupsT.set(bKey, { kdAkunBiaya: kdBiaya, costCenter: cc, amount: amt });
+            const d = new Date(realisasi.tanggalRealisasi);
+            if (d > maxDateT) maxDateT = d;
           });
+          const docDateRT = `${maxDateT.getFullYear()}${String(maxDateT.getMonth() + 1).padStart(2, '0')}${String(maxDateT.getDate()).padStart(2, '0')}`;
+          const rows: string[][] = [];
+          for (const [kdAkr, total] of akrGroupsT) {
+            rows.push(['', companyCode, 'SA', docDateRT, docDateRT, 'IDR', '',
+              headerText, '', kdAkr, Math.round(total).toString(), lineText, '', '', '', '', '', '', 'G']);
+          }
+          for (const [, g] of biayaGroupsT) {
+            rows.push(['', companyCode, 'SA', docDateRT, docDateRT, 'IDR', '',
+              headerText, '', g.kdAkunBiaya, (-Math.round(g.amount)).toString(), lineText, '', g.costCenter, '', '', '', '', 'G']);
+          }
           
           const txtContent = rows.map(row => row.join('\t')).join('\n');
           const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
@@ -1093,7 +1089,7 @@ export default function MonitoringAccrualPage() {
   };
 
   // Download Jurnal SAP TXT per Periode
-  const handleDownloadJurnalSAPPerPeriodeTxt = (item: Accrual, periode: AccrualPeriode) => {
+  const handleDownloadJurnalSAPPerPeriodeTxt = (item: Accrual, periode: AccrualPeriode, headerText = '', lineText = '') => {
     const companyCode = item.companyCode || '2000';
     
     if (!item.companyCode) {
@@ -1101,9 +1097,9 @@ export default function MonitoringAccrualPage() {
       return;
     }
     
-    // Parse tanggal from start date
-    const startDate = new Date(item.startDate);
-    const docDate = `${startDate.getFullYear()}${String(startDate.getMonth() + 1).padStart(2, '0')}${String(startDate.getDate()).padStart(2, '0')}`;
+    // Gunakan tanggal hari ini sebagai doc date dan posting date jurnal accrual
+    const todayAcc = new Date();
+    const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
     
     // Build TXT content (tab-separated)
     const rows: string[][] = [];
@@ -1117,11 +1113,11 @@ export default function MonitoringAccrualPage() {
       docDate,
       'IDR',
       '',
-      item.headerText || '',
+      headerText,
       '',
       item.kdAkunBiaya,
       Math.round(Math.abs(periode.amountAccrual)).toString(),
-      item.headerText || '',
+      lineText,
       '',
       item.costCenter || '',
       '',
@@ -1140,11 +1136,11 @@ export default function MonitoringAccrualPage() {
       docDate,
       'IDR',
       '',
-      item.headerText || '',
+      headerText,
       '',
       item.kdAkr,
       (-Math.round(Math.abs(periode.amountAccrual))).toString(),
-      item.headerText || '',
+      lineText,
       '',
       '', // Cost center kosong untuk akun accrual
       '',
@@ -1242,7 +1238,7 @@ export default function MonitoringAccrualPage() {
   };
 
   // Download Jurnal SAP per Periode
-  const handleDownloadJurnalSAPPerPeriode = async (item: Accrual, periode: AccrualPeriode) => {
+  const handleDownloadJurnalSAPPerPeriode = async (item: Accrual, periode: AccrualPeriode, headerText = '', lineText = '') => {
     try {
       const { ExcelJS: ExcelJSLib } = await loadExcelLibraries();
       const companyCode = item.companyCode || '2000';
@@ -1294,9 +1290,9 @@ export default function MonitoringAccrualPage() {
         { width: 10 }, { width: 12 }, { width: 12 }, { width: 5 }
       ];
       
-      // Parse tanggal from start date
-      const startDate = new Date(item.startDate);
-      const docDate = `${startDate.getFullYear()}${String(startDate.getMonth() + 1).padStart(2, '0')}${String(startDate.getDate()).padStart(2, '0')}`;
+      // Gunakan tanggal hari ini sebagai doc date dan posting date jurnal accrual
+      const todayAcc = new Date();
+      const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
       
       // Entry 1: DEBIT - Kode Akun Biaya
       const row1 = worksheet.getRow(3);
@@ -1309,12 +1305,12 @@ export default function MonitoringAccrualPage() {
       row1.getCell(5).value = docDate; // budat
       row1.getCell(6).value = 'IDR'; // waers
       row1.getCell(7).value = ''; // kursf
-      row1.getCell(8).value = item.headerText || ''; // bktxt
+      row1.getCell(8).value = headerText; // bktxt
       row1.getCell(9).value = ''; // zuonr
       row1.getCell(10).value = item.kdAkunBiaya; // hkont
       row1.getCell(11).value = Math.round(Math.abs(periode.amountAccrual)); // wrbtr
       row1.getCell(11).numFmt = '0';
-      row1.getCell(12).value = item.headerText || ''; // sgtxt
+      row1.getCell(12).value = lineText; // sgtxt
       row1.getCell(13).value = ''; // prctr
       row1.getCell(14).value = item.costCenter || ''; // kostl
       row1.getCell(15).value = ''; // empty
@@ -1334,12 +1330,12 @@ export default function MonitoringAccrualPage() {
       row2.getCell(5).value = docDate; // budat
       row2.getCell(6).value = 'IDR'; // waers
       row2.getCell(7).value = ''; // kursf
-      row2.getCell(8).value = item.headerText || ''; // bktxt
+      row2.getCell(8).value = headerText; // bktxt
       row2.getCell(9).value = ''; // zuonr
       row2.getCell(10).value = item.kdAkr; // hkont
       row2.getCell(11).value = -Math.round(Math.abs(periode.amountAccrual)); // wrbtr - NEGATIF untuk kode akun accrual
       row2.getCell(11).numFmt = '0';
-      row2.getCell(12).value = item.headerText || ''; // sgtxt
+      row2.getCell(12).value = lineText; // sgtxt
       row2.getCell(13).value = ''; // prctr
       row2.getCell(14).value = ''; // kostl
       row2.getCell(15).value = ''; // empty
@@ -1487,7 +1483,7 @@ export default function MonitoringAccrualPage() {
   };
 
   // Download Jurnal SAP Excel untuk Group Cost Element (semua realisasi dalam group)
-  const handleDownloadJurnalSAPPerCostElementGroup = async (realisasiItems: RealisasiData[], item: Accrual, costElement: string) => {
+  const handleDownloadJurnalSAPPerCostElementGroup = async (realisasiItems: RealisasiData[], item: Accrual, costElement: string, headerText = '', lineText = '') => {
     try {
       const { ExcelJS: ExcelJSLib } = await loadExcelLibraries();
       const companyCode = item.companyCode || '2000';
@@ -1536,65 +1532,38 @@ export default function MonitoringAccrualPage() {
       
       let currentRow = 3;
       
-      // Loop through all realisasi items in the group
+      // Grup: 1 baris kode akun accrual (sum) + N baris kode akun biaya per kombinasi
+      const akrTotal = realisasiItems.reduce((s, r) => s + Math.abs(r.amount), 0);
+      const biayaGrp = new Map<string, { kdAkunBiaya: string; costCenter: string; amount: number }>();
+      let maxDateCE = new Date(0);
       for (const realisasi of realisasiItems) {
-        // Parse tanggal realisasi
-        const realisasiDate = new Date(realisasi.tanggalRealisasi);
-        const docDate = `${realisasiDate.getFullYear()}${String(realisasiDate.getMonth() + 1).padStart(2, '0')}${String(realisasiDate.getDate()).padStart(2, '0')}`;
-        
-        // Entry 1: DEBIT - Kode Akun Biaya (dari realisasi)
-        const row1 = worksheet.getRow(currentRow);
-        row1.height = 15;
-        
-        row1.getCell(1).value = ''; // xblnr
-        row1.getCell(2).value = companyCode; // bukrs
-        row1.getCell(3).value = 'SA'; // blart
-        row1.getCell(4).value = docDate; // bldat
-        row1.getCell(5).value = docDate; // budat
-        row1.getCell(6).value = 'IDR'; // waers
-        row1.getCell(7).value = ''; // kursf
-        row1.getCell(8).value = realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`; // bktxt
-        row1.getCell(9).value = ''; // zuonr
-        row1.getCell(10).value = realisasi.kdAkunBiaya || item.kdAkunBiaya; // hkont
-        row1.getCell(11).value = -Math.round(Math.abs(realisasi.amount)); // wrbtr - NEGATIF untuk kode akun biaya
-        row1.getCell(11).numFmt = '0';
-        row1.getCell(12).value = realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`; // sgtxt
-        row1.getCell(13).value = ''; // prctr
-        row1.getCell(14).value = realisasi.costCenter || item.costCenter || ''; // kostl
-        row1.getCell(15).value = ''; // empty
-        row1.getCell(16).value = ''; // nplnr
-        row1.getCell(17).value = ''; // aufnr
-        row1.getCell(18).value = ''; // valut
-        row1.getCell(19).value = 'G'; // flag
-        
-        currentRow++;
-        
-        // Entry 2: CREDIT - Kode Akun Accrual
-        const row2 = worksheet.getRow(currentRow);
-        row2.height = 15;
-        
-        row2.getCell(1).value = ''; // xblnr
-        row2.getCell(2).value = companyCode; // bukrs
-        row2.getCell(3).value = 'SA'; // blart
-        row2.getCell(4).value = docDate; // bldat
-        row2.getCell(5).value = docDate; // budat
-        row2.getCell(6).value = 'IDR'; // waers
-        row2.getCell(7).value = ''; // kursf
-        row2.getCell(8).value = realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`; // bktxt
-        row2.getCell(9).value = ''; // zuonr
-        row2.getCell(10).value = item.kdAkr; // hkont
-        row2.getCell(11).value = Math.round(Math.abs(realisasi.amount)); // wrbtr - POSITIF untuk kode akun accrual
-        row2.getCell(11).numFmt = '0';
-        row2.getCell(12).value = realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`; // sgtxt
-        row2.getCell(13).value = ''; // prctr
-        row2.getCell(14).value = ''; // kostl
-        row2.getCell(15).value = ''; // empty
-        row2.getCell(16).value = ''; // nplnr
-        row2.getCell(17).value = ''; // aufnr
-        row2.getCell(18).value = ''; // valut
-        row2.getCell(19).value = 'G'; // flag
-        
-        currentRow++;
+        const kdBiaya = realisasi.kdAkunBiaya || item.kdAkunBiaya || '';
+        const cc = realisasi.costCenter || item.costCenter || '';
+        const bKey = `${kdBiaya}||${cc}`;
+        const eb = biayaGrp.get(bKey);
+        const amt = Math.abs(realisasi.amount);
+        if (eb) eb.amount += amt; else biayaGrp.set(bKey, { kdAkunBiaya: kdBiaya, costCenter: cc, amount: amt });
+        const d = new Date(realisasi.tanggalRealisasi);
+        if (d > maxDateCE) maxDateCE = d;
+      }
+      const docDateCE = `${maxDateCE.getFullYear()}${String(maxDateCE.getMonth() + 1).padStart(2, '0')}${String(maxDateCE.getDate()).padStart(2, '0')}`;
+      const writeRowCE = (row: any, hkont: string, wrbtr: number, kostl: string) => {
+        row.height = 15;
+        row.getCell(1).value = ''; row.getCell(2).value = companyCode; row.getCell(3).value = 'SA';
+        row.getCell(4).value = docDateCE; row.getCell(5).value = docDateCE; row.getCell(6).value = 'IDR';
+        row.getCell(7).value = ''; row.getCell(8).value = headerText; row.getCell(9).value = '';
+        row.getCell(10).value = hkont;
+        row.getCell(11).value = Math.round(Math.abs(wrbtr)) * (wrbtr < 0 ? -1 : 1);
+        row.getCell(11).numFmt = '0';
+        row.getCell(12).value = lineText; row.getCell(13).value = ''; row.getCell(14).value = kostl;
+        row.getCell(15).value = ''; row.getCell(16).value = ''; row.getCell(17).value = '';
+        row.getCell(18).value = ''; row.getCell(19).value = 'G';
+      };
+      // Kode akun accrual - satu baris (KREDIT, positif)
+      writeRowCE(worksheet.getRow(currentRow++), item.kdAkr, Math.round(akrTotal), '');
+      // Kode akun biaya - satu baris per kombinasi (DEBIT, negatif)
+      for (const [, g] of biayaGrp) {
+        writeRowCE(worksheet.getRow(currentRow++), g.kdAkunBiaya, -Math.round(g.amount), g.costCenter);
       }
       
       const buffer = await workbook.xlsx.writeBuffer();
@@ -1616,63 +1585,32 @@ export default function MonitoringAccrualPage() {
   };
 
   // Download Jurnal SAP TXT untuk Group Cost Element (semua realisasi dalam group)
-  const handleDownloadJurnalSAPPerCostElementGroupTxt = (realisasiItems: RealisasiData[], item: Accrual, costElement: string) => {
+  const handleDownloadJurnalSAPPerCostElementGroupTxt = (realisasiItems: RealisasiData[], item: Accrual, costElement: string, headerText = '', lineText = '') => {
     const companyCode = item.companyCode || '2000';
     
-    // Build TXT content (tab-separated)
-    const rows: string[][] = [];
-    
-    // Loop through all realisasi items in the group
+    // Grup: 1 baris kode akun accrual (sum) + N baris kode akun biaya per kombinasi
+    const akrTotalTxt = realisasiItems.reduce((s, r) => s + Math.abs(r.amount), 0);
+    const biayaGrpTxt = new Map<string, { kdAkunBiaya: string; costCenter: string; amount: number }>();
+    let maxDateCETxt = new Date(0);
     for (const realisasi of realisasiItems) {
-      // Parse tanggal realisasi
-      const realisasiDate = new Date(realisasi.tanggalRealisasi);
-      const docDate = `${realisasiDate.getFullYear()}${String(realisasiDate.getMonth() + 1).padStart(2, '0')}${String(realisasiDate.getDate()).padStart(2, '0')}`;
-      
-      // Entry 1: DEBIT - Kode Akun Biaya (negative amount untuk realisasi)
-      rows.push([
-        '',
-        companyCode,
-        'SA',
-        docDate,
-        docDate,
-        'IDR',
-        '',
-        realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`,
-        '',
-        realisasi.kdAkunBiaya || item.kdAkunBiaya,
-        (-Math.round(Math.abs(realisasi.amount))).toString(),
-        realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`,
-        '',
-        realisasi.costCenter || item.costCenter || '',
-        '',
-        '',
-        '',
-        '',
-        'G'
-      ]);
-      
-      // Entry 2: KREDIT - Kode Akun Accrual (positive amount sebagai balancing)
-      rows.push([
-        '',
-        companyCode,
-        'SA',
-        docDate,
-        docDate,
-        'IDR',
-        '',
-        realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`,
-        '',
-        item.kdAkr,
-        Math.round(Math.abs(realisasi.amount)).toString(),
-        realisasi.keterangan || `Realisasi ${realisasi.tanggalRealisasi}`,
-        '',
-        '', // Cost center kosong untuk akun accrual
-        '',
-        '',
-        '',
-        '',
-        'G'
-      ]);
+      const kdBiaya = realisasi.kdAkunBiaya || item.kdAkunBiaya || '';
+      const cc = realisasi.costCenter || item.costCenter || '';
+      const bKey = `${kdBiaya}||${cc}`;
+      const eb = biayaGrpTxt.get(bKey);
+      const amt = Math.abs(realisasi.amount);
+      if (eb) eb.amount += amt; else biayaGrpTxt.set(bKey, { kdAkunBiaya: kdBiaya, costCenter: cc, amount: amt });
+      const d = new Date(realisasi.tanggalRealisasi);
+      if (d > maxDateCETxt) maxDateCETxt = d;
+    }
+    const docDateCETxt = `${maxDateCETxt.getFullYear()}${String(maxDateCETxt.getMonth() + 1).padStart(2, '0')}${String(maxDateCETxt.getDate()).padStart(2, '0')}`;
+    const rows: string[][] = [];
+    // Kode akun accrual - satu baris (KREDIT, positif)
+    rows.push(['', companyCode, 'SA', docDateCETxt, docDateCETxt, 'IDR', '',
+      headerText, '', item.kdAkr, Math.round(akrTotalTxt).toString(), lineText, '', '', '', '', '', '', 'G']);
+    // Kode akun biaya - satu baris per kombinasi (DEBIT, negatif)
+    for (const [, g] of biayaGrpTxt) {
+      rows.push(['', companyCode, 'SA', docDateCETxt, docDateCETxt, 'IDR', '',
+        headerText, '', g.kdAkunBiaya, (-Math.round(g.amount)).toString(), lineText, '', g.costCenter, '', '', '', '', 'G']);
     }
     
     // Convert to TXT string (tab-separated)
@@ -1691,7 +1629,7 @@ export default function MonitoringAccrualPage() {
   };
 
   
-  const handleDownloadJurnalSAPTxt = (item: Accrual) => {
+  const handleDownloadJurnalSAPTxt = (item: Accrual, headerText = '', lineText = '') => {
     // Use company code from item
     const companyCode = item.companyCode || '2000';
     
@@ -1735,9 +1673,9 @@ export default function MonitoringAccrualPage() {
     
     const absTotalAccrual = totalAccrual;
     if (absTotalAccrual > 0) {
-      const startDate = new Date(item.startDate);
-      const docDate = `${startDate.getFullYear()}${String(startDate.getMonth() + 1).padStart(2, '0')}${String(startDate.getDate()).padStart(2, '0')}`;
-      const year = startDate.getFullYear();
+      const todayDoc = new Date();
+      const docDate = `${todayDoc.getFullYear()}${String(todayDoc.getMonth() + 1).padStart(2, '0')}${String(todayDoc.getDate()).padStart(2, '0')}`;
+      const year = todayDoc.getFullYear();
       
       // Entry 1: DEBIT - Kode Akun Biaya (positive amount)
       rows.push([
@@ -1748,11 +1686,11 @@ export default function MonitoringAccrualPage() {
         docDate,
         'IDR',
         '',
-        item.headerText || '',
+        headerText,
         '',
         item.kdAkunBiaya,
         Math.round(absTotalAccrual).toString(),
-        item.headerText || '',
+        lineText,
         '',
         item.costCenter || '',
         '',
@@ -1771,11 +1709,11 @@ export default function MonitoringAccrualPage() {
         docDate,
         'IDR',
         '',
-        item.headerText || '',
+        headerText,
         '',
         item.kdAkr,
         (-Math.round(absTotalAccrual)).toString(),
-        item.headerText || '',
+        lineText,
         '',
         '', // Cost center kosong untuk akun accrual
         '',
@@ -1802,7 +1740,7 @@ export default function MonitoringAccrualPage() {
   };
 
   // Jurnal SAP untuk Realisasi: template sama, kode akun biaya di bawah kode akun accrual (row1 = accrual, row2 = biaya)
-  const handleDownloadJurnalSAPRealisasiPerItem = async (item: Accrual) => {
+  const handleDownloadJurnalSAPRealisasiPerItem = async (item: Accrual, headerText = '', lineText = '') => {
     try {
       const { ExcelJS: ExcelJSLib } = await loadExcelLibraries();
       const companyCode = item.companyCode || '2000';
@@ -1861,12 +1799,12 @@ export default function MonitoringAccrualPage() {
       row1.getCell(5).value = docDate;
       row1.getCell(6).value = 'IDR';
       row1.getCell(7).value = '';
-      row1.getCell(8).value = item.headerText || '';
+      row1.getCell(8).value = headerText;
       row1.getCell(9).value = '';
       row1.getCell(10).value = item.kdAkr; // hkont = kode akun accrual
       row1.getCell(11).value = -amountRounded;
       row1.getCell(11).numFmt = '0';
-      row1.getCell(12).value = item.headerText || '';
+      row1.getCell(12).value = lineText;
       row1.getCell(13).value = '';
       row1.getCell(14).value = ''; // kostl kosong untuk akun accrual
       row1.getCell(15).value = '';
@@ -1890,12 +1828,12 @@ export default function MonitoringAccrualPage() {
       row2.getCell(5).value = docDate;
       row2.getCell(6).value = 'IDR';
       row2.getCell(7).value = '';
-      row2.getCell(8).value = item.headerText || '';
+      row2.getCell(8).value = headerText;
       row2.getCell(9).value = '';
       row2.getCell(10).value = item.kdAkunBiaya; // hkont = kode akun biaya
       row2.getCell(11).value = -amountRounded; // wrbtr - NEGATIF untuk kode akun biaya
       row2.getCell(11).numFmt = '0';
-      row2.getCell(12).value = item.headerText || '';
+      row2.getCell(12).value = lineText;
       row2.getCell(13).value = '';
       row2.getCell(14).value = item.costCenter || '';
       row2.getCell(15).value = '';
@@ -2454,7 +2392,8 @@ export default function MonitoringAccrualPage() {
 
   // ── Rincian Accrual per Cost Center ──────────────────────────────────────
 
-  const handleOpenCostCenterModal = async (periode: AccrualPeriode) => {
+  const handleOpenCostCenterModal = async (accrual: Accrual, periode: AccrualPeriode) => {
+    setCostCenterModalAccrual(accrual);
     setCostCenterModalPeriode(periode);
     setShowCostCenterModal(true);
     setLoadingCostCenterData(true);
@@ -3168,7 +3107,7 @@ export default function MonitoringAccrualPage() {
                                           <button
                                             onClick={() => {
                                               const allItems = Object.values(vendorGroups).flat();
-                                              handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '2000', 'accrual');
+                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '2000', 'accrual', ht, lt));
                                               setOpenKodeAkunDropdown(null);
                                             }}
                                             className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded transition-colors"
@@ -3178,7 +3117,7 @@ export default function MonitoringAccrualPage() {
                                           <button
                                             onClick={() => {
                                               const allItems = Object.values(vendorGroups).flat();
-                                              handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '7000', 'accrual');
+                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '7000', 'accrual', ht, lt));
                                               setOpenKodeAkunDropdown(null);
                                             }}
                                             className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded transition-colors"
@@ -3188,7 +3127,7 @@ export default function MonitoringAccrualPage() {
                                           <button
                                             onClick={() => {
                                               const allItems = Object.values(vendorGroups).flat();
-                                              handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '2000', 'accrual');
+                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '2000', 'accrual', ht, lt));
                                               setOpenKodeAkunDropdown(null);
                                             }}
                                             className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded transition-colors"
@@ -3198,7 +3137,7 @@ export default function MonitoringAccrualPage() {
                                           <button
                                             onClick={() => {
                                               const allItems = Object.values(vendorGroups).flat();
-                                              handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '7000', 'accrual');
+                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '7000', 'accrual', ht, lt));
                                               setOpenKodeAkunDropdown(null);
                                             }}
                                             className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded transition-colors"
@@ -3214,7 +3153,7 @@ export default function MonitoringAccrualPage() {
                                           <button
                                             onClick={() => {
                                               const allItems = Object.values(vendorGroups).flat();
-                                              handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '2000', 'realisasi');
+                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '2000', 'realisasi', ht, lt));
                                               setOpenKodeAkunDropdown(null);
                                             }}
                                             className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded transition-colors"
@@ -3224,7 +3163,7 @@ export default function MonitoringAccrualPage() {
                                           <button
                                             onClick={() => {
                                               const allItems = Object.values(vendorGroups).flat();
-                                              handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '7000', 'realisasi');
+                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '7000', 'realisasi', ht, lt));
                                               setOpenKodeAkunDropdown(null);
                                             }}
                                             className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded transition-colors"
@@ -3234,7 +3173,7 @@ export default function MonitoringAccrualPage() {
                                           <button
                                             onClick={() => {
                                               const allItems = Object.values(vendorGroups).flat();
-                                              handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '2000', 'realisasi');
+                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '2000', 'realisasi', ht, lt));
                                               setOpenKodeAkunDropdown(null);
                                             }}
                                             className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded transition-colors"
@@ -3244,7 +3183,7 @@ export default function MonitoringAccrualPage() {
                                           <button
                                             onClick={() => {
                                               const allItems = Object.values(vendorGroups).flat();
-                                              handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '7000', 'realisasi');
+                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '7000', 'realisasi', ht, lt));
                                               setOpenKodeAkunDropdown(null);
                                             }}
                                             className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded transition-colors"
@@ -3514,7 +3453,7 @@ export default function MonitoringAccrualPage() {
                                               >
                                                 <button
                                                   onClick={() => {
-                                                    handleDownloadJurnalSAPPerPeriode(item, periode);
+                                                    promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriode(item, periode, ht, lt));
                                                     document.getElementById(`jurnal-dropdown-${item.id}-${periode.id}`)?.classList.add('hidden');
                                                   }}
                                                   className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors"
@@ -3523,7 +3462,7 @@ export default function MonitoringAccrualPage() {
                                                 </button>
                                                 <button
                                                   onClick={() => {
-                                                    handleDownloadJurnalSAPPerPeriodeTxt(item, periode);
+                                                    promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriodeTxt(item, periode, ht, lt));
                                                     document.getElementById(`jurnal-dropdown-${item.id}-${periode.id}`)?.classList.add('hidden');
                                                   }}
                                                   className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors"
@@ -3533,7 +3472,7 @@ export default function MonitoringAccrualPage() {
                                               </div>
                                             </div>
                                             <button
-                                              onClick={() => handleOpenCostCenterModal(periode)}
+                                              onClick={() => handleOpenCostCenterModal(item, periode)}
                                               className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded transition-colors"
                                               title="Rincian accrual per cost center"
                                             >
@@ -4237,7 +4176,7 @@ export default function MonitoringAccrualPage() {
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          handleDownloadJurnalSAPPerCostElementGroup(items, currentAccrualItem!, costElement);
+                                          promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerCostElementGroup(items, currentAccrualItem!, costElement, ht, lt));
                                           document.getElementById(`jurnal-group-dropdown-${costElement}`)?.classList.add('hidden');
                                         }}
                                         className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors rounded-t-lg"
@@ -4248,7 +4187,7 @@ export default function MonitoringAccrualPage() {
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          handleDownloadJurnalSAPPerCostElementGroupTxt(items, currentAccrualItem!, costElement);
+                                          promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerCostElementGroupTxt(items, currentAccrualItem!, costElement, ht, lt));
                                           document.getElementById(`jurnal-group-dropdown-${costElement}`)?.classList.add('hidden');
                                         }}
                                         className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors rounded-b-lg"
@@ -4405,12 +4344,16 @@ export default function MonitoringAccrualPage() {
                 <h2 className="text-xl font-bold text-white">Rincian Accrual per Cost Center</h2>
                 <p className="text-sm text-amber-100 mt-1">
                   {costCenterModalPeriode.bulan} - Periode {costCenterModalPeriode.periodeKe}
+                  {costCenterModalAccrual && (
+                    <span className="ml-2">· {costCenterModalAccrual.vendor}</span>
+                  )}
                 </p>
               </div>
               <button
                 onClick={() => {
                   setShowCostCenterModal(false);
                   setCostCenterModalPeriode(null);
+                  setCostCenterModalAccrual(null);
                   setCostCenterData([]);
                   setEditingCostCenterId(null);
                   setSelectedCostCenterIds(new Set());
@@ -4424,6 +4367,45 @@ export default function MonitoringAccrualPage() {
 
             {/* Body */}
             <div className="overflow-y-auto p-6 bg-gray-50 flex-1">
+              {/* Info Accrual Induk */}
+              {costCenterModalAccrual && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                  <p className="text-xs font-semibold text-amber-700 mb-2 uppercase tracking-wide">Data Accrual</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-3">
+                    <div>
+                      <span className="text-gray-500">Vendor</span>
+                      <p className="font-semibold text-gray-800 truncate" title={costCenterModalAccrual.vendor}>{costCenterModalAccrual.vendor}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Kode Akun Biaya</span>
+                      <p className="font-semibold text-gray-800">{costCenterModalAccrual.kdAkunBiaya}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Cost Center</span>
+                      <p className="font-semibold text-gray-800">{costCenterModalAccrual.costCenter || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Amount Periode Ini</span>
+                      <p className="font-semibold text-amber-700">{formatCurrency(Math.abs(costCenterModalPeriode.amountAccrual))}</p>
+                    </div>
+                  </div>
+                  {costCenterData.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setCostCenterForm({
+                        costCenter: costCenterModalAccrual.costCenter || '',
+                        kdAkunBiaya: costCenterModalAccrual.kdAkunBiaya || '',
+                        amount: Math.abs(costCenterModalPeriode.amountAccrual).toString(),
+                        keterangan: costCenterModalAccrual.deskripsi || '',
+                      })}
+                      className="text-xs px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors font-medium"
+                    >
+                      ↓ Isi form dari data accrual ini
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Summary */}
               <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
                 <div className="grid grid-cols-2 gap-4 text-center">
@@ -4665,6 +4647,7 @@ export default function MonitoringAccrualPage() {
                 onClick={() => {
                   setShowCostCenterModal(false);
                   setCostCenterModalPeriode(null);
+                  setCostCenterModalAccrual(null);
                   setCostCenterData([]);
                   setEditingCostCenterId(null);
                   setSelectedCostCenterIds(new Set());
@@ -4863,6 +4846,66 @@ export default function MonitoringAccrualPage() {
               >
                 Tutup
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal Header Text dan Line Text untuk Jurnal Realisasi */}
+      {showJurnalHeaderModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="px-6 py-4 bg-gradient-to-r from-green-600 to-green-700 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">Teks Jurnal Realisasi</h2>
+                <p className="text-green-100 text-xs mt-0.5">Isi Header Text dan Line Text untuk kolom SAP</p>
+              </div>
+              <button onClick={() => setShowJurnalHeaderModal(false)} className="text-white hover:text-green-100 rounded-full hover:bg-white/10 p-1"><X size={22} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Header Text <span className="text-gray-400 font-normal">(bktxt – kolom 8)</span>
+                </label>
+                <input
+                  type="text"
+                  value={jurnalHeaderInput}
+                  onChange={(e) => setJurnalHeaderInput(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Masukkan header text..."
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Line Text <span className="text-gray-400 font-normal">(sgtxt – kolom 12)</span>
+                </label>
+                <input
+                  type="text"
+                  value={jurnalLineInput}
+                  onChange={(e) => setJurnalLineInput(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Masukkan line text..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      setShowJurnalHeaderModal(false);
+                      jurnalPendingCallback?.(jurnalHeaderInput, jurnalLineInput);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <div className="px-6 pb-6 flex justify-end gap-3">
+              <button
+                onClick={() => setShowJurnalHeaderModal(false)}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
+              >Batal</button>
+              <button
+                onClick={() => {
+                  setShowJurnalHeaderModal(false);
+                  jurnalPendingCallback?.(jurnalHeaderInput, jurnalLineInput);
+                }}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
+              >Download</button>
             </div>
           </div>
         </div>
