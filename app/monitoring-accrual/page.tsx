@@ -4442,17 +4442,23 @@ export default function MonitoringAccrualPage() {
               {/* Import dari File */}
               <div className="bg-white rounded-lg border border-gray-200 p-5 mb-4">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">Import dari File</h3>
-                <label className={`inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors cursor-pointer ${uploadingCostCenterFile ? 'opacity-60 pointer-events-none' : ''}`}>
-                  <Upload size={16} />
-                  <span>{uploadingCostCenterFile ? 'Mengupload...' : 'Upload File (Excel / XML SAP)'}</span>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.xml"
-                    onChange={handleCostCenterFileUpload}
-                    disabled={uploadingCostCenterFile}
-                    className="hidden"
-                  />
-                </label>
+                <div className="flex items-center gap-3">
+                  <label className={`flex-1 cursor-pointer ${uploadingCostCenterFile ? 'opacity-60 pointer-events-none' : ''}`}>
+                    <div className="flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all">
+                      <Upload size={18} />
+                      <span className="text-sm font-medium">
+                        {uploadingCostCenterFile ? 'Mengupload...' : 'Upload File (Excel / XML SAP)'}
+                      </span>
+                    </div>
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls,.xml"
+                      onChange={handleCostCenterFileUpload}
+                      disabled={uploadingCostCenterFile}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
                 <p className="text-xs text-gray-400 mt-2">
                   Excel: Kolom A = Amount · B = Cost Center · C = Kode Akun Biaya · D = Keterangan
                 </p>
