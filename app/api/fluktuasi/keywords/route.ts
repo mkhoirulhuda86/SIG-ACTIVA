@@ -34,9 +34,18 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { keyword, type, result, priority = 0 } = body;
 
-    if (!keyword || !type || !result) {
+    if (!keyword || !type) {
       return NextResponse.json(
-        { success: false, error: 'keyword, type, dan result wajib diisi' },
+        { success: false, error: 'keyword dan type wajib diisi' },
+        { status: 400 }
+      );
+    }
+
+    // For regex/not/col keywords, result can be empty
+    const isSpecialMode = keyword.toLowerCase().startsWith('regex:') || keyword.toLowerCase().startsWith('not:') || keyword.toLowerCase().startsWith('col:');
+    if (!isSpecialMode && !result) {
+      return NextResponse.json(
+        { success: false, error: 'result wajib diisi untuk keyword biasa' },
         { status: 400 }
       );
     }
@@ -70,7 +79,7 @@ export async function POST(req: NextRequest) {
       data: {
         keyword: keyword.trim(),
         type,
-        result: result.trim(),
+        result: (result ?? '').trim(),
         priority: parseInt(priority, 10) || 0,
       },
     });

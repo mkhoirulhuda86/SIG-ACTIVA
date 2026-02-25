@@ -151,19 +151,114 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
   return null;
 };
 
-const matchKeywords = (text: string, keywords: Keyword[], type: string): string => {
-  if (!text || !keywords.length) return '';
-  const textLower = String(text).toLowerCase().trim();
+const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: string, rowData?: Record<string, any>): string => {
+  if (!keywords.length) return '';
+  const textStr = String(text ?? '').trim();
+  const textLower = textStr.toLowerCase();
+  const docnoStr = String(docno ?? '').trim();
   
   // Filter by type and sort by priority (highest first)
   const relevantKeywords = keywords
     .filter((kw) => kw.type === type)
     .sort((a, b) => b.priority - a.priority);
 
-  // Find first matching keyword
-  for (const kw of relevantKeywords) {
+  // Separate positive (including docno/col) and NOT keywords
+  const positiveKeywords = relevantKeywords.filter(kw => !kw.keyword.toLowerCase().startsWith('not:'));
+  const notKeywords = relevantKeywords.filter(kw => kw.keyword.toLowerCase().startsWith('not:'));
+
+  // ── Pass 1: positive / regex / docno / col keywords (checked in priority order)
+  for (const kw of positiveKeywords) {
+    const kwLower = kw.keyword.toLowerCase();
+
+    // ── Col mode: match against any column by header name
+    // Syntax: col:NamaKolom:searchPattern
+    if (kwLower.startsWith('col:')) {
+      if (!rowData) continue;
+      const withoutPrefix = kw.keyword.slice(4); // "NamaKolom:searchPattern"
+      const colonIdx = withoutPrefix.indexOf(':');
+      if (colonIdx < 0) continue;
+      const colName = withoutPrefix.slice(0, colonIdx).trim();
+      const pattern  = withoutPrefix.slice(colonIdx + 1).trim();
+      // Find column value: exact header match first, then case-insensitive
+      const colValue = (() => {
+        const exactKey = Object.keys(rowData).find(k => k === colName);
+        if (exactKey !== undefined) return String(rowData[exactKey] ?? '').trim();
+        const ciKey = Object.keys(rowData).find(k => k.toLowerCase() === colName.toLowerCase());
+        return ciKey ? String(rowData[ciKey] ?? '').trim() : '';
+      })();
+      if (!colValue) continue;
+      let matched = false;
+      if (pattern.toLowerCase().startsWith('regex:')) {
+        try {
+          const re = new RegExp(pattern.slice(6).trim(), 'i');
+          matched = re.test(colValue);
+        } catch (e) { console.warn('Invalid col regex:', kw.keyword); }
+      } else if (pattern.startsWith('*') && pattern.endsWith('*') && pattern.length > 2) {
+        matched = colValue.toLowerCase().includes(pattern.slice(1, -1).toLowerCase());
+      } else if (pattern.endsWith('*')) {
+        matched = colValue.toLowerCase().startsWith(pattern.slice(0, -1).toLowerCase());
+      } else if (pattern.startsWith('*')) {
+        matched = colValue.toLowerCase().endsWith(pattern.slice(1).toLowerCase());
+      } else {
+        // exact / contains
+        matched = colValue.toLowerCase().includes(pattern.toLowerCase());
+      }
+      if (matched) return kw.result || colValue;
+      continue;
+    }
+
+    // ── DocNo mode: match against document number column (column B)
+    if (kwLower.startsWith('docno:')) {
+      if (!docnoStr) continue;
+      const pattern = kw.keyword.slice(6).trim();
+      if (pattern.toLowerCase().startsWith('regex:')) {
+        try {
+          const regex = new RegExp(pattern.slice(6).trim(), 'i');
+          if (regex.test(docnoStr)) return kw.result;
+        } catch (e) {
+          console.warn('Invalid docno regex:', kw.keyword);
+        }
+      } else {
+        // Default: startsWith check (e.g. docno:18 matches "1800001234")
+        if (docnoStr.startsWith(pattern)) return kw.result;
+      }
+      continue;
+    }
+
+    // ── Regex / Pattern mode (against text column)
+    if (kwLower.startsWith('regex:')) {
+      try {
+        const pattern = kw.keyword.slice(6).trim();
+        const regex = new RegExp(pattern, 'i');
+        const match = textStr.match(regex);
+        if (match) {
+          if (!kw.result || kw.result.trim() === '{match}') return match[0];
+          let result = kw.result;
+          for (let i = 1; i < match.length; i++) {
+            result = result.replace(new RegExp(`\\{${i}\\}`, 'g'), match[i] ?? '');
+          }
+          result = result.replace(/\{match\}/gi, match[0]);
+          return result;
+        }
+      } catch (e) {
+        console.warn('Invalid regex pattern:', kw.keyword);
+      }
+      continue;
+    }
+
+    // ── Normal text includes matching
     const keywordLower = kw.keyword.toLowerCase();
     if (textLower.includes(keywordLower)) {
+      return kw.result;
+    }
+  }
+
+  // ── Pass 2: NOT keywords (only if no positive match)
+  for (const kw of notKeywords) {
+    // Syntax: "not:word1,word2" → match if text contains NONE of word1, word2
+    const exclusions = kw.keyword.slice(4).trim().split(/[,|]/).map(s => s.trim().toLowerCase()).filter(Boolean);
+    const hasExcluded = exclusions.some(excl => textLower.includes(excl));
+    if (!hasExcluded) {
       return kw.result;
     }
   }
@@ -564,6 +659,13 @@ export default function FluktuasiOIPage() {
           ? remarkColIdxRaw
           : klasifikasiColIdx;
 
+        // Detect document number column (column B / SAP Belegnummer)
+        const docnoColIdx = findColIdx(headers, [
+          'Document No.', 'Doc. No.', 'Doc.No.', 'DocNo', 'Document Number',
+          'Belegnummer', 'Belnr', 'Doc Number', 'No. Dokumen', 'Nomor Dokumen',
+          'No Dokumen', 'Nomer Dokumen',
+        ]);
+
         const rows: Record<string, any>[] = [];
         for (let r = headerRowIdx + 1; r < raw.length; r++) {
           const rawRow = raw[r];
@@ -575,9 +677,10 @@ export default function FluktuasiOIPage() {
           // Use keyword matching for klasifikasi and remark
           const klasifikasiText = String(klasifikasiColIdx >= 0 ? rawRow[klasifikasiColIdx] : '');
           const remarkText = String(remarkColIdx >= 0 ? rawRow[remarkColIdx] : '');
+          const docnoText = String(docnoColIdx >= 0 ? rawRow[docnoColIdx] : '');
           
-          obj['__klasifikasi'] = matchKeywords(klasifikasiText, keywords, 'klasifikasi') || extractKlasifikasi(klasifikasiText);
-          obj['__remark']      = matchKeywords(remarkText, keywords, 'remark') || remarkText.trim();
+          obj['__klasifikasi'] = matchKeywords(klasifikasiText, keywords, 'klasifikasi', docnoText, obj) || extractKlasifikasi(klasifikasiText);
+          obj['__remark']      = matchKeywords(remarkText, keywords, 'remark', docnoText, obj) || remarkText.trim();
           rows.push(obj);
         }
         result.push({ sheetName, headers, originalHeaders, rows });
@@ -983,10 +1086,43 @@ export default function FluktuasiOIPage() {
                     const endIdx = startIdx + KEYWORD_PAGE_SIZE;
                     const paginatedKeywords = filteredKeywords.slice(startIdx, endIdx);
                     
-                    return paginatedKeywords.map((kw, index) => (
+                    return paginatedKeywords.map((kw, index) => {
+                      const isRegex = kw.keyword.toLowerCase().startsWith('regex:');
+                      const isNot   = kw.keyword.toLowerCase().startsWith('not:');
+                      const isDocno = kw.keyword.toLowerCase().startsWith('docno:');
+                      const isCol   = kw.keyword.toLowerCase().startsWith('col:');
+                      // For col: display, split col:Header:Pattern into header+pattern
+                      const colDisplay = (() => {
+                        if (!isCol) return '';
+                        const without = kw.keyword.slice(4);
+                        const ci = without.indexOf(':');
+                        if (ci < 0) return without;
+                        return without.slice(0, ci) + ' → ' + without.slice(ci + 1);
+                      })();
+                      return (
                         <tr key={kw.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors`}>
                           <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                            {kw.keyword}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {isRegex && (
+                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700 font-mono">regex</span>
+                              )}
+                              {isNot && (
+                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">NOT</span>
+                              )}
+                              {isDocno && (
+                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700 font-mono">doc#</span>
+                              )}
+                              {isCol && (
+                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-700 font-mono">col</span>
+                              )}
+                              <span className="font-mono text-xs">
+                                {isRegex ? kw.keyword.slice(6).trim()
+                                  : isNot   ? kw.keyword.slice(4).trim()
+                                  : isDocno ? kw.keyword.slice(6).trim()
+                                  : isCol   ? colDisplay
+                                  : kw.keyword}
+                              </span>
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
@@ -998,7 +1134,7 @@ export default function FluktuasiOIPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-700">
-                            {kw.result}
+                            {kw.result || <span className="text-gray-400 italic">{isRegex ? '{match}' : '—'}</span>}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-sm font-semibold text-gray-700">
@@ -1022,7 +1158,8 @@ export default function FluktuasiOIPage() {
                             </div>
                           </td>
                         </tr>
-                      ))
+                      );
+                    })
                   })()}
                 </tbody>
               </table>
@@ -1602,8 +1739,8 @@ export default function FluktuasiOIPage() {
                       type="text"
                       value={keywordForm.keyword}
                       onChange={(e) => setKeywordForm({ ...keywordForm, keyword: e.target.value })}
-                      placeholder="Contoh: Sindikasi SLL, Bunga, Accrue"
-                      className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 transition ${
+                      placeholder="Contoh: Sindikasi SLL  /  regex:RoU \d+  /  docno:18  /  col:Account:18*"
+                      className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 transition font-mono text-sm ${
                         keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id)
                           ? 'border-red-300 focus:ring-red-500 focus:border-red-500 bg-red-50'
                           : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -1611,11 +1748,61 @@ export default function FluktuasiOIPage() {
                     />
                     {keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id) && (
                       <p className="text-xs text-red-600 mt-1.5 font-medium">
-                        ⚠️ Keyword ini sudah ada untuk type {keywordForm.type}
+                        Keyword ini sudah ada untuk type {keywordForm.type}
                       </p>
                     )}
-                    {(!keywordForm.keyword || !checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id)) && (
-                      <p className="text-xs text-gray-500 mt-1.5">Kata kunci yang akan dicari di data Excel</p>
+                    {/* Regex helper */}
+                    {keywordForm.keyword.toLowerCase().startsWith('regex:') && (
+                      <div className="mt-2 p-2.5 bg-indigo-50 border border-indigo-200 rounded-lg">
+                        <p className="text-xs text-indigo-700 font-semibold mb-1">Mode Pattern (Regex) aktif</p>
+                        <ul className="text-xs text-indigo-600 space-y-0.5">
+                          <li>• <code>\d+</code> = satu atau lebih angka</li>
+                          <li>• <code>\d&#123;8&#125;</code> = tepat 8 angka</li>
+                          <li>• <code>(RoU \d+)</code> = capture group, gunakan <code>&#123;1&#125;</code> di Result</li>
+                          <li>• Contoh: <code>regex:RoU \d+</code> → cocok dengan &quot;RoU 380000000077&quot;</li>
+                        </ul>
+                      </div>
+                    )}
+                    {/* NOT helper */}
+                    {keywordForm.keyword.toLowerCase().startsWith('not:') && (
+                      <div className="mt-2 p-2.5 bg-orange-50 border border-orange-200 rounded-lg">
+                        <p className="text-xs text-orange-700 font-semibold mb-1">Mode NOT aktif — berlaku jika teks TIDAK mengandung kata ini</p>
+                        <ul className="text-xs text-orange-600 space-y-0.5">
+                          <li>• <code>not:K3</code> → aktif jika teks tidak mengandung &quot;K3&quot;</li>
+                          <li>• <code>not:K3,SLA</code> → aktif jika teks tidak mengandung &quot;K3&quot; DAN tidak mengandung &quot;SLA&quot;</li>
+                          <li>• Gunakan koma (,) atau pipe (|) untuk memisahkan beberapa kata</li>
+                          <li>• NOT keyword dicek SETELAH semua keyword biasa tidak cocok</li>
+                        </ul>
+                      </div>
+                    )}
+                    {/* DocNo helper */}
+                    {keywordForm.keyword.toLowerCase().startsWith('docno:') && (
+                      <div className="mt-2 p-2.5 bg-green-50 border border-green-200 rounded-lg">
+                        <p className="text-xs text-green-700 font-semibold mb-1">Mode DocNo aktif — cocok berdasarkan Nomor Dokumen (kolom B Excel)</p>
+                        <ul className="text-xs text-green-600 space-y-0.5">
+                          <li>• <code>docno:18</code> → aktif jika nomor dokumen <strong>diawali</strong> &quot;18&quot; (mis. 1800001234)</li>
+                          <li>• <code>docno:100</code> → aktif jika nomor dokumen diawali &quot;100&quot;</li>
+                          <li>• <code>docno:regex:^18\d+</code> → gunakan pola regex terhadap nomor dokumen</li>
+                          <li>• Kolom yang dibaca: Belegnummer / Doc. No. / Document Number</li>
+                        </ul>
+                      </div>
+                    )}
+                    {/* Col helper */}
+                    {keywordForm.keyword.toLowerCase().startsWith('col:') && (
+                      <div className="mt-2 p-2.5 bg-teal-50 border border-teal-200 rounded-lg">
+                        <p className="text-xs text-teal-700 font-semibold mb-1">Mode Col aktif — cocok berdasarkan kolom Excel manapun by nama header</p>
+                        <p className="text-xs text-teal-600 font-mono mb-1">Format: <strong>col:NamaHeader:polaPencarian</strong></p>
+                        <ul className="text-xs text-teal-600 space-y-0.5">
+                          <li>• <code>col:Account:18*</code> → kolom &quot;Account&quot; diawali &quot;18&quot;</li>
+                          <li>• <code>col:Account:*1800*</code> → kolom &quot;Account&quot; mengandung &quot;1800&quot;</li>
+                          <li>• <code>col:Cost Center:0001</code> → kolom &quot;Cost Center&quot; mengandung &quot;0001&quot;</li>
+                          <li>• <code>col:G/L:regex:^18\d+</code> → gunakan regex pada kolom &quot;G/L&quot;</li>
+                          <li>• Nama header <strong>case-insensitive</strong>, sesuaikan dengan header di file Excel</li>
+                        </ul>
+                      </div>
+                    )}
+                    {(!keywordForm.keyword || (!checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id) && !keywordForm.keyword.toLowerCase().startsWith('regex:') && !keywordForm.keyword.toLowerCase().startsWith('not:') && !keywordForm.keyword.toLowerCase().startsWith('docno:') && !keywordForm.keyword.toLowerCase().startsWith('col:'))) && (
+                      <p className="text-xs text-gray-500 mt-1.5">Kata kunci biasa, atau prefix <code className="bg-gray-100 px-1 rounded">regex:</code> pola teks, <code className="bg-gray-100 px-1 rounded">not:</code> kondisi tidak mengandung, <code className="bg-gray-100 px-1 rounded">docno:</code> nomor dokumen, <code className="bg-gray-100 px-1 rounded">col:Header:nilai</code> kolom bebas</p>
                     )}
                   </div>
 
@@ -1647,16 +1834,31 @@ export default function FluktuasiOIPage() {
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Result/Output <span className="text-red-500">*</span>
+                      Result/Output
+                      {!keywordForm.keyword.toLowerCase().startsWith('regex:') && !keywordForm.keyword.toLowerCase().startsWith('col:') && <span className="text-red-500"> *</span>}
                     </label>
                     <input
                       type="text"
                       value={keywordForm.result}
                       onChange={(e) => setKeywordForm({ ...keywordForm, result: e.target.value })}
-                      placeholder="Contoh: Sindikasi SLL, Beban Bunga"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                      placeholder={
+                        keywordForm.keyword.toLowerCase().startsWith('regex:') ? '{match} atau teks tetap'
+                        : keywordForm.keyword.toLowerCase().startsWith('col:') ? 'Teks tetap, atau kosongkan → ambil nilai kolom'
+                        : 'Contoh: Sindikasi SLL, Beban Bunga'
+                      }
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition font-mono text-sm"
                     />
-                    <p className="text-xs text-gray-500 mt-1.5">Hasil yang akan ditampilkan jika keyword ditemukan</p>
+                    {keywordForm.keyword.toLowerCase().startsWith('regex:') ? (
+                      <div className="mt-1.5 text-xs text-gray-500 space-y-0.5">
+                        <p>Kosongkan atau tulis <code className="bg-gray-100 px-1 rounded">{'{match}'}</code> → hasil = teks yang ter-extract dari Excel</p>
+                        <p>Atau tulis teks tetap, misal: <code className="bg-gray-100 px-1 rounded">RoU Aset</code></p>
+                        <p>Dengan capture group: <code className="bg-gray-100 px-1 rounded">{'RoU {1}'}</code> → gunakan hasil grup pertama</p>
+                      </div>
+                    ) : keywordForm.keyword.toLowerCase().startsWith('col:') ? (
+                      <p className="text-xs text-gray-500 mt-1.5">Kosongkan → hasil otomatis diambil dari nilai kolom tersebut. Atau isi teks tetap misal: <code className="bg-gray-100 px-1 rounded">Tag. Klaim Asuransi</code></p>
+                    ) : (
+                      <p className="text-xs text-gray-500 mt-1.5">Hasil yang akan ditampilkan jika keyword ditemukan</p>
+                    )}
                   </div>
 
                   <div>
@@ -1713,7 +1915,10 @@ export default function FluktuasiOIPage() {
                     return checkDuplicateKeyword(parsed.keyword, parsed.type);
                   } else {
                     // Advanced mode validation
-                    if (!keywordForm.keyword || !keywordForm.result) return true;
+                    if (!keywordForm.keyword) return true;
+                    // Regex, NOT, col modes: result is optional
+                    const isSpecialMode = keywordForm.keyword.toLowerCase().startsWith('regex:') || keywordForm.keyword.toLowerCase().startsWith('not:') || keywordForm.keyword.toLowerCase().startsWith('col:');
+                    if (!isSpecialMode && !keywordForm.result) return true;
                     return checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id);
                   }
                 })()}
