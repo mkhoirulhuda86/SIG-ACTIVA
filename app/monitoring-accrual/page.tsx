@@ -2192,145 +2192,57 @@ export default function MonitoringAccrualPage() {
     if (!file || !selectedPeriode) return;
 
     setUploadingExcel(true);
-    
     try {
-      const fileName = file.name.toLowerCase();
-      const isXml = fileName.endsWith('.xml');
+      // Kirim ke batch import API (support XML & Excel) - satu request, bukan N request
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('periodeId', selectedPeriode.id.toString());
 
-      // Jika XML, kirim ke endpoint import yang support XML
-      if (isXml) {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('periodeId', selectedPeriode.id.toString()); // Kirim periodeId untuk direct import
+      const response = await fetch('/api/accrual/realisasi/import', {
+        method: 'POST',
+        body: formData,
+      });
 
-        const response = await fetch('/api/accrual/realisasi/import', {
-          method: 'POST',
-          body: formData,
-        });
+      const result = await response.json();
 
-        const result = await response.json();
-
-        if (!response.ok) {
-          alert(`Gagal import realisasi: ${result.error}\n${result.details || ''}`);
-          return;
-        }
-
-        // Refresh realisasi list untuk periode ini
-        const realisasiResponse = await fetch(`/api/accrual/realisasi?periodeId=${selectedPeriode.id}`);
-        if (realisasiResponse.ok) {
-          const data = await realisasiResponse.json();
-          setRealisasiData(data);
-        }
-
-        // Refresh main accrual data
-        await fetchAccrualData();
-
-        // Update selected periode with new totals
-        const updatedAccrual = accrualData.find(a => 
-          a.periodes?.some(p => p.id === selectedPeriode.id)
-        );
-        if (updatedAccrual) {
-          const updatedPeriode = updatedAccrual.periodes?.find(p => p.id === selectedPeriode.id);
-          if (updatedPeriode) {
-            setSelectedPeriode(updatedPeriode);
-          }
-        }
-
-        let message = `Import XML selesai!\nBerhasil: ${result.successCount} data\nGagal: ${result.errorCount} data`;
-        if (result.errors && result.errors.length > 0) {
-          message += '\n\nDetail Error:\n' + result.errors.slice(0, 10).join('\n');
-          if (result.errors.length > 10) {
-            message += `\n... dan ${result.errors.length - 10} error lainnya`;
-          }
-        }
-        alert(message);
-
-        setUploadingExcel(false);
-        e.target.value = '';
+      if (!response.ok) {
+        alert(`Gagal import realisasi: ${result.error}\n${result.details || ''}`);
         return;
       }
 
-      // Jika Excel, proses seperti biasa
-      // Load XLSX on demand
-      const { XLSX: XLSXLib } = await loadExcelLibraries();
-      
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        try {
-          const data = event.target?.result;
-          const workbook = XLSXLib.read(data, { type: 'binary' });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-          const jsonData: any[][] = XLSXLib.utils.sheet_to_json(worksheet, { header: 1 });
-
-          // Skip header row (index 0) and process data rows
-          const successCount = [];
-          const errorCount = [];
-
-          for (let i = 1; i < jsonData.length; i++) {
-            const row = jsonData[i];
-            // Kolom J adalah index 9 (A=0, B=1, ..., J=9)
-            const realisasiAmount = row[9];
-            
-            if (realisasiAmount && !isNaN(Number(realisasiAmount)) && Number(realisasiAmount) > 0) {
-              try {
-                const response = await fetch('/api/accrual/realisasi', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    accrualPeriodeId: selectedPeriode.id,
-                    tanggalRealisasi: new Date().toISOString().split('T')[0],
-                    amount: Number(realisasiAmount),
-                    keterangan: `Import dari Excel - Baris ${i + 1}`,
-                  }),
-                });
-
-                if (response.ok) {
-                  successCount.push(i + 1);
-                } else {
-                  errorCount.push(i + 1);
-                }
-              } catch (error) {
-                errorCount.push(i + 1);
-              }
-            }
-          }
-
-          // Refresh realisasi list
-          const realisasiResponse = await fetch(`/api/accrual/realisasi?periodeId=${selectedPeriode.id}`);
-          if (realisasiResponse.ok) {
-            const data = await realisasiResponse.json();
-            setRealisasiData(data);
-          }
-
-          // Refresh main accrual data
-          await fetchAccrualData();
-
-          // Update selected periode with new totals
-          const updatedAccrual = accrualData.find(a => 
-            a.periodes?.some(p => p.id === selectedPeriode.id)
-          );
-          if (updatedAccrual) {
-            const updatedPeriode = updatedAccrual.periodes?.find(p => p.id === selectedPeriode.id);
-            if (updatedPeriode) {
-              setSelectedPeriode(updatedPeriode);
-            }
-          }
-
-          alert(`Import berhasil!\nBerhasil: ${successCount.length} data\nGagal: ${errorCount.length} data`);
-        } catch (error) {
-          console.error('Error processing Excel:', error);
-          alert('Gagal memproses file Excel. Pastikan format file benar.');
-        } finally {
-          setUploadingExcel(false);
-          // Reset file input
-          e.target.value = '';
+      // Tampilkan hasil langsung tanpa menunggu refresh
+      const isXml = file.name.toLowerCase().endsWith('.xml');
+      let message = `Import ${isXml ? 'XML' : 'Excel'} selesai!\nBerhasil: ${result.successCount} data\nGagal: ${result.errorCount} data`;
+      if (result.errors && result.errors.length > 0) {
+        message += '\n\nDetail Error:\n' + result.errors.slice(0, 10).join('\n');
+        if (result.errors.length > 10) {
+          message += `\n... dan ${result.errors.length - 10} error lainnya`;
         }
-      };
-      reader.readAsBinaryString(file);
+      }
+      alert(message);
+
+      // Background: refresh realisasi & accrual secara paralel (tanpa full-page loading)
+      const periodeId = selectedPeriode.id;
+      const [realisasiRes, accrualRes] = await Promise.all([
+        fetch(`/api/accrual/realisasi?periodeId=${periodeId}`),
+        fetch('/api/accrual'),
+      ]);
+      if (realisasiRes.ok) setRealisasiData(await realisasiRes.json());
+      if (accrualRes.ok) {
+        const accruals = await accrualRes.json();
+        setAccrualData(accruals);
+        const updatedAccrual = accruals.find((acc: Accrual) =>
+          acc.periodes?.some(p => p.id === periodeId)
+        );
+        if (updatedAccrual) {
+          const updatedPeriode = updatedAccrual.periodes?.find((p: AccrualPeriode) => p.id === periodeId);
+          if (updatedPeriode) setSelectedPeriode(updatedPeriode);
+        }
+      }
     } catch (error) {
-      console.error('Error reading file:', error);
-      alert('Gagal membaca file.');
+      console.error('Error uploading file:', error);
+      alert('Gagal mengupload file. Silakan coba lagi.');
+    } finally {
       setUploadingExcel(false);
       e.target.value = '';
     }
@@ -2371,32 +2283,26 @@ export default function MonitoringAccrualPage() {
       });
       setEditingRealisasiId(null);
 
-      // Refresh realisasi list for the modal
-      const realisasiResponse = await fetch(`/api/accrual/realisasi?periodeId=${selectedPeriode.id}`);
-      if (realisasiResponse.ok) {
-        const data = await realisasiResponse.json();
-        setRealisasiData(data);
-      }
+      alert(isEditing ? 'Realisasi berhasil diupdate!' : 'Realisasi berhasil ditambahkan!');
 
-      // Refresh main data and get updated periode in one go
-      const accrualResponse = await fetch('/api/accrual?t=' + Date.now());
-      if (accrualResponse.ok) {
-        const accruals = await accrualResponse.json();
+      // Background: parallel refresh tanpa full-page loading
+      const periodeId = selectedPeriode.id;
+      const [realisasiRes, accrualRes] = await Promise.all([
+        fetch(`/api/accrual/realisasi?periodeId=${periodeId}`),
+        fetch('/api/accrual'),
+      ]);
+      if (realisasiRes.ok) setRealisasiData(await realisasiRes.json());
+      if (accrualRes.ok) {
+        const accruals = await accrualRes.json();
         setAccrualData(accruals);
-        
-        // Update selectedPeriode with fresh data
-        const updatedAccrual = accruals.find((acc: Accrual) => 
-          acc.periodes?.some(p => p.id === selectedPeriode.id)
+        const updatedAccrual = accruals.find((acc: Accrual) =>
+          acc.periodes?.some(p => p.id === periodeId)
         );
         if (updatedAccrual) {
-          const updatedPeriode = updatedAccrual.periodes?.find((p: AccrualPeriode) => p.id === selectedPeriode.id);
-          if (updatedPeriode) {
-            setSelectedPeriode(updatedPeriode);
-          }
+          const updatedPeriode = updatedAccrual.periodes?.find((p: AccrualPeriode) => p.id === periodeId);
+          if (updatedPeriode) setSelectedPeriode(updatedPeriode);
         }
       }
-      
-      alert(isEditing ? 'Realisasi berhasil diupdate!' : 'Realisasi berhasil ditambahkan!');
     } catch (error) {
       console.error('Error saving realisasi:', error);
       alert('Gagal menyimpan realisasi');
@@ -2415,36 +2321,31 @@ export default function MonitoringAccrualPage() {
 
       if (!response.ok) throw new Error('Failed to delete realisasi');
 
-      // Refresh realisasi list
-      if (selectedPeriode) {
-        const realisasiResponse = await fetch(`/api/accrual/realisasi?periodeId=${selectedPeriode.id}`);
-        if (realisasiResponse.ok) {
-          const data = await realisasiResponse.json();
-          setRealisasiData(data);
-        }
-      }
+      // Update local state immediately — no need to wait for heavy re-fetch
+      setRealisasiData(prev => prev.filter(r => r.id !== id));
 
-      // Refresh main data and get updated periode in one go
-      const accrualResponse = await fetch('/api/accrual');
-      if (accrualResponse.ok) {
-        const accruals = await accrualResponse.json();
+      alert('Realisasi berhasil dihapus!');
+
+      // Background: refresh accrual & realisasi data for accurate computed values
+      const periodeId = selectedPeriode?.id;
+      const [realisasiRes, accrualRes] = await Promise.all([
+        periodeId ? fetch(`/api/accrual/realisasi?periodeId=${periodeId}`) : Promise.resolve(null),
+        fetch('/api/accrual'),
+      ]);
+      if (realisasiRes?.ok) setRealisasiData(await realisasiRes.json());
+      if (accrualRes.ok) {
+        const accruals = await accrualRes.json();
         setAccrualData(accruals);
-        
-        // Update selectedPeriode with fresh data
-        if (selectedPeriode) {
-          const updatedAccrual = accruals.find((acc: Accrual) => 
-            acc.periodes?.some(p => p.id === selectedPeriode.id)
+        if (periodeId) {
+          const updatedAccrual = accruals.find((acc: Accrual) =>
+            acc.periodes?.some(p => p.id === periodeId)
           );
           if (updatedAccrual) {
-            const updatedPeriode = updatedAccrual.periodes?.find((p: AccrualPeriode) => p.id === selectedPeriode.id);
-            if (updatedPeriode) {
-              setSelectedPeriode(updatedPeriode);
-            }
+            const updatedPeriode = updatedAccrual.periodes?.find((p: AccrualPeriode) => p.id === periodeId);
+            if (updatedPeriode) setSelectedPeriode(updatedPeriode);
           }
         }
       }
-      
-      alert('Realisasi berhasil dihapus!');
     } catch (error) {
       console.error('Error deleting realisasi:', error);
       alert('Gagal menghapus realisasi');
@@ -2485,59 +2386,43 @@ export default function MonitoringAccrualPage() {
 
     setDeletingBulkRealisasi(true);
     try {
-      let successCount = 0;
-      let errorCount = 0;
+      const ids = Array.from(selectedRealisasiIds);
 
-      // Delete each selected realisasi
-      for (const id of selectedRealisasiIds) {
-        try {
-          const response = await fetch(`/api/accrual/realisasi?id=${id}`, {
-            method: 'DELETE',
-          });
+      // Single batch delete request instead of N sequential requests
+      const response = await fetch(`/api/accrual/realisasi?ids=${ids.join(',')}`, {
+        method: 'DELETE',
+      });
 
-          if (response.ok) {
-            successCount++;
-          } else {
-            errorCount++;
-          }
-        } catch (error) {
-          errorCount++;
-        }
-      }
+      if (!response.ok) throw new Error('Failed to delete realisasi');
+      const data = await response.json();
 
-      // Refresh realisasi list
-      if (selectedPeriode) {
-        const realisasiResponse = await fetch(`/api/accrual/realisasi?periodeId=${selectedPeriode.id}`);
-        if (realisasiResponse.ok) {
-          const data = await realisasiResponse.json();
-          setRealisasiData(data);
-        }
-      }
+      // Update local state immediately
+      const deletedSet = new Set(ids);
+      setRealisasiData(prev => prev.filter(r => !deletedSet.has(r.id)));
+      setSelectedRealisasiIds(new Set());
 
-      // Refresh main data and get updated periode
-      const accrualResponse = await fetch('/api/accrual');
-      if (accrualResponse.ok) {
-        const accruals = await accrualResponse.json();
+      alert(`Berhasil menghapus ${data.count ?? ids.length} realisasi!`);
+
+      // Background: refresh in parallel for accurate computed values
+      const periodeId = selectedPeriode?.id;
+      const [realisasiRes, accrualRes] = await Promise.all([
+        periodeId ? fetch(`/api/accrual/realisasi?periodeId=${periodeId}`) : Promise.resolve(null),
+        fetch('/api/accrual'),
+      ]);
+      if (realisasiRes?.ok) setRealisasiData(await realisasiRes.json());
+      if (accrualRes.ok) {
+        const accruals = await accrualRes.json();
         setAccrualData(accruals);
-        
-        // Update selectedPeriode with fresh data
-        if (selectedPeriode) {
-          const updatedAccrual = accruals.find((acc: Accrual) => 
-            acc.periodes?.some(p => p.id === selectedPeriode.id)
+        if (periodeId) {
+          const updatedAccrual = accruals.find((acc: Accrual) =>
+            acc.periodes?.some(p => p.id === periodeId)
           );
           if (updatedAccrual) {
-            const updatedPeriode = updatedAccrual.periodes?.find((p: AccrualPeriode) => p.id === selectedPeriode.id);
-            if (updatedPeriode) {
-              setSelectedPeriode(updatedPeriode);
-            }
+            const updatedPeriode = updatedAccrual.periodes?.find((p: AccrualPeriode) => p.id === periodeId);
+            if (updatedPeriode) setSelectedPeriode(updatedPeriode);
           }
         }
       }
-
-      // Clear selection
-      setSelectedRealisasiIds(new Set());
-      
-      alert(`Berhasil menghapus ${successCount} realisasi${errorCount > 0 ? `, gagal: ${errorCount}` : ''}!`);
     } catch (error) {
       console.error('Error bulk deleting realisasi:', error);
       alert('Gagal menghapus realisasi');
@@ -2568,8 +2453,7 @@ export default function MonitoringAccrualPage() {
         return;
       }
 
-      await fetchAccrualData();
-
+      // Tampilkan hasil langsung, lalu refresh di background
       let message = `Import selesai!\nBerhasil: ${result.successCount} data\nGagal: ${result.errorCount} data`;
       if (result.errors && result.errors.length > 0) {
         message += '\n\nDetail Error:\n' + result.errors.slice(0, 10).join('\n');
@@ -2578,14 +2462,16 @@ export default function MonitoringAccrualPage() {
         }
       }
       alert(message);
-
       setShowImportGlobalModal(false);
+
+      // Background: refresh tanpa full-page loading
+      const accrualRes = await fetch('/api/accrual');
+      if (accrualRes.ok) setAccrualData(await accrualRes.json());
     } catch (error) {
       console.error('Error uploading file:', error);
       alert('Gagal mengupload file. Silakan coba lagi.');
     } finally {
       setUploadingGlobalExcel(false);
-      // Reset input
       if (e.target) {
         e.target.value = '';
       }

@@ -67,12 +67,38 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// DELETE - Delete a realisasi
+// DELETE - Delete a realisasi (single: ?id=x, bulk: ?ids=1,2,3)
 export async function DELETE(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
+    const idsParam = searchParams.get('ids');
 
+    // Bulk delete
+    if (idsParam) {
+      const ids = idsParam
+        .split(',')
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => Number.isFinite(n));
+
+      if (ids.length === 0) {
+        return NextResponse.json(
+          { error: 'Invalid or empty ids' },
+          { status: 400 }
+        );
+      }
+
+      const result = await prisma.accrualRealisasi.deleteMany({
+        where: { id: { in: ids } },
+      });
+
+      return NextResponse.json({
+        message: `${result.count} realisasi berhasil dihapus`,
+        count: result.count,
+      });
+    }
+
+    // Single delete
     if (!id) {
       return NextResponse.json(
         { error: 'Missing realisasi ID' },
