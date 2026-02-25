@@ -372,11 +372,9 @@ export async function POST(request: NextRequest) {
         periodeBulan = match.periodeBulan;
       }
 
-      // Build keterangan from available fields
+      // Build keterangan from available fields (kept for backward compat)
       const keteranganParts: string[] = [];
       if (documentNumber) keteranganParts.push(`Doc: ${documentNumber}`);
-      if (headerText) keteranganParts.push(`Header: ${headerText}`);
-      if (text) keteranganParts.push(`Text: ${text}`);
       if (material) keteranganParts.push(`Material: ${material}`);
       if (materialDesc) keteranganParts.push(`Desc: ${materialDesc}`);
       
@@ -391,6 +389,8 @@ export async function POST(request: NextRequest) {
             accrualPeriodeId: periodeId,
             tanggalRealisasi: postingDate,
             amount: amount,
+            headerText: headerText || undefined,
+            lineText: text || undefined,
             keterangan: keterangan,
             kdAkunBiaya: costElement || undefined,
             costCenter: costCenter || undefined,

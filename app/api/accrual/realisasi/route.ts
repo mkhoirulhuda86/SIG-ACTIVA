@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { accrualPeriodeId, tanggalRealisasi, amount, keterangan, kdAkunBiaya, costCenter } = body;
+    const { accrualPeriodeId, tanggalRealisasi, amount, headerText, lineText, keterangan, kdAkunBiaya, costCenter } = body;
 
     if (!accrualPeriodeId || !tanggalRealisasi || !amount) {
       return NextResponse.json(
@@ -19,6 +19,8 @@ export async function POST(request: NextRequest) {
         accrualPeriodeId: parseInt(accrualPeriodeId),
         tanggalRealisasi: new Date(tanggalRealisasi),
         amount: Math.abs(parseFloat(amount)), // realisasi disimpan positif
+        headerText: headerText || null,
+        lineText: lineText || null,
         keterangan: keterangan || null,
         kdAkunBiaya: kdAkunBiaya || null,
         costCenter: costCenter || null,
@@ -136,7 +138,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const { tanggalRealisasi, amount, keterangan, kdAkunBiaya, costCenter } = body;
+    const { tanggalRealisasi, amount, headerText, lineText, keterangan, kdAkunBiaya, costCenter } = body;
 
     if (!tanggalRealisasi || !amount) {
       return NextResponse.json(
@@ -152,6 +154,8 @@ export async function PUT(request: NextRequest) {
       data: {
         tanggalRealisasi: new Date(tanggalRealisasi),
         amount: Math.abs(parseFloat(amount)), // realisasi disimpan positif
+        headerText: headerText || null,
+        lineText: lineText || null,
         keterangan: keterangan || null,
         kdAkunBiaya: kdAkunBiaya || null,
         costCenter: costCenter || null,

@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { accrualPeriodeId, costCenter, kdAkunBiaya, amount, keterangan } = body;
+    const { accrualPeriodeId, costCenter, kdAkunBiaya, amount, headerText, lineText, keterangan } = body;
 
     if (!accrualPeriodeId || amount === undefined || amount === null) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -37,6 +37,8 @@ export async function POST(request: NextRequest) {
         costCenter: costCenter || null,
         kdAkunBiaya: kdAkunBiaya || null,
         amount: parseFloat(amount),
+        headerText: headerText || null,
+        lineText: lineText || null,
         keterangan: keterangan || null,
       },
     });
@@ -58,7 +60,7 @@ export async function PUT(request: NextRequest) {
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
     const body = await request.json();
-    const { costCenter, kdAkunBiaya, amount, keterangan } = body;
+    const { costCenter, kdAkunBiaya, amount, headerText, lineText, keterangan } = body;
 
     const entry = await prisma.accrualPeriodeCostCenter.update({
       where: { id: parseInt(id) },
@@ -66,6 +68,8 @@ export async function PUT(request: NextRequest) {
         costCenter: costCenter || null,
         kdAkunBiaya: kdAkunBiaya || null,
         amount: parseFloat(amount),
+        headerText: headerText || null,
+        lineText: lineText || null,
         keterangan: keterangan || null,
       },
     });

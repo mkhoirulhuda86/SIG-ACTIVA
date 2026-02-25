@@ -4,11 +4,11 @@ import * as XLSX from 'xlsx';
 
 // POST - Import rincian accrual per cost center dari Excel atau XML SAP
 // Format Excel sederhana (header baris 1):
-//   Kolom A: Amount  |  B: Cost Center  |  C: Kode Akun Biaya  |  D: Keterangan
+//   Kolom A: Amount  |  B: Cost Center  |  C: Kode Akun Biaya  |  D: Header Text  |  E: Line Text
 //
 // Format XML SAP (sama dengan import realisasi):
 //   Kolom 9 : Amount  |  10: Cost Center  |  8: Cost Element (Kode Akun Biaya)
-//   Kolom 12: Header Text (→ keterangan)  |  13: Text  |  19: Document Number
+//   Kolom 12: Header Text (bktxt)  |  13: Line Text (sgtxt)  |  19: Document Number
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -71,27 +71,27 @@ export async function POST(request: NextRequest) {
       let amountStr: string;
       let costCenter: string;
       let kdAkunBiaya: string;
+      let headerText: string;
+      let lineText: string;
       let keterangan: string;
 
       if (isXml) {
         // SAP XML format — same column mapping as realisasi import
-        amountStr    = row[9]?.toString().trim()  ?? '';
-        costCenter   = row[10]?.toString().trim() ?? '';
-        kdAkunBiaya  = row[8]?.toString().trim()  ?? '';
+        amountStr   = row[9]?.toString().trim()  ?? '';
+        costCenter  = row[10]?.toString().trim() ?? '';
+        kdAkunBiaya = row[8]?.toString().trim()  ?? '';
+        headerText  = row[12]?.toString().trim() ?? '';
+        lineText    = row[13]?.toString().trim() ?? '';
         const docNum = row[19]?.toString().trim() ?? '';
-        const hdr    = row[12]?.toString().trim() ?? '';
-        const txt    = row[13]?.toString().trim() ?? '';
-        const parts: string[] = [];
-        if (docNum) parts.push(`Doc: ${docNum}`);
-        if (hdr) parts.push(`Header: ${hdr}`);
-        if (txt) parts.push(`Text: ${txt}`);
-        keterangan = parts.join(' | ') || `Import XML - Baris ${i + 2}`;
+        keterangan  = docNum ? `Doc: ${docNum}` : '';
       } else {
-        // Simple Excel: A=Amount, B=Cost Center, C=Kode Akun Biaya, D=Keterangan
+        // Simple Excel: A=Amount, B=Cost Center, C=Kode Akun Biaya, D=Header Text, E=Line Text
         amountStr   = row[0]?.toString().trim() ?? '';
         costCenter  = row[1]?.toString().trim() ?? '';
         kdAkunBiaya = row[2]?.toString().trim() ?? '';
-        keterangan  = row[3]?.toString().trim() ?? '';
+        headerText  = row[3]?.toString().trim() ?? '';
+        lineText    = row[4]?.toString().trim() ?? '';
+        keterangan  = '';
       }
 
       if (!amountStr) {
@@ -113,6 +113,8 @@ export async function POST(request: NextRequest) {
             costCenter: costCenter || null,
             kdAkunBiaya: kdAkunBiaya || null,
             amount,
+            headerText: headerText || null,
+            lineText: lineText || null,
             keterangan: keterangan || null,
           },
         });

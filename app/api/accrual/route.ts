@@ -62,6 +62,8 @@ export async function GET(request: NextRequest) {
                 id: true,
                 tanggalRealisasi: true,
                 amount: true,
+                headerText: true,
+                lineText: true,
                 keterangan: true,
                 kdAkunBiaya: true,
                 costCenter: true
@@ -73,6 +75,8 @@ export async function GET(request: NextRequest) {
                 costCenter: true,
                 kdAkunBiaya: true,
                 amount: true,
+                headerText: true,
+                lineText: true,
                 keterangan: true
               },
               orderBy: { createdAt: 'asc' }

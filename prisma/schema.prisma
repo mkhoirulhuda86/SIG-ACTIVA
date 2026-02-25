@@ -129,6 +129,8 @@ model AccrualPeriodeCostCenter {
   costCenter       String?
   kdAkunBiaya      String?
   amount           Float
+  headerText       String?
+  lineText         String?
   keterangan       String?
 
   createdAt        DateTime       @default(now())
@@ -145,6 +147,8 @@ model AccrualRealisasi {
   
   tanggalRealisasi  DateTime
   amount            Float
+  headerText        String?
+  lineText          String?
   keterangan        String?
   kdAkunBiaya       String?
   costCenter        String?
