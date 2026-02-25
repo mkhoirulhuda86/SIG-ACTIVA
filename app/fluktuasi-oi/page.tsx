@@ -111,6 +111,62 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
   const prioM = text.match(/priority\s*(\d+)/i);
   if (prioM) priority = parseInt(prioM[1]);
 
+  // ── NOT mode: "jika tidak ada/terdapat kata 'K3' atau 'SLA' maka berisi 'Denda'"
+  // Trigger: "tidak ada", "tidak terdapat", "tidak mengandung", "tanpa kata", "kecuali"
+  const isNotMode = /(?:jika\s+)?(?:tidak\s+(?:ada|terdapat|mengandung)|tanpa\s+kata|kecuali)/i.test(text);
+  if (isNotMode && resultMatch) {
+    // Extract all words in quotes: 'K3' dan 'SLA'  →  K3,SLA
+    const quotedWords = [...original.matchAll(/["']([^"']+)["']/g)].map(m => m[1].trim());
+    // Filter out the result value itself
+    const resultVal = resultMatch[1].trim();
+    const exclusions = quotedWords.filter(w => w.toLowerCase() !== resultVal.toLowerCase());
+    if (exclusions.length > 0) {
+      return { keyword: `not:${exclusions.join(',')}`, type, result: resultVal, priority };
+    }
+    // Fallback: try comma/atau separated words without quotes after "kata"
+    const bareM = original.match(/(?:kata|text|teks)\s+([\w\s,\/|]+?)(?:\s+maka|\s+berisi|$)/i);
+    if (bareM) {
+      const words = bareM[1].trim().split(/\s*(?:,|atau|or|dan|and|\/|\|)\s*/).filter(Boolean);
+      if (words.length > 0) {
+        return { keyword: `not:${words.join(',')}`, type, result: resultVal, priority };
+      }
+    }
+  }
+
+  // ── Regex extract mode: "diambil dari kata 'X' dan nomor/angka/kode aset"
+  // Trigger: "diambil dari", "ambil dari", "ekstrak", "extract"
+  // Result is dynamic ({match}), so result left empty
+  const isExtractMode = /(?:diambil\s+dari|ambil\s+dari|ekstrak\s+dari?|extract)/i.test(text);
+  if (isExtractMode) {
+    // Collect all quoted tokens
+    const allQuoted = [...original.matchAll(/["']([^"']+)["']/g)].map(m => m[1].trim());
+    // Anchor word = first quoted token that looks like a word prefix (not a column name or result)
+    // Skip if it's a known column reference like 'Text', 'P', 'AD'
+    const skipTokens = ['text', 'p', 'ad', 'ae', 'kolom', 'klasifikasi', 'remark'];
+    const anchor = allQuoted.find(w => !skipTokens.includes(w.toLowerCase()));
+    if (anchor) {
+      // Detect if number/code suffix expected
+      const hasNumber = /(?:nomor|angka|kode|aset|number|digit|\d)/.test(text);
+      const hasFraction = /(?:karakter|huruf|kata|word|\\w)/.test(text);
+      const suffix = hasNumber ? '\\d+' : hasFraction ? '\\w+' : '\\S+';
+      // Result is dynamic (auto from match), so empty string = {match}
+      return { keyword: `regex:${anchor} ${suffix}`, type, result: '', priority };
+    }
+  }
+
+  // ── Regex mode: "jika teks cocok pola 'RoU \d+' maka berisi 'RoU Aset'"
+  // Trigger: "cocok pola", "cocok dengan pola", "match pola", "regex", "pola regex"
+  const isRegexMode = /(?:cocok\s+(?:dengan\s+)?pola|match\s+pola|pola\s+regex|regex\s*:?\s*['"\\])/i.test(text);
+  if (isRegexMode) {
+    // Extract pattern from quotes
+    const patternM = original.match(/(?:cocok\s+(?:dengan\s+)?pola|match\s+pola|pola\s+regex|regex)\s*:?\s*["']([^"']+)["']/i);
+    if (patternM) {
+      const pattern = patternM[1].trim();
+      const result = resultMatch ? resultMatch[1].trim() : '';
+      return { keyword: `regex:${pattern}`, type, result, priority };
+    }
+  }
+
   // ── DocNo mode: "jika nomor dokumen / no dok / belegnummer diawali/= X maka berisi Y"
   const docnoM = original.match(
     /(?:nomor\s+dokumen|no\.?\s*dok(?:umen)?|doc(?:ument)?\s*no\.?|belegnummer)\s+(?:diawali|=|starts?\s*with|adalah|berisi|sama\s+dengan)\s+["']?([\w\d\*]+)["']?/i
@@ -1715,7 +1771,7 @@ export default function FluktuasiOIPage() {
                   <textarea
                     value={naturalInput}
                     onChange={(e) => setNaturalInput(e.target.value)}
-                    placeholder={'Contoh 1 (teks):\nJika ada text "Sindikasi SLL" maka klasifikasi berisi "Sindikasi SLL"\n\nContoh 2 (nomor dokumen):\nJika nomor dokumen diawali 18 maka klasifikasi berisi "Tag. Klaim Asuransi"\n\nContoh 3 (kolom bebas):\nJika kolom Cost Center diawali 0001 maka klasifikasi berisi "Denda Keterlambatan"\n\nContoh 4 (remark, priority):\nJika ada text "Bunga" maka remark berisi "Beban Bunga" priority 5'}
+                    placeholder={'Contoh teks biasa:\nJika ada text "Sindikasi SLL" maka klasifikasi berisi "Sindikasi SLL"\n\nContoh NOT (negatif):\nJika tidak ada kata "K3" atau "SLA" maka klasifikasi berisi "Denda Keterlambatan"\n\nContoh regex (pola tetap):\nJika teks cocok pola "RoU \\d+" maka klasifikasi berisi "RoU Aset"\n\nContoh regex (ekstrak otomatis):\nBy kolom Text, diambil dari kata "RoU" dan nomor aset\n  → hasil otomatis diambil dari Excel, misal: RoU 380000000077\n\nContoh nomor dokumen:\nJika nomor dokumen diawali 18 maka klasifikasi berisi "Tag. Klaim Asuransi"\n\nContoh kolom bebas:\nJika kolom Cost Center diawali 0001 maka klasifikasi berisi "Biaya"\n\nTambah remark / priority 5 sesuai kebutuhan'}
                     rows={4}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition font-mono text-sm"
                   />
@@ -1723,6 +1779,9 @@ export default function FluktuasiOIPage() {
                     <p className="text-xs text-blue-700 font-semibold mb-1">Tip Format:</p>
                     <ul className="text-xs text-blue-600 space-y-0.5">
                       <li>• Teks: jika ada text &quot;X&quot; maka klasifikasi berisi &quot;Y&quot;</li>
+                      <li>• NOT: jika tidak ada kata &quot;K3&quot; atau &quot;SLA&quot; maka berisi &quot;Y&quot;</li>
+                      <li>• Regex pola: jika teks cocok pola &quot;RoU \d+&quot; maka berisi &quot;RoU Aset&quot;</li>
+                      <li>• Ekstrak otomatis: diambil dari kata &quot;RoU&quot; dan nomor aset → hasil dari Excel</li>
                       <li>• Nomor dok: jika nomor dokumen diawali 18 maka berisi &quot;Y&quot;</li>
                       <li>• Kolom bebas: jika kolom Account diawali 18 maka berisi &quot;Y&quot;</li>
                       <li>• Tambah: remark / priority 10</li>
@@ -1748,14 +1807,27 @@ export default function FluktuasiOIPage() {
                           </div>
                         );
                       }
+                      const isRegexKw = parsed.keyword.toLowerCase().startsWith('regex:');
+                      const isExtractKw = isRegexKw && !parsed.result;
                       return (
                         <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
                           <p className="text-xs font-semibold text-green-800 mb-2">Terdeteksi:</p>
                           <div className="space-y-1 text-xs text-green-700">
-                            <div><span className="font-semibold">Keyword:</span> {parsed.keyword}</div>
+                            <div><span className="font-semibold">Keyword:</span> <code className="bg-green-100 px-1 rounded">{parsed.keyword}</code></div>
                             <div><span className="font-semibold">Type:</span> {parsed.type}</div>
-                            <div><span className="font-semibold">Result:</span> {parsed.result}</div>
+                            <div>
+                              <span className="font-semibold">Result:</span>{' '}
+                              {isExtractKw
+                                ? <span className="italic text-green-600">&#123;match&#125; — otomatis diambil dari teks Excel yang cocok</span>
+                                : parsed.result || <span className="italic text-green-500">kosong</span>
+                              }
+                            </div>
                             <div><span className="font-semibold">Priority:</span> {parsed.priority}</div>
+                            {isExtractKw && (
+                              <div className="mt-1.5 pt-1.5 border-t border-green-200 text-green-600">
+                                Contoh: jika teks Excel berisi &quot;RoU 380000000077&quot;, maka Klasifikasi = &quot;RoU 380000000077&quot;
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
