@@ -247,6 +247,13 @@ export default function MonitoringAccrualPage() {
   const [openJurnalItem, setOpenJurnalItem] = useState<Accrual | null>(null);
   // State untuk dropdown jurnal per kode akun
   const [openKodeAkunDropdown, setOpenKodeAkunDropdown] = useState<string | null>(null);
+  // Portal dropdown untuk jurnal group cost element (agar tidak terclip overflow-hidden)
+  const [openGroupDropdown, setOpenGroupDropdown] = useState<{
+    key: string;
+    items: RealisasiData[];
+    accrualItem: Accrual;
+    rect: { top: number; right: number };
+  } | null>(null);
 
   const closeJurnalDropdown = useCallback(() => {
     setOpenJurnalRect(null);
@@ -2403,7 +2410,19 @@ export default function MonitoringAccrualPage() {
     setCostCenterForm({ costCenter: '', kdAkunBiaya: '', amount: '', keterangan: '' });
     try {
       const res = await fetch(`/api/accrual/periode-costcenter?periodeId=${periode.id}`);
-      if (res.ok) setCostCenterData(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setCostCenterData(data);
+        // Jika belum ada rincian, auto-isi form dari data accrual induk
+        if (data.length === 0 && Math.abs(periode.amountAccrual) > 0) {
+          setCostCenterForm({
+            costCenter: accrual.costCenter || '',
+            kdAkunBiaya: accrual.kdAkunBiaya || '',
+            amount: Math.abs(periode.amountAccrual).toString(),
+            keterangan: accrual.deskripsi || '',
+          });
+        }
+      }
     } catch (error) {
       console.error('Error fetching cost center data:', error);
     } finally {
@@ -4156,10 +4175,12 @@ export default function MonitoringAccrualPage() {
                                   <div className="relative">
                                     <button
                                       onClick={(e) => {
-                                        e.stopPropagation(); // Prevent expand/collapse
-                                        const dropdown = document.getElementById(`jurnal-group-dropdown-${costElement}`);
-                                        if (dropdown) {
-                                          dropdown.classList.toggle('hidden');
+                                        e.stopPropagation();
+                                        if (openGroupDropdown?.key === costElement) {
+                                          setOpenGroupDropdown(null);
+                                        } else {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          setOpenGroupDropdown({ key: costElement, items, accrualItem: currentAccrualItem!, rect: { top: rect.bottom, right: window.innerWidth - rect.right } });
                                         }
                                       }}
                                       className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded transition-colors flex items-center gap-1 shadow-sm"
@@ -4169,33 +4190,6 @@ export default function MonitoringAccrualPage() {
                                       <span className="font-medium">Download Jurnal</span>
                                       <ChevronDown size={12} />
                                     </button>
-                                    <div
-                                      id={`jurnal-group-dropdown-${costElement}`}
-                                      className="hidden absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-20"
-                                    >
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerCostElementGroup(items, currentAccrualItem!, costElement, ht, lt));
-                                          document.getElementById(`jurnal-group-dropdown-${costElement}`)?.classList.add('hidden');
-                                        }}
-                                        className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors rounded-t-lg"
-                                      >
-                                        <div className="font-medium">Download Excel</div>
-                                        <div className="text-[10px] text-gray-500">{items.length} transaksi</div>
-                                      </button>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerCostElementGroupTxt(items, currentAccrualItem!, costElement, ht, lt));
-                                          document.getElementById(`jurnal-group-dropdown-${costElement}`)?.classList.add('hidden');
-                                        }}
-                                        className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors rounded-b-lg"
-                                      >
-                                        <div className="font-medium">Download TXT</div>
-                                        <div className="text-[10px] text-gray-500">{items.length} transaksi</div>
-                                      </button>
-                                    </div>
                                   </div>
                                 )}
                                 <div className="text-right">
@@ -4555,8 +4549,14 @@ export default function MonitoringAccrualPage() {
                     <p className="text-gray-500 text-sm mt-2">Memuat rincian...</p>
                   </div>
                 ) : costCenterData.length === 0 ? (
-                  <div className="p-8 text-center text-gray-500 text-sm">
-                    Belum ada rincian untuk periode ini
+                  <div className="p-6 text-center">
+                    <p className="text-sm text-gray-500 mb-3">Belum ada rincian untuk periode ini</p>
+                    {costCenterModalPeriode && Math.abs(costCenterModalPeriode.amountAccrual) > 0 && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-700 text-left">
+                        <p className="font-semibold mb-1">💡 Form di atas sudah diisi otomatis dari data accrual periode ini ({formatCurrency(Math.abs(costCenterModalPeriode.amountAccrual))}).</p>
+                        <p>Scroll ke atas lalu klik <strong>Simpan Rincian</strong> untuk menambahkannya, atau ubah sesuai kebutuhan.</p>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -4849,6 +4849,37 @@ export default function MonitoringAccrualPage() {
             </div>
           </div>
         </div>
+      )}
+      {/* Portal dropdown Cost Element Jurnal (agar tidak terclip overflow-hidden modal) */}
+      {openGroupDropdown && (
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setOpenGroupDropdown(null)} />
+          <div
+            className="fixed z-[9999] w-44 bg-white border border-gray-200 rounded-lg shadow-xl"
+            style={{ top: openGroupDropdown.rect.top + 4, right: openGroupDropdown.rect.right }}
+          >
+            <button
+              onClick={() => {
+                promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerCostElementGroup(openGroupDropdown.items, openGroupDropdown.accrualItem, openGroupDropdown.key, ht, lt));
+                setOpenGroupDropdown(null);
+              }}
+              className="block w-full text-left px-3 py-2.5 text-xs text-gray-700 hover:bg-green-50 transition-colors rounded-t-lg border-b border-gray-100"
+            >
+              <div className="font-medium">Download Excel</div>
+              <div className="text-[10px] text-gray-500">{openGroupDropdown.items.length} transaksi</div>
+            </button>
+            <button
+              onClick={() => {
+                promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerCostElementGroupTxt(openGroupDropdown.items, openGroupDropdown.accrualItem, openGroupDropdown.key, ht, lt));
+                setOpenGroupDropdown(null);
+              }}
+              className="block w-full text-left px-3 py-2.5 text-xs text-gray-700 hover:bg-green-50 transition-colors rounded-b-lg"
+            >
+              <div className="font-medium">Download TXT</div>
+              <div className="text-[10px] text-gray-500">{openGroupDropdown.items.length} transaksi</div>
+            </button>
+          </div>
+        </>
       )}
       {/* Modal Header Text dan Line Text untuk Jurnal Realisasi */}
       {showJurnalHeaderModal && (
