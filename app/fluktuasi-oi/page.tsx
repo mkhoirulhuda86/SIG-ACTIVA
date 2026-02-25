@@ -1530,194 +1530,191 @@ export default function FluktuasiOIPage() {
           )}
 
           {/* ── Rekap Sheet Table ─────────────────────────────────────────── */}
-          {rekapSheetData && (
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between"
-                style={{ background: 'linear-gradient(to right,#1F3864,#2e4d8a)' }}>
-                <div>
-                  <h3 className="text-sm sm:text-base font-bold text-white">
-                    Rekap — {rekapSheetData.sheetName}
-                  </h3>
-                  <p className="text-xs mt-0.5" style={{ color: '#c7d4f0' }}>
-                    {rekapSheetData.rows.filter((r) => r.type === 'detail').length} akun detail
-                    &ensp;·&ensp;
-                    <span style={{ color: '#fca5a5' }}>6 kolom tambahan sistem</span>
-                    &ensp;(GAP MoM · MoM% · Reason MoM · GAP YoY · YoY% · Reason YoY)
-                  </p>
+          {rekapSheetData && (() => {
+            const { accountColIdx, amountCols, momCurrIdx, momPrevIdx, yoyCurrIdx, yoyPrevIdx } = rekapSheetData;
+            // Find description column: first non-account, non-amount column
+            const amtColSet = new Set(amountCols.map(ac => ac.colIdx));
+            const descColIdx = rekapSheetData.headers.findIndex((_, ci) => ci !== accountColIdx && !amtColSet.has(ci));
+            const currAmt  = amountCols[momCurrIdx];
+            const prevAmt  = amountCols[momPrevIdx];
+            const yoyCurr  = amountCols[yoyCurrIdx];
+            const yoyPrev  = amountCols[yoyPrevIdx];
+            const currLabel = currAmt?.dateLabel || currAmt?.label || 'Total';
+            const currYear  = currAmt?.yearLabel || '';
+            const prevLabel = prevAmt?.dateLabel || prevAmt?.label || '';
+            const yoyLabel  = yoyPrev?.dateLabel || yoyPrev?.label || '';
+            const hasData   = (row: RekapSheetRow) => row.values.some(v => v !== '' && v !== null);
+
+            return (
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                {/* Header bar */}
+                <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between"
+                  style={{ background: 'linear-gradient(to right,#1F3864,#2e4d8a)' }}>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-white">
+                      Rekap — {rekapSheetData.sheetName}
+                    </h3>
+                    <p className="text-xs mt-0.5" style={{ color: '#c7d4f0' }}>
+                      {rekapSheetData.rows.filter((r) => r.type === 'detail').length} akun detail
+                      &ensp;·&ensp;
+                      <span style={{ color: '#fca5a5' }}>6 kolom tambahan sistem</span>
+                      &ensp;(GAP MoM · MoM% · Reason MoM · GAP YoY · YoY% · Reason YoY)
+                    </p>
+                  </div>
+                </div>
+
+                {rekapTotalPages > 1 && (
+                  <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between text-xs text-gray-500">
+                    <span><span className="font-semibold text-gray-800">{rekapDisplayRows.length}</span> baris</span>
+                    <span className="flex items-center gap-1">
+                      <button onClick={() => setRekapPage((p) => Math.max(0, p - 1))} disabled={rekapPage === 0}
+                        className="px-2 py-0.5 rounded border text-gray-600 hover:bg-gray-100 disabled:opacity-30">‹</button>
+                      <span>Hal {rekapPage + 1}/{rekapTotalPages}</span>
+                      <button onClick={() => setRekapPage((p) => Math.min(rekapTotalPages - 1, p + 1))} disabled={rekapPage === rekapTotalPages - 1}
+                        className="px-2 py-0.5 rounded border text-gray-600 hover:bg-gray-100 disabled:opacity-30">›</button>
+                    </span>
+                  </div>
+                )}
+
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-[11px] border-collapse">
+                    <thead>
+                      {/* ── Row 1: group labels ── */}
+                      <tr>
+                        {/* Account */}
+                        <th className="px-3 py-1 text-center text-white text-[10px] font-bold whitespace-nowrap"
+                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}></th>
+                        {/* Description */}
+                        {descColIdx >= 0 && (
+                          <th className="px-3 py-1 text-center text-white text-[10px] font-bold italic whitespace-nowrap"
+                            style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>
+                            Description
+                          </th>
+                        )}
+                        {/* Current amount year */}
+                        <th className="px-3 py-1 text-center text-white text-[10px] font-bold whitespace-nowrap"
+                          style={{ backgroundColor: currAmt ? amtColBg(currAmt) : '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>
+                          {currYear}
+                        </th>
+                        {/* MoM group x2 */}
+                        <th className="px-3 py-1 text-center text-black text-[10px] font-bold whitespace-nowrap"
+                          style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM</th>
+                        <th className="px-3 py-1 text-center text-black text-[10px] font-bold whitespace-nowrap"
+                          style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM</th>
+                        {/* Reason MoM */}
+                        <th className="px-3 py-1 text-center text-white text-[10px] font-bold whitespace-nowrap"
+                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>Reason MoM</th>
+                        {/* YoY group x2 */}
+                        <th className="px-3 py-1 text-center text-black text-[10px] font-bold whitespace-nowrap"
+                          style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY</th>
+                        <th className="px-3 py-1 text-center text-black text-[10px] font-bold whitespace-nowrap"
+                          style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY</th>
+                        {/* Reason YoY */}
+                        <th className="px-3 py-1 text-center text-white text-[10px] font-bold whitespace-nowrap"
+                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>Reason YoY</th>
+                      </tr>
+                      {/* ── Row 2: column sub-labels ── */}
+                      <tr>
+                        <th className="px-3 py-1.5 text-center text-white text-[10px] font-semibold whitespace-nowrap"
+                          style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)' }}>Account</th>
+                        {descColIdx >= 0 && (
+                          <th className="px-3 py-1.5 text-center text-white text-[10px] font-semibold italic"
+                            style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)', minWidth: '200px' }}>
+                            {rekapSheetData.originalHeaders?.[descColIdx] || rekapSheetData.headers[descColIdx]}
+                          </th>
+                        )}
+                        <th className="px-3 py-1.5 text-center text-white text-[10px] font-semibold whitespace-nowrap"
+                          style={{ backgroundColor: currAmt ? amtColBg(currAmt) : '#244185', border: '1px solid rgba(255,255,255,0.15)' }}>
+                          {currLabel}
+                        </th>
+                        <th className="px-3 py-1.5 text-center text-black text-[10px] font-semibold whitespace-nowrap"
+                          style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>GAP<br/>MoM</th>
+                        <th className="px-3 py-1.5 text-center text-black text-[10px] font-semibold whitespace-nowrap"
+                          style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM<br/>%</th>
+                        <th className="px-3 py-1.5 text-center text-white text-[10px] font-semibold"
+                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '260px' }}>
+                          vs {prevLabel}
+                        </th>
+                        <th className="px-3 py-1.5 text-center text-black text-[10px] font-semibold whitespace-nowrap"
+                          style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>GAP<br/>YoY</th>
+                        <th className="px-3 py-1.5 text-center text-black text-[10px] font-semibold whitespace-nowrap"
+                          style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY<br/>%</th>
+                        <th className="px-3 py-1.5 text-center text-white text-[10px] font-semibold"
+                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '260px' }}>
+                          vs {yoyLabel}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rekapPageRows.map((row, ri) => {
+                        const globalRi = rekapPage * REKAP_PAGE_SIZE + ri;
+                        const s = rekapRowStyle(row.type, globalRi);
+                        const isSpecial = row.type === 'category' || row.type === 'subtotal';
+                        const gapColor = (v: number) =>
+                          isSpecial ? '#fff' : v < 0 ? '#b91c1c' : v > 0 ? '#15803d' : '#374151';
+                        const rowHasData = hasData(row);
+                        const acctVal = String(row.values[accountColIdx] ?? '');
+                        const descVal = descColIdx >= 0 ? String(row.values[descColIdx] ?? '') : '';
+                        const currVal = currAmt ? (row.values[currAmt.colIdx] !== '' && row.values[currAmt.colIdx] !== null
+                          ? fmtRp(parseNum(row.values[currAmt.colIdx])) : '') : '';
+                        return (
+                          <tr key={ri}>
+                            {/* Account */}
+                            <td className="px-3 py-1.5 whitespace-nowrap font-mono"
+                              style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}` }}>
+                              {acctVal}
+                            </td>
+                            {/* Description */}
+                            {descColIdx >= 0 && (
+                              <td className="px-3 py-1.5"
+                                style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}`, minWidth: '200px' }}>
+                                {descVal}
+                              </td>
+                            )}
+                            {/* Current amount */}
+                            <td className="px-3 py-1.5 whitespace-nowrap text-right"
+                              style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}` }}>
+                              {currVal}
+                            </td>
+                            {/* GAP MoM */}
+                            <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
+                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0', color: gapColor(row.gapMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
+                              {rowHasData ? fmtRp(row.gapMoM) : ''}
+                            </td>
+                            {/* MoM % */}
+                            <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
+                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0', color: gapColor(row.pctMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
+                              {rowHasData ? fmtPct(row.pctMoM) : ''}
+                            </td>
+                            {/* Reason MoM */}
+                            <td className="px-3 py-1.5"
+                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#f0f3ff' : '#e8ecff', color: isSpecial ? '#fff' : '#374151', border: '1px solid #c7d2fe', minWidth: '260px', fontStyle: !isSpecial && !row.reasonMoM ? 'italic' : 'normal', fontWeight: s.weight }}>
+                              {isSpecial ? '' : (row.reasonMoM || '—')}
+                            </td>
+                            {/* GAP YoY */}
+                            <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
+                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0', color: gapColor(row.gapYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
+                              {rowHasData ? fmtRp(row.gapYoY) : ''}
+                            </td>
+                            {/* YoY % */}
+                            <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
+                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0', color: gapColor(row.pctYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
+                              {rowHasData ? fmtPct(row.pctYoY) : ''}
+                            </td>
+                            {/* Reason YoY */}
+                            <td className="px-3 py-1.5"
+                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#f0f3ff' : '#e8ecff', color: isSpecial ? '#fff' : '#374151', border: '1px solid #c7d2fe', minWidth: '260px', fontStyle: !isSpecial && !row.reasonYoY ? 'italic' : 'normal', fontWeight: s.weight }}>
+                              {isSpecial ? '' : (row.reasonYoY || '—')}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-
-                  {rekapTotalPages > 1 && (
-                    <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between text-xs text-gray-500">
-                      <span><span className="font-semibold text-gray-800">{rekapDisplayRows.length}</span> baris</span>
-                      <span className="flex items-center gap-1">
-                        <button onClick={() => setRekapPage((p) => Math.max(0, p - 1))} disabled={rekapPage === 0}
-                          className="px-2 py-0.5 rounded border text-gray-600 hover:bg-gray-100 disabled:opacity-30">‹</button>
-                        <span>Hal {rekapPage + 1}/{rekapTotalPages}</span>
-                        <button onClick={() => setRekapPage((p) => Math.min(rekapTotalPages - 1, p + 1))} disabled={rekapPage === rekapTotalPages - 1}
-                          className="px-2 py-0.5 rounded border text-gray-600 hover:bg-gray-100 disabled:opacity-30">›</button>
-                      </span>
-                    </div>
-                  )}
-                  <div className="overflow-x-auto">
-                <table className="min-w-full text-[11px] border-collapse">
-                  <thead>
-                    {/* ── Row 1: year labels + group labels ── */}
-                    <tr>
-                      {rekapSheetData.headers.map((_, ci) => {
-                        const ac = amtColMap.get(ci);
-                        const bg = ac ? amtColBg(ac) : '#1F3864';
-                        const label = ac ? ac.yearLabel : '';
-                        return (
-                          <th key={ci} className="px-3 py-1 text-center text-white text-[10px] font-bold whitespace-nowrap"
-                            style={{ backgroundColor: bg, border: '1px solid rgba(255,255,255,0.15)' }}>
-                            {label}
-                          </th>
-                        );
-                      })}
-                      {/* MoM group */}
-                      <th className="px-3 py-1 text-center text-black text-[10px] font-bold whitespace-nowrap"
-                        style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM</th>
-                      <th className="px-3 py-1 text-center text-black text-[10px] font-bold whitespace-nowrap"
-                        style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM</th>
-                      <th className="px-3 py-1 text-center text-white text-[10px] font-bold whitespace-nowrap"
-                        style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>Reason MoM</th>
-                      {/* YoY group */}
-                      <th className="px-3 py-1 text-center text-black text-[10px] font-bold whitespace-nowrap"
-                        style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY</th>
-                      <th className="px-3 py-1 text-center text-black text-[10px] font-bold whitespace-nowrap"
-                        style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY</th>
-                      <th className="px-3 py-1 text-center text-white text-[10px] font-bold whitespace-nowrap"
-                        style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>Reason YoY</th>
-                    </tr>
-                    {/* ── Row 2: date labels + sub-labels ── */}
-                    <tr>
-                      {rekapSheetData.headers.map((h, ci) => {
-                        const ac = amtColMap.get(ci);
-                        const bg = ac ? amtColBg(ac) : '#244185';
-                        const label = ac ? ac.dateLabel : (rekapSheetData.originalHeaders?.[ci] ?? h);
-                        return (
-                          <th key={ci} className="px-3 py-1.5 text-center text-white text-[10px] font-semibold whitespace-nowrap"
-                            style={{ backgroundColor: bg, border: '1px solid rgba(255,255,255,0.15)' }}>
-                            {label}
-                          </th>
-                        );
-                      })}
-                      <th className="px-3 py-1.5 text-center text-black text-[10px] font-semibold whitespace-nowrap"
-                        style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>GAP<br/>MoM</th>
-                      <th className="px-3 py-1.5 text-center text-black text-[10px] font-semibold whitespace-nowrap"
-                        style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM<br/>%</th>
-                      <th className="px-3 py-1.5 text-center text-white text-[10px] font-semibold"
-                        style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '220px' }}></th>
-                      <th className="px-3 py-1.5 text-center text-black text-[10px] font-semibold whitespace-nowrap"
-                        style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>GAP<br/>YoY</th>
-                      <th className="px-3 py-1.5 text-center text-black text-[10px] font-semibold whitespace-nowrap"
-                        style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY<br/>%</th>
-                      <th className="px-3 py-1.5 text-center text-white text-[10px] font-semibold"
-                        style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '220px' }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rekapPageRows.map((row, ri) => {
-                      const globalRi = rekapPage * REKAP_PAGE_SIZE + ri;
-                      const s = rekapRowStyle(row.type, globalRi);
-                      const isSpecial = row.type === 'category' || row.type === 'subtotal';
-                      const gapColor = (v: number) =>
-                        isSpecial ? '#fff' : v < 0 ? '#b91c1c' : v > 0 ? '#15803d' : '#374151';
-                      return (
-                        <tr key={ri}>
-                          {rekapSheetData.headers.map((_, ci) => {
-                            const ac = amtColMap.get(ci);
-                            const isAmt = !!ac;
-                            return (
-                              <td key={ci} className="px-3 py-1.5 whitespace-nowrap"
-                                style={{
-                                  backgroundColor: s.bg,
-                                  color: s.text,
-                                  fontWeight: s.weight,
-                                  border: `1px solid ${s.border}`,
-                                  textAlign: isAmt ? 'right' : 'left',
-                                }}>
-                                {isAmt
-                                  ? (row.values[ci] !== '' && row.values[ci] !== null
-                                      ? fmtRp(parseNum(row.values[ci]))
-                                      : '')
-                                  : String(row.values[ci] ?? '')}
-                              </td>
-                            );
-                          })}
-                          {/* GAP MoM */}
-                          <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                            style={{
-                              backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
-                              color: gapColor(row.gapMoM),
-                              fontWeight: s.weight,
-                              border: '1px solid #fde68a',
-                            }}>
-                            {row.values.some((v) => v !== '') ? fmtRp(row.gapMoM) : ''}
-                          </td>
-                          {/* MoM % */}
-                          <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                            style={{
-                              backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
-                              color: gapColor(row.pctMoM),
-                              fontWeight: s.weight,
-                              border: '1px solid #fde68a',
-                            }}>
-                            {row.values.some((v) => v !== '') ? fmtPct(row.pctMoM) : ''}
-                          </td>
-                          {/* Reason MoM */}
-                          <td className="px-3 py-1.5"
-                            style={{
-                              backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#f0f3ff' : '#e8ecff',
-                              color: isSpecial ? '#fff' : '#374151',
-                              border: '1px solid #c7d2fe',
-                              minWidth: '220px',
-                              fontStyle: !isSpecial && !row.reasonMoM ? 'italic' : 'normal',
-                              fontWeight: s.weight,
-                            }}>
-                            {isSpecial ? '' : (row.reasonMoM || '—')}
-                          </td>
-                          {/* GAP YoY */}
-                          <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                            style={{
-                              backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
-                              color: gapColor(row.gapYoY),
-                              fontWeight: s.weight,
-                              border: '1px solid #fde68a',
-                            }}>
-                            {row.values.some((v) => v !== '') ? fmtRp(row.gapYoY) : ''}
-                          </td>
-                          {/* YoY % */}
-                          <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                            style={{
-                              backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
-                              color: gapColor(row.pctYoY),
-                              fontWeight: s.weight,
-                              border: '1px solid #fde68a',
-                            }}>
-                            {row.values.some((v) => v !== '') ? fmtPct(row.pctYoY) : ''}
-                          </td>
-                          {/* Reason YoY */}
-                          <td className="px-3 py-1.5"
-                            style={{
-                              backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#f0f3ff' : '#e8ecff',
-                              color: isSpecial ? '#fff' : '#374151',
-                              border: '1px solid #c7d2fe',
-                              minWidth: '220px',
-                              fontStyle: !isSpecial && !row.reasonYoY ? 'italic' : 'normal',
-                              fontWeight: s.weight,
-                            }}>
-                            {isSpecial ? '' : (row.reasonYoY || '—')}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
         </div>
       </div>
