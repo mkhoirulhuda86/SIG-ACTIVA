@@ -101,23 +101,41 @@ model Accrual {
 }
 
 model AccrualPeriode {
-  id             Int                 @id @default(autoincrement())
+  id             Int                       @id @default(autoincrement())
   accrualId      Int
-  accrual        Accrual             @relation(fields: [accrualId], references: [id], onDelete: Cascade)
+  accrual        Accrual                   @relation(fields: [accrualId], references: [id], onDelete: Cascade)
   
-  periodeKe      Int                 // 1, 2, 3, dst
-  bulan          String              // "Jan 2026", "Feb 2026"
-  tahun          Int                 // 2026
-  amountAccrual  Float               // Nilai accrual periode ini
+  periodeKe      Int                       // 1, 2, 3, dst
+  bulan          String                    // "Jan 2026", "Feb 2026"
+  tahun          Int                       // 2026
+  amountAccrual  Float                     // Nilai accrual periode ini (auto-sum dari costcenters jika ada)
   
-  realisasis     AccrualRealisasi[]  // Relasi ke realisasi
+  realisasis     AccrualRealisasi[]        // Relasi ke realisasi
+  costcenters    AccrualPeriodeCostCenter[] // Rincian accrual per cost center
   
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
 
   @@map("accrual_periodes")
   @@index([accrualId])
   @@index([bulan, tahun])
+}
+
+model AccrualPeriodeCostCenter {
+  id               Int            @id @default(autoincrement())
+  accrualPeriodeId Int
+  accrualPeriode   AccrualPeriode @relation(fields: [accrualPeriodeId], references: [id], onDelete: Cascade)
+
+  costCenter       String?
+  kdAkunBiaya      String?
+  amount           Float
+  keterangan       String?
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@map("accrual_periode_costcenters")
+  @@index([accrualPeriodeId])
 }
 
 model AccrualRealisasi {

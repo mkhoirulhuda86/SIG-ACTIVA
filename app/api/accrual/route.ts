@@ -66,6 +66,16 @@ export async function GET(request: NextRequest) {
                 kdAkunBiaya: true,
                 costCenter: true
               }
+            },
+            costcenters: {
+              select: {
+                id: true,
+                costCenter: true,
+                kdAkunBiaya: true,
+                amount: true,
+                keterangan: true
+              },
+              orderBy: { createdAt: 'asc' }
             }
           },
           orderBy: {

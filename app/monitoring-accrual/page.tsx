@@ -40,6 +40,15 @@ interface AccrualPeriode {
   totalRealisasi?: number;
   saldo?: number;
   realisasis?: RealisasiData[];
+  costcenters?: CostCenterEntry[];
+}
+
+interface CostCenterEntry {
+  id: number;
+  costCenter?: string;
+  kdAkunBiaya?: string;
+  amount: number;
+  keterangan?: string;
 }
 
 interface Accrual {
@@ -216,6 +225,16 @@ export default function MonitoringAccrualPage() {
   const [expandedCostElements, setExpandedCostElements] = useState<Set<string>>(new Set());
   const [selectedRealisasiIds, setSelectedRealisasiIds] = useState<Set<number>>(new Set());
   const [deletingBulkRealisasi, setDeletingBulkRealisasi] = useState(false);
+  // State untuk modal Rincian Accrual per Cost Center
+  const [showCostCenterModal, setShowCostCenterModal] = useState(false);
+  const [costCenterModalPeriode, setCostCenterModalPeriode] = useState<AccrualPeriode | null>(null);
+  const [costCenterData, setCostCenterData] = useState<CostCenterEntry[]>([]);
+  const [loadingCostCenterData, setLoadingCostCenterData] = useState(false);
+  const [costCenterForm, setCostCenterForm] = useState({ costCenter: '', kdAkunBiaya: '', amount: '', keterangan: '' });
+  const [editingCostCenterId, setEditingCostCenterId] = useState<number | null>(null);
+  const [submittingCostCenter, setSubmittingCostCenter] = useState(false);
+  const [selectedCostCenterIds, setSelectedCostCenterIds] = useState<Set<number>>(new Set());
+  const [deletingBulkCostCenter, setDeletingBulkCostCenter] = useState(false);
   // Portal dropdown Jurnal SAP (agar tidak tertutup header tabel)
   const [openJurnalRect, setOpenJurnalRect] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null);
   const [openJurnalItem, setOpenJurnalItem] = useState<Accrual | null>(null);
@@ -2113,10 +2132,7 @@ export default function MonitoringAccrualPage() {
         throw new Error(errorData.details || (isEditing ? 'Failed to update accrual' : 'Failed to create accrual'));
       }
 
-      // Refresh data first
-      await fetchAccrualData();
-      
-      // Reset form and close modal
+      // Reset form dan tutup modal lebih dulu, lalu alert, lalu background refresh
       setFormData({
         companyCode: '',
         noPo: '',
@@ -2137,8 +2153,12 @@ export default function MonitoringAccrualPage() {
       });
       setEditingId(null);
       setShowModal(false);
-      
+
       alert(isEditing ? 'Data accrual berhasil diupdate!' : 'Data accrual berhasil ditambahkan!');
+
+      // Background refresh tanpa full-page loading spinner
+      const accrualRes = await fetch('/api/accrual');
+      if (accrualRes.ok) setAccrualData(await accrualRes.json());
     } catch (error) {
       console.error('Error creating accrual:', error);
       alert('Gagal menambahkan data accrual. Silakan coba lagi.');
@@ -2431,6 +2451,171 @@ export default function MonitoringAccrualPage() {
     }
   };
 
+  // ── Rincian Accrual per Cost Center ──────────────────────────────────────
+
+  const handleOpenCostCenterModal = async (periode: AccrualPeriode) => {
+    setCostCenterModalPeriode(periode);
+    setShowCostCenterModal(true);
+    setLoadingCostCenterData(true);
+    setCostCenterData([]);
+    setEditingCostCenterId(null);
+    setSelectedCostCenterIds(new Set());
+    setCostCenterForm({ costCenter: '', kdAkunBiaya: '', amount: '', keterangan: '' });
+    try {
+      const res = await fetch(`/api/accrual/periode-costcenter?periodeId=${periode.id}`);
+      if (res.ok) setCostCenterData(await res.json());
+    } catch (error) {
+      console.error('Error fetching cost center data:', error);
+    } finally {
+      setLoadingCostCenterData(false);
+    }
+  };
+
+  const handleCostCenterInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setCostCenterForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleCostCenterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!costCenterModalPeriode) return;
+    setSubmittingCostCenter(true);
+    try {
+      const isEditing = editingCostCenterId !== null;
+      const url = isEditing
+        ? `/api/accrual/periode-costcenter?id=${editingCostCenterId}`
+        : '/api/accrual/periode-costcenter';
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accrualPeriodeId: costCenterModalPeriode.id,
+          costCenter: costCenterForm.costCenter || null,
+          kdAkunBiaya: costCenterForm.kdAkunBiaya || null,
+          amount: parseFloat(costCenterForm.amount),
+          keterangan: costCenterForm.keterangan || null,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to save entry');
+
+      setCostCenterForm({ costCenter: '', kdAkunBiaya: '', amount: '', keterangan: '' });
+      setEditingCostCenterId(null);
+      alert(isEditing ? 'Rincian berhasil diupdate!' : 'Rincian berhasil ditambahkan!');
+
+      // Refresh list + accrual data in parallel
+      const periodeId = costCenterModalPeriode.id;
+      const [listRes, accrualRes] = await Promise.all([
+        fetch(`/api/accrual/periode-costcenter?periodeId=${periodeId}`),
+        fetch('/api/accrual'),
+      ]);
+      if (listRes.ok) setCostCenterData(await listRes.json());
+      if (accrualRes.ok) {
+        const accruals = await accrualRes.json();
+        setAccrualData(accruals);
+        // Update modal periode with fresh amountAccrual
+        const updatedAccrual = accruals.find((a: Accrual) => a.periodes?.some(p => p.id === periodeId));
+        if (updatedAccrual) {
+          const updatedPeriode = updatedAccrual.periodes?.find((p: AccrualPeriode) => p.id === periodeId);
+          if (updatedPeriode) setCostCenterModalPeriode(updatedPeriode);
+        }
+      }
+    } catch (error) {
+      console.error('Error saving cost center entry:', error);
+      alert('Gagal menyimpan rincian');
+    } finally {
+      setSubmittingCostCenter(false);
+    }
+  };
+
+  const handleDeleteCostCenter = async (id: number) => {
+    if (!confirm('Hapus rincian ini?')) return;
+    try {
+      const res = await fetch(`/api/accrual/periode-costcenter?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete');
+
+      setCostCenterData(prev => prev.filter(c => c.id !== id));
+      alert('Rincian berhasil dihapus!');
+
+      const periodeId = costCenterModalPeriode?.id;
+      const [listRes, accrualRes] = await Promise.all([
+        periodeId ? fetch(`/api/accrual/periode-costcenter?periodeId=${periodeId}`) : Promise.resolve(null),
+        fetch('/api/accrual'),
+      ]);
+      if (listRes?.ok) setCostCenterData(await listRes.json());
+      if (accrualRes.ok) {
+        const accruals = await accrualRes.json();
+        setAccrualData(accruals);
+        if (periodeId) {
+          const updatedAccrual = accruals.find((a: Accrual) => a.periodes?.some(p => p.id === periodeId));
+          const updatedPeriode = updatedAccrual?.periodes?.find((p: AccrualPeriode) => p.id === periodeId);
+          if (updatedPeriode) setCostCenterModalPeriode(updatedPeriode);
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting cost center entry:', error);
+      alert('Gagal menghapus rincian');
+    }
+  };
+
+  const handleToggleCostCenterSelection = (id: number) => {
+    setSelectedCostCenterIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAllCostCenter = () => {
+    if (selectedCostCenterIds.size === costCenterData.length) {
+      setSelectedCostCenterIds(new Set());
+    } else {
+      setSelectedCostCenterIds(new Set(costCenterData.map(c => c.id)));
+    }
+  };
+
+  const handleBulkDeleteCostCenter = async () => {
+    if (selectedCostCenterIds.size === 0) return;
+    if (!confirm(`Hapus ${selectedCostCenterIds.size} rincian terpilih?`)) return;
+    setDeletingBulkCostCenter(true);
+    try {
+      const ids = Array.from(selectedCostCenterIds);
+      const res = await fetch(`/api/accrual/periode-costcenter?ids=${ids.join(',')}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete');
+      const data = await res.json();
+
+      const deletedSet = new Set(ids);
+      setCostCenterData(prev => prev.filter(c => !deletedSet.has(c.id)));
+      setSelectedCostCenterIds(new Set());
+      alert(`Berhasil menghapus ${data.count ?? ids.length} rincian!`);
+
+      const periodeId = costCenterModalPeriode?.id;
+      const [listRes, accrualRes] = await Promise.all([
+        periodeId ? fetch(`/api/accrual/periode-costcenter?periodeId=${periodeId}`) : Promise.resolve(null),
+        fetch('/api/accrual'),
+      ]);
+      if (listRes?.ok) setCostCenterData(await listRes.json());
+      if (accrualRes.ok) {
+        const accruals = await accrualRes.json();
+        setAccrualData(accruals);
+        if (periodeId) {
+          const updatedAccrual = accruals.find((a: Accrual) => a.periodes?.some(p => p.id === periodeId));
+          const updatedPeriode = updatedAccrual?.periodes?.find((p: AccrualPeriode) => p.id === periodeId);
+          if (updatedPeriode) setCostCenterModalPeriode(updatedPeriode);
+        }
+      }
+    } catch (error) {
+      console.error('Error bulk deleting cost center:', error);
+      alert('Gagal menghapus rincian');
+    } finally {
+      setDeletingBulkCostCenter(false);
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   const handleGlobalExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -2518,9 +2703,6 @@ export default function MonitoringAccrualPage() {
 
       const result = await response.json();
       
-      // Refresh data
-      await fetchAccrualData();
-
       const created = result.createdCount ?? 0;
       const updated = result.updatedCount ?? 0;
       let message = `Import Excel selesai!\n\nBaris diproses: ${result.results.length}`;
@@ -2542,6 +2724,10 @@ export default function MonitoringAccrualPage() {
 
       alert(message);
       setShowImportExcelModal(false);
+
+      // Background refresh tanpa full-page loading spinner
+      const accrualRes = await fetch('/api/accrual');
+      if (accrualRes.ok) setAccrualData(await accrualRes.json());
     } catch (error) {
       console.error('Error importing Excel file:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -2568,11 +2754,13 @@ export default function MonitoringAccrualPage() {
 
       if (!response.ok) throw new Error('Failed to update periode amount');
 
-      // Refresh data
-      await fetchAccrualData();
       setEditingPeriodeId(null);
       setEditPeriodeAmount('');
       alert('Amount periode berhasil diupdate!');
+
+      // Background refresh tanpa full-page loading spinner
+      const accrualRes = await fetch('/api/accrual');
+      if (accrualRes.ok) setAccrualData(await accrualRes.json());
     } catch (error) {
       console.error('Error updating periode amount:', error);
       alert('Gagal mengupdate amount periode');
@@ -3340,18 +3528,15 @@ export default function MonitoringAccrualPage() {
                                                 >
                                                   Download TXT
                                                 </button>
-                                                <div className="border-t border-gray-200 my-1"></div>
-                                                <button
-                                                  onClick={() => {
-                                                    handleDownloadJurnalDetail(undefined, periode.bulan);
-                                                    document.getElementById(`jurnal-dropdown-${item.id}-${periode.id}`)?.classList.add('hidden');
-                                                  }}
-                                                  className="block w-full text-left px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 transition-colors font-medium"
-                                                >
-                                                  Detail per Cost Center
-                                                </button>
                                               </div>
                                             </div>
+                                            <button
+                                              onClick={() => handleOpenCostCenterModal(periode)}
+                                              className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded transition-colors"
+                                              title="Rincian accrual per cost center"
+                                            >
+                                              Rincian Accrual
+                                            </button>
                                             <button
                                               onClick={() => handleOpenRealisasiModal(periode, false)}
                                               className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded transition-colors"
@@ -4198,6 +4383,262 @@ export default function MonitoringAccrualPage() {
                     kdAkunBiaya: '',
                     costCenter: '',
                   });
+                }}
+                className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Rincian Accrual per Cost Center */}
+      {showCostCenterModal && costCenterModalPeriode && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="sticky top-0 bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-5 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h2 className="text-xl font-bold text-white">Rincian Accrual per Cost Center</h2>
+                <p className="text-sm text-amber-100 mt-1">
+                  {costCenterModalPeriode.bulan} - Periode {costCenterModalPeriode.periodeKe}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowCostCenterModal(false);
+                  setCostCenterModalPeriode(null);
+                  setCostCenterData([]);
+                  setEditingCostCenterId(null);
+                  setSelectedCostCenterIds(new Set());
+                  setCostCenterForm({ costCenter: '', kdAkunBiaya: '', amount: '', keterangan: '' });
+                }}
+                className="text-white hover:text-amber-100 transition-colors rounded-full hover:bg-white/10 p-1"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="overflow-y-auto p-6 bg-gray-50 flex-1">
+              {/* Summary */}
+              <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+                <div className="grid grid-cols-2 gap-4 text-center">
+                  <div>
+                    <p className="text-xs text-gray-600 mb-1">Total Amount Accrual</p>
+                    <p className="text-lg font-bold text-amber-700">{formatCurrency(Math.abs(costCenterModalPeriode.amountAccrual))}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">otomatis dari sum rincian</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 mb-1">Jumlah Rincian</p>
+                    <p className="text-lg font-bold text-gray-800">{costCenterData.length} entri</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Form tambah/edit */}
+              <form onSubmit={handleCostCenterSubmit} className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">
+                  {editingCostCenterId ? 'Edit Rincian' : 'Tambah Rincian'}
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Amount <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      name="amount"
+                      value={costCenterForm.amount}
+                      onChange={handleCostCenterInputChange}
+                      required
+                      min="0"
+                      step="0.01"
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm"
+                      placeholder="Masukkan amount"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Cost Center</label>
+                    <input
+                      type="text"
+                      name="costCenter"
+                      value={costCenterForm.costCenter}
+                      onChange={handleCostCenterInputChange}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm"
+                      placeholder="Masukkan cost center"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Kode Akun Biaya</label>
+                    <input
+                      type="text"
+                      name="kdAkunBiaya"
+                      value={costCenterForm.kdAkunBiaya}
+                      onChange={handleCostCenterInputChange}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm"
+                      placeholder="Masukkan kode akun biaya"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Keterangan</label>
+                    <input
+                      type="text"
+                      name="keterangan"
+                      value={costCenterForm.keterangan}
+                      onChange={handleCostCenterInputChange}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm"
+                      placeholder="Keterangan opsional"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <button
+                    type="submit"
+                    disabled={submittingCostCenter}
+                    className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submittingCostCenter ? 'Menyimpan...' : editingCostCenterId ? 'Update Rincian' : 'Simpan Rincian'}
+                  </button>
+                  {editingCostCenterId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingCostCenterId(null);
+                        setCostCenterForm({ costCenter: '', kdAkunBiaya: '', amount: '', keterangan: '' });
+                      }}
+                      className="px-5 py-2.5 border border-gray-300 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Batal
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              {/* Daftar rincian */}
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-sm font-semibold text-gray-700">Daftar Rincian</h3>
+                    {costCenterData.length > 0 && (
+                      <span className="text-xs text-gray-500">({costCenterData.length} data)</span>
+                    )}
+                  </div>
+                  {costCenterData.length > 0 && selectedCostCenterIds.size > 0 && (
+                    <button
+                      onClick={handleBulkDeleteCostCenter}
+                      disabled={deletingBulkCostCenter}
+                      className="text-xs px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                    >
+                      <Trash2 size={12} />
+                      {deletingBulkCostCenter ? 'Menghapus...' : `Hapus (${selectedCostCenterIds.size})`}
+                    </button>
+                  )}
+                </div>
+
+                {loadingCostCenterData ? (
+                  <div className="p-8 text-center">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
+                    <p className="text-gray-500 text-sm mt-2">Memuat rincian...</p>
+                  </div>
+                ) : costCenterData.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500 text-sm">
+                    Belum ada rincian untuk periode ini
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200 text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left w-8">
+                            <input
+                              type="checkbox"
+                              checked={selectedCostCenterIds.size === costCenterData.length}
+                              onChange={handleToggleSelectAllCostCenter}
+                              className="rounded border-gray-300"
+                            />
+                          </th>
+                          <th className="px-3 py-2 text-right font-semibold text-gray-600">Amount</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-600">Cost Center</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-600">Kode Akun Biaya</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-600">Keterangan</th>
+                          <th className="px-3 py-2 text-center font-semibold text-gray-600">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {costCenterData.map(entry => (
+                          <tr key={entry.id} className="hover:bg-gray-50">
+                            <td className="px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={selectedCostCenterIds.has(entry.id)}
+                                onChange={() => handleToggleCostCenterSelection(entry.id)}
+                                className="rounded border-gray-300"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-right font-medium text-amber-700">
+                              {formatCurrency(entry.amount)}
+                            </td>
+                            <td className="px-3 py-2 text-gray-700">{entry.costCenter || '-'}</td>
+                            <td className="px-3 py-2 text-gray-700">{entry.kdAkunBiaya || '-'}</td>
+                            <td className="px-3 py-2 text-gray-500 text-xs max-w-[160px] truncate" title={entry.keterangan || ''}>
+                              {entry.keterangan || '-'}
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => {
+                                    setEditingCostCenterId(entry.id);
+                                    setCostCenterForm({
+                                      costCenter: entry.costCenter || '',
+                                      kdAkunBiaya: entry.kdAkunBiaya || '',
+                                      amount: entry.amount.toString(),
+                                      keterangan: entry.keterangan || '',
+                                    });
+                                  }}
+                                  className="text-blue-600 hover:text-blue-800 transition-colors p-1 hover:bg-blue-50 rounded"
+                                  title="Edit"
+                                >
+                                  <Edit2 size={16} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteCostCenter(entry.id)}
+                                  className="text-red-600 hover:text-red-800 transition-colors p-1 hover:bg-red-50 rounded"
+                                  title="Hapus"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-amber-50 font-semibold">
+                          <td className="px-3 py-2 text-right text-amber-800 text-xs uppercase tracking-wide">Total</td>
+                          <td className="px-3 py-2 text-right text-amber-800">
+                            {formatCurrency(costCenterData.reduce((s, c) => s + c.amount, 0))}
+                          </td>
+                          <td colSpan={4} />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-white px-6 py-4 border-t border-gray-200 flex justify-end flex-shrink-0">
+              <button
+                onClick={() => {
+                  setShowCostCenterModal(false);
+                  setCostCenterModalPeriode(null);
+                  setCostCenterData([]);
+                  setEditingCostCenterId(null);
+                  setSelectedCostCenterIds(new Set());
+                  setCostCenterForm({ costCenter: '', kdAkunBiaya: '', amount: '', keterangan: '' });
                 }}
                 className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors"
               >
