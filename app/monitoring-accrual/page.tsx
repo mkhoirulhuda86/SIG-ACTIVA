@@ -839,52 +839,59 @@ export default function MonitoringAccrualPage() {
             if (totalAccrual > 0) {
               const todayAcc = new Date();
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
+              const ht = item.headerText || '';
               
-              // Entry 1: DEBIT - Kode Akun Biaya
-              const row1 = worksheet.getRow(currentRow++);
-              row1.getCell(1).value = ''; // xblnr
-              row1.getCell(2).value = companyCode; // bukrs
-              row1.getCell(3).value = 'SA'; // blart
-              row1.getCell(4).value = docDate; // bldat
-              row1.getCell(5).value = docDate; // budat
-              row1.getCell(6).value = 'IDR'; // waers
-              row1.getCell(7).value = ''; // kursf
-              row1.getCell(8).value = item.headerText || ''; // bktxt
-              row1.getCell(9).value = ''; // zuonr
-              row1.getCell(10).value = item.kdAkunBiaya; // hkont
-              row1.getCell(11).value = Math.round(totalAccrual); // wrbtr
-              row1.getCell(11).numFmt = '0';
-              row1.getCell(12).value = item.headerText || ''; // sgtxt
-              row1.getCell(13).value = ''; // prctr
-              row1.getCell(14).value = item.costCenter || ''; // kostl
-              row1.getCell(15).value = ''; // empty
-              row1.getCell(16).value = ''; // nplnr
-              row1.getCell(17).value = ''; // aufnr
-              row1.getCell(18).value = ''; // valut
-              row1.getCell(19).value = 'G'; // flag
+              // Kumpulkan rincian dari semua periode
+              const allRincian = (item.periodes || []).flatMap(p => p.costcenters || []);
               
-              // Entry 2: CREDIT - Kode Akun Accrual
-              const row2 = worksheet.getRow(currentRow++);
-              row2.getCell(1).value = ''; // xblnr
-              row2.getCell(2).value = companyCode; // bukrs
-              row2.getCell(3).value = 'SA'; // blart
-              row2.getCell(4).value = docDate; // bldat
-              row2.getCell(5).value = docDate; // budat
-              row2.getCell(6).value = 'IDR'; // waers
-              row2.getCell(7).value = ''; // kursf
-              row2.getCell(8).value = item.headerText || ''; // bktxt
-              row2.getCell(9).value = ''; // zuonr
-              row2.getCell(10).value = item.kdAkr; // hkont
-              row2.getCell(11).value = -Math.round(totalAccrual); // wrbtr
-              row2.getCell(11).numFmt = '0';
-              row2.getCell(12).value = item.headerText || ''; // sgtxt
-              row2.getCell(13).value = ''; // prctr
-              row2.getCell(14).value = ''; // kostl
-              row2.getCell(15).value = ''; // empty
-              row2.getCell(16).value = ''; // nplnr
-              row2.getCell(17).value = ''; // aufnr
-              row2.getCell(18).value = ''; // valut
-              row2.getCell(19).value = 'G'; // flag
+              if (allRincian.length > 0) {
+                // Group by kdAkunBiaya+costCenter
+                const grp = new Map<string, { kdAkunBiaya: string; costCenter: string; amount: number }>();
+                for (const r of allRincian) {
+                  const k = `${r.kdAkunBiaya || item.kdAkunBiaya}||${r.costCenter || ''}`;
+                  const e = grp.get(k);
+                  if (e) e.amount += Math.abs(r.amount); else grp.set(k, { kdAkunBiaya: r.kdAkunBiaya || item.kdAkunBiaya, costCenter: r.costCenter || '', amount: Math.abs(r.amount) });
+                }
+                const total = Array.from(grp.values()).reduce((s, g) => s + g.amount, 0);
+                // KREDIT - Kode Akun Accrual (sum)
+                const rowAkr = worksheet.getRow(currentRow++);
+                rowAkr.getCell(1).value = ''; rowAkr.getCell(2).value = companyCode; rowAkr.getCell(3).value = 'SA';
+                rowAkr.getCell(4).value = docDate; rowAkr.getCell(5).value = docDate; rowAkr.getCell(6).value = 'IDR';
+                rowAkr.getCell(7).value = ''; rowAkr.getCell(8).value = ht; rowAkr.getCell(9).value = '';
+                rowAkr.getCell(10).value = item.kdAkr; rowAkr.getCell(11).value = -Math.round(total); rowAkr.getCell(11).numFmt = '0';
+                rowAkr.getCell(12).value = ht; rowAkr.getCell(13).value = ''; rowAkr.getCell(14).value = '';
+                rowAkr.getCell(15).value = ''; rowAkr.getCell(16).value = ''; rowAkr.getCell(17).value = '';
+                rowAkr.getCell(18).value = ''; rowAkr.getCell(19).value = 'G';
+                // DEBIT - per rincian
+                for (const [, g] of grp) {
+                  const rowBiaya = worksheet.getRow(currentRow++);
+                  rowBiaya.getCell(1).value = ''; rowBiaya.getCell(2).value = companyCode; rowBiaya.getCell(3).value = 'SA';
+                  rowBiaya.getCell(4).value = docDate; rowBiaya.getCell(5).value = docDate; rowBiaya.getCell(6).value = 'IDR';
+                  rowBiaya.getCell(7).value = ''; rowBiaya.getCell(8).value = ht; rowBiaya.getCell(9).value = '';
+                  rowBiaya.getCell(10).value = g.kdAkunBiaya; rowBiaya.getCell(11).value = Math.round(g.amount); rowBiaya.getCell(11).numFmt = '0';
+                  rowBiaya.getCell(12).value = ht; rowBiaya.getCell(13).value = ''; rowBiaya.getCell(14).value = g.costCenter;
+                  rowBiaya.getCell(15).value = ''; rowBiaya.getCell(16).value = ''; rowBiaya.getCell(17).value = '';
+                  rowBiaya.getCell(18).value = ''; rowBiaya.getCell(19).value = 'G';
+                }
+              } else {
+                // Fallback: 1 DEBIT + 1 KREDIT
+                const row1 = worksheet.getRow(currentRow++);
+                row1.getCell(1).value = ''; row1.getCell(2).value = companyCode; row1.getCell(3).value = 'SA';
+                row1.getCell(4).value = docDate; row1.getCell(5).value = docDate; row1.getCell(6).value = 'IDR';
+                row1.getCell(7).value = ''; row1.getCell(8).value = ht; row1.getCell(9).value = '';
+                row1.getCell(10).value = item.kdAkunBiaya; row1.getCell(11).value = Math.round(totalAccrual); row1.getCell(11).numFmt = '0';
+                row1.getCell(12).value = ht; row1.getCell(13).value = ''; row1.getCell(14).value = item.costCenter || '';
+                row1.getCell(15).value = ''; row1.getCell(16).value = ''; row1.getCell(17).value = '';
+                row1.getCell(18).value = ''; row1.getCell(19).value = 'G';
+                const row2 = worksheet.getRow(currentRow++);
+                row2.getCell(1).value = ''; row2.getCell(2).value = companyCode; row2.getCell(3).value = 'SA';
+                row2.getCell(4).value = docDate; row2.getCell(5).value = docDate; row2.getCell(6).value = 'IDR';
+                row2.getCell(7).value = ''; row2.getCell(8).value = ht; row2.getCell(9).value = '';
+                row2.getCell(10).value = item.kdAkr; row2.getCell(11).value = -Math.round(totalAccrual); row2.getCell(11).numFmt = '0';
+                row2.getCell(12).value = ht; row2.getCell(13).value = ''; row2.getCell(14).value = '';
+                row2.getCell(15).value = ''; row2.getCell(16).value = ''; row2.getCell(17).value = '';
+                row2.getCell(18).value = ''; row2.getCell(19).value = 'G';
+              }
             }
           });
           
@@ -909,20 +916,37 @@ export default function MonitoringAccrualPage() {
             if (totalAccrual > 0) {
               const todayAcc = new Date();
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
+              const ht = item.headerText || '';
               
-              // Entry 1: DEBIT - Kode Akun Biaya
-              rows.push([
-                '', companyCode, 'SA', docDate, docDate, 'IDR', '',
-                item.headerText || '', '', item.kdAkunBiaya, Math.round(totalAccrual).toString(),
-                item.headerText || '', '', item.costCenter || '', '', '', '', '', 'G'
-              ]);
+              // Kumpulkan rincian dari semua periode
+              const allRincian = (item.periodes || []).flatMap(p => p.costcenters || []);
               
-              // Entry 2: KREDIT - Kode Akun Accrual
-              rows.push([
-                '', companyCode, 'SA', docDate, docDate, 'IDR', '',
-                item.headerText || '', '', item.kdAkr, (-Math.round(totalAccrual)).toString(),
-                item.headerText || '', '', '', '', '', '', '', 'G'
-              ]);
+              if (allRincian.length > 0) {
+                // Group by kdAkunBiaya+costCenter
+                const grp = new Map<string, { kdAkunBiaya: string; costCenter: string; amount: number }>();
+                for (const r of allRincian) {
+                  const k = `${r.kdAkunBiaya || item.kdAkunBiaya}||${r.costCenter || ''}`;
+                  const e = grp.get(k);
+                  if (e) e.amount += Math.abs(r.amount); else grp.set(k, { kdAkunBiaya: r.kdAkunBiaya || item.kdAkunBiaya, costCenter: r.costCenter || '', amount: Math.abs(r.amount) });
+                }
+                const total = Array.from(grp.values()).reduce((s, g) => s + g.amount, 0);
+                // KREDIT - Kode Akun Accrual (sum)
+                rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+                  ht, '', item.kdAkr, (-Math.round(total)).toString(), ht, '', '', '', '', '', '', 'G']);
+                // DEBIT - per rincian
+                for (const [, g] of grp) {
+                  rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+                    ht, '', g.kdAkunBiaya, Math.round(g.amount).toString(), ht, '', g.costCenter, '', '', '', '', 'G']);
+                }
+              } else {
+                // Fallback: 1 DEBIT + 1 KREDIT
+                rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+                  ht, '', item.kdAkunBiaya, Math.round(totalAccrual).toString(),
+                  ht, '', item.costCenter || '', '', '', '', '', 'G']);
+                rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+                  ht, '', item.kdAkr, (-Math.round(totalAccrual)).toString(),
+                  ht, '', '', '', '', '', '', 'G']);
+              }
             }
           });
           
@@ -1107,60 +1131,34 @@ export default function MonitoringAccrualPage() {
     // Gunakan tanggal hari ini sebagai doc date dan posting date jurnal accrual
     const todayAcc = new Date();
     const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
+    const ht = item.headerText || '';
     
-    // Build TXT content (tab-separated)
     const rows: string[][] = [];
+    const rincian = periode.costcenters || [];
     
-    // Entry 1: DEBIT - Kode Akun Biaya (positive amount)
-    rows.push([
-      '',
-      companyCode,
-      'SA',
-      docDate,
-      docDate,
-      'IDR',
-      '',
-      headerText,
-      '',
-      item.kdAkunBiaya,
-      Math.round(Math.abs(periode.amountAccrual)).toString(),
-      lineText,
-      '',
-      item.costCenter || '',
-      '',
-      '',
-      '',
-      '',
-      'G'
-    ]);
+    if (rincian.length > 0) {
+      // Punya rincian: N baris debit (per rincian) + 1 baris kredit (sum kdAkr)
+      const total = rincian.reduce((s, r) => s + Math.abs(r.amount), 0);
+      // 1 baris KREDIT - Kode Akun Accrual (sum, negatif)
+      rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+        ht, '', item.kdAkr, (-Math.round(total)).toString(), ht, '', '', '', '', '', '', 'G']);
+      // N baris DEBIT - per rincian
+      for (const r of rincian) {
+        rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+          ht, '', r.kdAkunBiaya || item.kdAkunBiaya, Math.round(Math.abs(r.amount)).toString(),
+          ht, '', r.costCenter || '', '', '', '', '', 'G']);
+      }
+    } else {
+      // Fallback: 1 baris DEBIT + 1 baris KREDIT
+      rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+        ht, '', item.kdAkunBiaya, Math.round(Math.abs(periode.amountAccrual)).toString(),
+        ht, '', item.costCenter || '', '', '', '', '', 'G']);
+      rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+        ht, '', item.kdAkr, (-Math.round(Math.abs(periode.amountAccrual))).toString(),
+        ht, '', '', '', '', '', '', 'G']);
+    }
     
-    // Entry 2: KREDIT - Kode Akun Accrual (negative amount)
-    rows.push([
-      '',
-      companyCode,
-      'SA',
-      docDate,
-      docDate,
-      'IDR',
-      '',
-      headerText,
-      '',
-      item.kdAkr,
-      (-Math.round(Math.abs(periode.amountAccrual))).toString(),
-      lineText,
-      '',
-      '', // Cost center kosong untuk akun accrual
-      '',
-      '',
-      '',
-      '',
-      'G'
-    ]);
-    
-    // Convert to TXT string (tab-separated)
     const txtContent = rows.map(row => row.join('\t')).join('\n');
-    
-    // Create blob and download
     const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -1264,32 +1262,25 @@ export default function MonitoringAccrualPage() {
         'xblnr', 'bukrs', 'blart', 'bldat', 'budat', 'waers', 'kursf', 'bktxt', 
         'zuonr', 'hkont', 'wrbtr', 'sgtxt', 'prctr', 'kostl', '', 'nplnr', 'aufnr', 'valut', 'flag'
       ];
-      
       const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFE699' } };
-      
       worksheet.getRow(1).values = headers1;
       worksheet.getRow(1).eachCell((cell: any) => {
         cell.fill = headerFill;
         cell.font = { name: 'Calibri', size: 11, bold: true };
         cell.alignment = { horizontal: 'center', vertical: 'bottom' };
       });
-      
-      // Headers row 2
       worksheet.getRow(2).height = 15;
       const headers2 = [
         'Reference', 'company', 'doc type', 'doc date', 'posting date', 'currency', 'kurs', 
         'header text', 'Vendor/cu:', 'account', 'amount', 'line text', 'profit center', 
         'cost center', '', 'Network', 'order numi', 'value date', ''
       ];
-      
       worksheet.getRow(2).values = headers2;
       worksheet.getRow(2).eachCell((cell: any) => {
         cell.fill = headerFill;
         cell.font = { name: 'Calibri', size: 11, bold: true };
         cell.alignment = { horizontal: 'center', vertical: 'bottom' };
       });
-      
-      // Column widths
       worksheet.columns = [
         { width: 12 }, { width: 10 }, { width: 9 }, { width: 9 }, { width: 12 }, 
         { width: 10 }, { width: 8 }, { width: 30 }, { width: 12 }, { width: 12 }, 
@@ -1297,64 +1288,41 @@ export default function MonitoringAccrualPage() {
         { width: 10 }, { width: 12 }, { width: 12 }, { width: 5 }
       ];
       
-      // Gunakan tanggal hari ini sebagai doc date dan posting date jurnal accrual
       const todayAcc = new Date();
       const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
+      const ht = item.headerText || '';
+      let currentRow = 3;
       
-      // Entry 1: DEBIT - Kode Akun Biaya
-      const row1 = worksheet.getRow(3);
-      row1.height = 15;
+      const writeRow = (hkont: string, wrbtr: number, kostl: string) => {
+        const row = worksheet.getRow(currentRow++);
+        row.height = 15;
+        row.getCell(1).value = ''; row.getCell(2).value = companyCode; row.getCell(3).value = 'SA';
+        row.getCell(4).value = docDate; row.getCell(5).value = docDate; row.getCell(6).value = 'IDR';
+        row.getCell(7).value = ''; row.getCell(8).value = ht; row.getCell(9).value = '';
+        row.getCell(10).value = hkont;
+        row.getCell(11).value = Math.round(Math.abs(wrbtr)) * (wrbtr < 0 ? -1 : 1);
+        row.getCell(11).numFmt = '0';
+        row.getCell(12).value = ht; row.getCell(13).value = ''; row.getCell(14).value = kostl;
+        row.getCell(15).value = ''; row.getCell(16).value = ''; row.getCell(17).value = '';
+        row.getCell(18).value = ''; row.getCell(19).value = 'G';
+      };
       
-      row1.getCell(1).value = ''; // xblnr
-      row1.getCell(2).value = companyCode; // bukrs
-      row1.getCell(3).value = 'SA'; // blart
-      row1.getCell(4).value = docDate; // bldat
-      row1.getCell(5).value = docDate; // budat
-      row1.getCell(6).value = 'IDR'; // waers
-      row1.getCell(7).value = ''; // kursf
-      row1.getCell(8).value = headerText; // bktxt
-      row1.getCell(9).value = ''; // zuonr
-      row1.getCell(10).value = item.kdAkunBiaya; // hkont
-      row1.getCell(11).value = Math.round(Math.abs(periode.amountAccrual)); // wrbtr
-      row1.getCell(11).numFmt = '0';
-      row1.getCell(12).value = lineText; // sgtxt
-      row1.getCell(13).value = ''; // prctr
-      row1.getCell(14).value = item.costCenter || ''; // kostl
-      row1.getCell(15).value = ''; // empty
-      row1.getCell(16).value = ''; // nplnr
-      row1.getCell(17).value = ''; // aufnr
-      row1.getCell(18).value = ''; // valut
-      row1.getCell(19).value = 'G'; // flag
-      
-      // Entry 2: CREDIT - Kode Akun Accrual
-      const row2 = worksheet.getRow(4);
-      row2.height = 15;
-      
-      row2.getCell(1).value = ''; // xblnr
-      row2.getCell(2).value = companyCode; // bukrs
-      row2.getCell(3).value = 'SA'; // blart
-      row2.getCell(4).value = docDate; // bldat
-      row2.getCell(5).value = docDate; // budat
-      row2.getCell(6).value = 'IDR'; // waers
-      row2.getCell(7).value = ''; // kursf
-      row2.getCell(8).value = headerText; // bktxt
-      row2.getCell(9).value = ''; // zuonr
-      row2.getCell(10).value = item.kdAkr; // hkont
-      row2.getCell(11).value = -Math.round(Math.abs(periode.amountAccrual)); // wrbtr - NEGATIF untuk kode akun accrual
-      row2.getCell(11).numFmt = '0';
-      row2.getCell(12).value = lineText; // sgtxt
-      row2.getCell(13).value = ''; // prctr
-      row2.getCell(14).value = ''; // kostl
-      row2.getCell(15).value = ''; // empty
-      row2.getCell(16).value = ''; // nplnr
-      row2.getCell(17).value = ''; // aufnr
-      row2.getCell(18).value = ''; // valut
-      row2.getCell(19).value = 'G'; // flag
+      const rincian = periode.costcenters || [];
+      if (rincian.length > 0) {
+        // Punya rincian: 1 baris KREDIT (kdAkr, sum negatif) + N baris DEBIT per rincian
+        const total = rincian.reduce((s, r) => s + Math.abs(r.amount), 0);
+        writeRow(item.kdAkr, -Math.round(total), '');
+        for (const r of rincian) {
+          writeRow(r.kdAkunBiaya || item.kdAkunBiaya, Math.round(Math.abs(r.amount)), r.costCenter || '');
+        }
+      } else {
+        // Fallback: 1 baris DEBIT + 1 baris KREDIT
+        writeRow(item.kdAkunBiaya, Math.round(Math.abs(periode.amountAccrual)), item.costCenter || '');
+        writeRow(item.kdAkr, -Math.round(Math.abs(periode.amountAccrual)), '');
+      }
       
       const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], { 
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-      });
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

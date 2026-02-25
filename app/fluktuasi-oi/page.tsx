@@ -419,6 +419,9 @@ export default function FluktuasiOIPage() {
   const [activeSheetIdx, setActiveSheetIdx] = useState(0);
   const [kaPage,    setKaPage]    = useState(0);
   const [rekapPage, setRekapPage] = useState(0);
+  // ── AI Reason State ────────────────────────────────────────────────────────
+  const [aiReasons,  setAiReasons]  = useState<Record<number, { mom?: string; yoy?: string }>>({});
+  const [aiLoading,  setAiLoading]  = useState<Record<string, boolean>>({});
   
   // ── Keyword Management States ──────────────────────────────────────────────
   const [keywords, setKeywords] = useState<Keyword[]>([]);
@@ -931,6 +934,59 @@ export default function FluktuasiOIPage() {
 
   // ── Download (via API → ExcelJS with full formatting) ────────────────────────
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // ── Generate AI reason for a rekap row ────────────────────────────────────
+  const generateReason = async (
+    rowIdx: number,
+    type: 'mom' | 'yoy' | 'both',
+    row: RekapSheetRow,
+    accountName: string,
+  ) => {
+    if (!rekapSheetData) return;
+    const key = type === 'both' ? `${rowIdx}-both` : `${rowIdx}-${type}`;
+    setAiLoading(prev => ({ ...prev, [key]: true }));
+    try {
+      const { amountCols, momCurrIdx, momPrevIdx, yoyCurrIdx, yoyPrevIdx } = rekapSheetData;
+      const currAmt   = amountCols[momCurrIdx];
+      const prevAmt   = amountCols[momPrevIdx];
+      const yoyCurrAmt = amountCols[yoyCurrIdx];
+      const yoyPrevAmt = amountCols[yoyPrevIdx];
+      const periods = amountCols.map(ac => ({
+        label: ac.dateLabel || ac.label,
+        value: row.values[ac.colIdx],
+      }));
+      const res = await fetch('/api/fluktuasi/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountCode: String(row.values[rekapSheetData.accountColIdx] ?? ''),
+          accountName,
+          type,
+          gapMoM: row.gapMoM,
+          pctMoM: row.pctMoM,
+          gapYoY: row.gapYoY,
+          pctYoY: row.pctYoY,
+          currLabel:    currAmt?.dateLabel    || currAmt?.label    || '',
+          prevMoMLabel: prevAmt?.dateLabel    || prevAmt?.label    || '',
+          prevYoYLabel: yoyPrevAmt?.dateLabel || yoyPrevAmt?.label || '',
+          amountPeriods: periods,
+        }),
+      });
+      const data = await res.json();
+      setAiReasons(prev => ({
+        ...prev,
+        [rowIdx]: {
+          ...prev[rowIdx],
+          ...(type !== 'yoy'  ? { mom: data.reasonMoM || data.reason || '' } : {}),
+          ...(type !== 'mom'  ? { yoy: data.reasonYoY || data.reason || '' } : {}),
+        },
+      }));
+    } catch {
+      // ignore
+    } finally {
+      setAiLoading(prev => { const n = { ...prev }; delete n[key]; return n; });
+    }
+  };
 
   const handleDownload = async () => {
     if (!sheetDataList.length && !rekapSheetData) {
@@ -1532,18 +1588,82 @@ export default function FluktuasiOIPage() {
           {/* ── Rekap Sheet Table ─────────────────────────────────────────── */}
           {rekapSheetData && (() => {
             const { accountColIdx, amountCols, momCurrIdx, momPrevIdx, yoyCurrIdx, yoyPrevIdx } = rekapSheetData;
-            // Find description column: first non-account, non-amount column
-            const amtColSet = new Set(amountCols.map(ac => ac.colIdx));
+            const amtColSet  = new Set(amountCols.map(ac => ac.colIdx));
             const descColIdx = rekapSheetData.headers.findIndex((_, ci) => ci !== accountColIdx && !amtColSet.has(ci));
-            const currAmt  = amountCols[momCurrIdx];
-            const prevAmt  = amountCols[momPrevIdx];
-            const yoyCurr  = amountCols[yoyCurrIdx];
-            const yoyPrev  = amountCols[yoyPrevIdx];
-            const currLabel = currAmt?.dateLabel || currAmt?.label || 'Total';
-            const currYear  = currAmt?.yearLabel || '';
-            const prevLabel = prevAmt?.dateLabel || prevAmt?.label || '';
-            const yoyLabel  = yoyPrev?.dateLabel || yoyPrev?.label || '';
-            const hasData   = (row: RekapSheetRow) => row.values.some(v => v !== '' && v !== null);
+            const prevAmt    = amountCols[momPrevIdx];
+            const yoyPrev    = amountCols[yoyPrevIdx];
+            const prevLabel  = prevAmt?.dateLabel  || prevAmt?.label  || '';
+            const yoyLabel   = yoyPrev?.dateLabel  || yoyPrev?.label  || '';
+            const hasData    = (row: RekapSheetRow) => row.values.some(v => v !== '' && v !== null);
+
+            // ── AI reason cell renderer ──────────────────────────────────────
+            const ReasonCell = ({
+              ri, globalRi, row, side, baseReason, isSpecial, s,
+              descVal,
+            }: {
+              ri: number; globalRi: number; row: RekapSheetRow;
+              side: 'mom' | 'yoy'; baseReason: string; isSpecial: boolean;
+              s: { bg: string; text: string; weight: string; border: string };
+              descVal: string;
+            }) => {
+              const key       = `${globalRi}-${side}`;
+              const bothKey   = `${globalRi}-both`;
+              const loading   = aiLoading[key] || aiLoading[bothKey];
+              const aiText    = aiReasons[globalRi]?.[side];
+              const displayed = aiText ?? baseReason;
+              const gapVal    = side === 'mom' ? row.gapMoM : row.gapYoY;
+              const bgEven    = ri % 2 === 0 ? '#f0f3ff' : '#e8ecff';
+              return (
+                <td className="px-2 py-1"
+                  style={{ backgroundColor: isSpecial ? s.bg : bgEven, color: isSpecial ? '#fff' : '#374151',
+                    border: '1px solid #c7d2fe', minWidth: '300px', verticalAlign: 'top' }}>
+                  {!isSpecial && (
+                    <div className="flex flex-col gap-1">
+                      {/* Text area — editable */}
+                      <textarea
+                        rows={displayed ? Math.min(8, displayed.split('\n').length + 1) : 2}
+                        value={displayed || ''}
+                        placeholder={loading ? 'Generating AI...' : '— belum ada analisis'}
+                        onChange={e => setAiReasons(prev => ({
+                          ...prev,
+                          [globalRi]: { ...prev[globalRi], [side]: e.target.value },
+                        }))}
+                        className="w-full text-[10px] resize-y rounded border border-indigo-200 p-1.5 leading-relaxed focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                        style={{ backgroundColor: loading ? '#f5f3ff' : '#fff', fontStyle: displayed ? 'normal' : 'italic',
+                          fontFamily: 'inherit', minHeight: '40px' }}
+                      />
+                      {/* AI buttons row */}
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {loading ? (
+                          <span className="text-[9px] text-purple-600 animate-pulse font-medium">✨ Generating...</span>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => generateReason(globalRi, side, row, descVal)}
+                              disabled={Math.abs(gapVal) === 0}
+                              title={`Generate AI Reason ${side.toUpperCase()}`}
+                              className="px-1.5 py-0.5 text-[9px] rounded bg-purple-100 text-purple-700 hover:bg-purple-200 disabled:opacity-30 whitespace-nowrap font-medium">
+                              ✨ AI {side.toUpperCase()}
+                            </button>
+                            {aiText && (
+                              <button
+                                onClick={() => setAiReasons(prev => ({
+                                  ...prev,
+                                  [globalRi]: { ...prev[globalRi], [side]: undefined },
+                                }))}
+                                title="Hapus teks AI, kembalikan ke data sheet"
+                                className="px-1.5 py-0.5 text-[9px] rounded bg-red-50 text-red-500 hover:bg-red-100 whitespace-nowrap">
+                                ✕ reset
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </td>
+              );
+            };
 
             return (
               <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
@@ -1556,11 +1676,29 @@ export default function FluktuasiOIPage() {
                     </h3>
                     <p className="text-xs mt-0.5" style={{ color: '#c7d4f0' }}>
                       {rekapSheetData.rows.filter((r) => r.type === 'detail').length} akun detail
+                      &ensp;·&ensp;{amountCols.length} kolom periode
                       &ensp;·&ensp;
-                      <span style={{ color: '#fca5a5' }}>6 kolom tambahan sistem</span>
+                      <span style={{ color: '#fca5a5' }}>6 kolom analisis</span>
                       &ensp;(GAP MoM · MoM% · Reason MoM · GAP YoY · YoY% · Reason YoY)
                     </p>
                   </div>
+                  {/* Generate All AI Button */}
+                  <button
+                    onClick={() => {
+                      rekapDisplayRows.forEach((row, gi) => {
+                        if (row.type === 'detail') {
+                          const amtColSet2 = new Set(amountCols.map(ac => ac.colIdx));
+                          const di = rekapSheetData.headers.findIndex((_, ci) => ci !== accountColIdx && !amtColSet2.has(ci));
+                          const dn = di >= 0 ? String(row.values[di] ?? '') : '';
+                          generateReason(gi, 'both', row, dn);
+                        }
+                      });
+                    }}
+                    className="px-3 py-1.5 text-xs rounded-lg font-medium whitespace-nowrap"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}
+                    title="Generate AI analisis untuk semua baris detail sekaligus">
+                    ✨ Generate All AI
+                  </button>
                 </div>
 
                 {rekapTotalPages > 1 && (
@@ -1579,133 +1717,139 @@ export default function FluktuasiOIPage() {
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-[11px] border-collapse">
                     <thead>
-                      {/* ── Row 1: group labels ── */}
+                      {/* ── Row 1: year group labels ── */}
                       <tr>
-                        {/* Account */}
-                        <th className="px-3 py-1 text-center text-white text-[10px] font-bold whitespace-nowrap"
+                        <th className="px-3 py-1 text-white text-[10px] font-bold"
                           style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}></th>
-                        {/* Description */}
                         {descColIdx >= 0 && (
-                          <th className="px-3 py-1 text-center text-white text-[10px] font-bold italic whitespace-nowrap"
+                          <th className="px-3 py-1 text-white text-[10px] font-bold italic"
                             style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>
                             Description
                           </th>
                         )}
-                        {/* Current amount year */}
-                        <th className="px-3 py-1 text-center text-white text-[10px] font-bold whitespace-nowrap"
-                          style={{ backgroundColor: currAmt ? amtColBg(currAmt) : '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>
-                          {currYear}
-                        </th>
-                        {/* MoM group x2 */}
-                        <th className="px-3 py-1 text-center text-black text-[10px] font-bold whitespace-nowrap"
+                        {amountCols.map((ac) => (
+                          <th key={ac.colIdx} className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
+                            style={{ backgroundColor: amtColBg(ac), border: '1px solid rgba(255,255,255,0.2)' }}>
+                            {ac.yearLabel}
+                          </th>
+                        ))}
+                        <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM</th>
-                        <th className="px-3 py-1 text-center text-black text-[10px] font-bold whitespace-nowrap"
+                        <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM</th>
-                        {/* Reason MoM */}
-                        <th className="px-3 py-1 text-center text-white text-[10px] font-bold whitespace-nowrap"
+                        <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>Reason MoM</th>
-                        {/* YoY group x2 */}
-                        <th className="px-3 py-1 text-center text-black text-[10px] font-bold whitespace-nowrap"
+                        <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY</th>
-                        <th className="px-3 py-1 text-center text-black text-[10px] font-bold whitespace-nowrap"
+                        <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY</th>
-                        {/* Reason YoY */}
-                        <th className="px-3 py-1 text-center text-white text-[10px] font-bold whitespace-nowrap"
+                        <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>Reason YoY</th>
                       </tr>
-                      {/* ── Row 2: column sub-labels ── */}
+                      {/* ── Row 2: date labels ── */}
                       <tr>
-                        <th className="px-3 py-1.5 text-center text-white text-[10px] font-semibold whitespace-nowrap"
+                        <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)' }}>Account</th>
                         {descColIdx >= 0 && (
-                          <th className="px-3 py-1.5 text-center text-white text-[10px] font-semibold italic"
-                            style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)', minWidth: '200px' }}>
+                          <th className="px-3 py-1.5 text-white text-[10px] font-semibold italic text-center"
+                            style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)', minWidth: '180px' }}>
                             {rekapSheetData.originalHeaders?.[descColIdx] || rekapSheetData.headers[descColIdx]}
                           </th>
                         )}
-                        <th className="px-3 py-1.5 text-center text-white text-[10px] font-semibold whitespace-nowrap"
-                          style={{ backgroundColor: currAmt ? amtColBg(currAmt) : '#244185', border: '1px solid rgba(255,255,255,0.15)' }}>
-                          {currLabel}
-                        </th>
-                        <th className="px-3 py-1.5 text-center text-black text-[10px] font-semibold whitespace-nowrap"
+                        {amountCols.map((ac) => (
+                          <th key={ac.colIdx} className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
+                            style={{ backgroundColor: amtColBg(ac), border: '1px solid rgba(255,255,255,0.2)', minWidth: '90px' }}>
+                            {ac.dateLabel || ac.label}
+                          </th>
+                        ))}
+                        <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>GAP<br/>MoM</th>
-                        <th className="px-3 py-1.5 text-center text-black text-[10px] font-semibold whitespace-nowrap"
+                        <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM<br/>%</th>
-                        <th className="px-3 py-1.5 text-center text-white text-[10px] font-semibold"
-                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '260px' }}>
+                        <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
+                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
                           vs {prevLabel}
                         </th>
-                        <th className="px-3 py-1.5 text-center text-black text-[10px] font-semibold whitespace-nowrap"
+                        <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>GAP<br/>YoY</th>
-                        <th className="px-3 py-1.5 text-center text-black text-[10px] font-semibold whitespace-nowrap"
+                        <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY<br/>%</th>
-                        <th className="px-3 py-1.5 text-center text-white text-[10px] font-semibold"
-                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '260px' }}>
+                        <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
+                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
                           vs {yoyLabel}
                         </th>
                       </tr>
                     </thead>
                     <tbody>
                       {rekapPageRows.map((row, ri) => {
-                        const globalRi = rekapPage * REKAP_PAGE_SIZE + ri;
-                        const s = rekapRowStyle(row.type, globalRi);
+                        const globalRi  = rekapPage * REKAP_PAGE_SIZE + ri;
+                        const s         = rekapRowStyle(row.type, globalRi);
                         const isSpecial = row.type === 'category' || row.type === 'subtotal';
-                        const gapColor = (v: number) =>
+                        const gapColor  = (v: number) =>
                           isSpecial ? '#fff' : v < 0 ? '#b91c1c' : v > 0 ? '#15803d' : '#374151';
                         const rowHasData = hasData(row);
-                        const acctVal = String(row.values[accountColIdx] ?? '');
-                        const descVal = descColIdx >= 0 ? String(row.values[descColIdx] ?? '') : '';
-                        const currVal = currAmt ? (row.values[currAmt.colIdx] !== '' && row.values[currAmt.colIdx] !== null
-                          ? fmtRp(parseNum(row.values[currAmt.colIdx])) : '') : '';
+                        const acctVal    = String(row.values[accountColIdx] ?? '');
+                        const descVal    = descColIdx >= 0 ? String(row.values[descColIdx] ?? '') : '';
                         return (
                           <tr key={ri}>
                             {/* Account */}
-                            <td className="px-3 py-1.5 whitespace-nowrap font-mono"
-                              style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}` }}>
+                            <td className="px-3 py-1.5 whitespace-nowrap font-mono text-[10px]"
+                              style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}`, minWidth: '80px' }}>
                               {acctVal}
                             </td>
                             {/* Description */}
                             {descColIdx >= 0 && (
                               <td className="px-3 py-1.5"
-                                style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}`, minWidth: '200px' }}>
+                                style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}`, minWidth: '180px' }}>
                                 {descVal}
                               </td>
                             )}
-                            {/* Current amount */}
-                            <td className="px-3 py-1.5 whitespace-nowrap text-right"
-                              style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}` }}>
-                              {currVal}
-                            </td>
+                            {/* All amount columns */}
+                            {amountCols.map((ac) => {
+                              const v = row.values[ac.colIdx];
+                              const acBg = isSpecial ? s.bg : ri % 2 === 0
+                                ? (ac.isCumulative ? '#fff8ec' : '#f9fafb')
+                                : (ac.isCumulative ? '#fff3d6' : '#f0f4ff');
+                              return (
+                                <td key={ac.colIdx} className="px-3 py-1.5 whitespace-nowrap text-right"
+                                  style={{ backgroundColor: acBg, color: s.text, fontWeight: s.weight,
+                                    border: `1px solid ${isSpecial ? s.border : ac.isCumulative ? '#f5c97a' : '#e5e7eb'}`,
+                                    minWidth: '90px' }}>
+                                  {v !== '' && v !== null && v !== undefined
+                                    ? fmtRp(parseNum(v)) : ''}
+                                </td>
+                              );
+                            })}
                             {/* GAP MoM */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0', color: gapColor(row.gapMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
+                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                                color: gapColor(row.gapMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
                               {rowHasData ? fmtRp(row.gapMoM) : ''}
                             </td>
                             {/* MoM % */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0', color: gapColor(row.pctMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
+                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                                color: gapColor(row.pctMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
                               {rowHasData ? fmtPct(row.pctMoM) : ''}
                             </td>
                             {/* Reason MoM */}
-                            <td className="px-3 py-1.5"
-                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#f0f3ff' : '#e8ecff', color: isSpecial ? '#fff' : '#374151', border: '1px solid #c7d2fe', minWidth: '260px', fontStyle: !isSpecial && !row.reasonMoM ? 'italic' : 'normal', fontWeight: s.weight }}>
-                              {isSpecial ? '' : (row.reasonMoM || '—')}
-                            </td>
+                            <ReasonCell ri={ri} globalRi={globalRi} row={row} side="mom"
+                              baseReason={row.reasonMoM} isSpecial={isSpecial} s={s} descVal={descVal} />
                             {/* GAP YoY */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0', color: gapColor(row.gapYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
+                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                                color: gapColor(row.gapYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
                               {rowHasData ? fmtRp(row.gapYoY) : ''}
                             </td>
                             {/* YoY % */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0', color: gapColor(row.pctYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
+                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                                color: gapColor(row.pctYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
                               {rowHasData ? fmtPct(row.pctYoY) : ''}
                             </td>
                             {/* Reason YoY */}
-                            <td className="px-3 py-1.5"
-                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#f0f3ff' : '#e8ecff', color: isSpecial ? '#fff' : '#374151', border: '1px solid #c7d2fe', minWidth: '260px', fontStyle: !isSpecial && !row.reasonYoY ? 'italic' : 'normal', fontWeight: s.weight }}>
-                              {isSpecial ? '' : (row.reasonYoY || '—')}
-                            </td>
+                            <ReasonCell ri={ri} globalRi={globalRi} row={row} side="yoy"
+                              baseReason={row.reasonYoY} isSpecial={isSpecial} s={s} descVal={descVal} />
                           </tr>
                         );
                       })}
