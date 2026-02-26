@@ -507,6 +507,12 @@ export default function FluktuasiOIPage() {
   const [aiErrors,   setAiErrors]   = useState<Record<string, string>>({});
   const [aiBatch,    setAiBatch]    = useState<{ done: number; total: number } | null>(null);
   const aiCancelRef = useRef(false);
+
+  // Period selection for MoM / YoY — null = use auto-detected default
+  const [momSel, setMomSel] = useState<{ curr: number; prev: number } | null>(null);
+  const [yoySel, setYoySel] = useState<{ curr: number; prev: number } | null>(null);
+  // Reset period selection when a new file is loaded
+  useEffect(() => { setMomSel(null); setYoySel(null); }, [rekapSheetData]);
   
   // ── Keyword Management States ──────────────────────────────────────────────
   const [keywords, setKeywords] = useState<Keyword[]>([]);
@@ -815,10 +821,36 @@ export default function FluktuasiOIPage() {
           });
         }
 
-        const remarkColIdxRaw = findColIdx(headers, [
-          'Assignment','Zuordnung','Reference','Ref. Doc.','Ref. document',
+        // Prefer genuine text columns; Assignment/Zuordnung are numeric codes — put last
+        let remarkColIdxRaw = findColIdx(headers, [
           'Text','Item Text','PO Text','Teks','Keterangan Item','Narasi Item',
+          'Reference','Ref. Doc.','Ref. document',
+          'Assignment','Zuordnung',
         ]);
+        // Guard: if selected column is mostly numeric, auto-detect best remaining text col
+        {
+          const sampleRowsR = raw.slice(headerRowIdx + 1, headerRowIdx + 30);
+          const isColNumeric = (ci: number) => {
+            if (ci < 0) return true;
+            const vals = sampleRowsR.map((r) => String(r?.[ci] ?? '').trim()).filter((v) => v.length > 0);
+            if (!vals.length) return true;
+            const numericCount = vals.filter((v) => !isNaN(Number(v.replace(/[.,]/g, ''))) && v.length > 2).length;
+            return numericCount > vals.length * 0.6;
+          };
+          if (isColNumeric(remarkColIdxRaw)) {
+            // Find best text column: longest avg, not numeric, not date, not klasifikasi
+            let bestAvgR = 0;
+            headers.forEach((_, col) => {
+              if (col === dateColIdx || col === klasifikasiColIdx) return;
+              const vals = sampleRowsR.map((r) => String(r?.[col] ?? '').trim()).filter((v) => v.length > 0);
+              if (!vals.length) return;
+              const numericCount = vals.filter((v) => !isNaN(Number(v.replace(/[.,]/g, '')))).length;
+              if (numericCount > vals.length * 0.5) return;
+              const avg = vals.reduce((acc, v) => acc + v.length, 0) / vals.length;
+              if (avg > bestAvgR) { bestAvgR = avg; remarkColIdxRaw = col; }
+            });
+          }
+        }
         const remarkColIdx = remarkColIdxRaw >= 0 && remarkColIdxRaw !== klasifikasiColIdx
           ? remarkColIdxRaw
           : klasifikasiColIdx;
@@ -838,16 +870,16 @@ export default function FluktuasiOIPage() {
           headers.forEach((h, idx) => { obj[h] = rawRow[idx] ?? ''; });
           obj['__periode']     = parseDateToPeriode(dateColIdx >= 0 ? rawRow[dateColIdx] : '');
           
-          // Use keyword matching for klasifikasi and remark
-          const klasifikasiText = String(klasifikasiColIdx >= 0 ? rawRow[klasifikasiColIdx] : '');
-          const remarkText = String(remarkColIdx >= 0 ? rawRow[remarkColIdx] : '');
-          const docnoText = String(docnoColIdx >= 0 ? rawRow[docnoColIdx] : '');
-          
-          obj['__klasifikasi'] = matchKeywords(klasifikasiText, keywords, 'klasifikasi', docnoText, obj) || extractKlasifikasi(klasifikasiText);
-          obj['__remark']      = matchKeywords(remarkText, keywords, 'remark', docnoText, obj) || remarkText.trim();
+          // Both klasifikasi and remark are matched from the same source text (description column)
+          // against different keyword types. Keywords in master define the output; no raw-text fallback.
+          const sourceText = String(klasifikasiColIdx >= 0 ? rawRow[klasifikasiColIdx] : '');
+          const docnoText  = String(docnoColIdx >= 0 ? rawRow[docnoColIdx] : '');
+
+          obj['__klasifikasi'] = matchKeywords(sourceText, keywords, 'klasifikasi', docnoText, obj);
+          obj['__remark']      = matchKeywords(sourceText, keywords, 'remark',       docnoText, obj);
           // Store raw source text so keywords can be re-matched reactively after the file is parsed
-          obj['__klasifikasi_raw'] = klasifikasiText;
-          obj['__remark_raw']      = remarkText;
+          obj['__klasifikasi_raw'] = sourceText;
+          obj['__remark_raw']      = sourceText;   // same source — keyword type drives the output
           obj['__docno_raw']       = docnoText;
           rows.push(obj);
         }
@@ -1202,10 +1234,10 @@ export default function FluktuasiOIPage() {
       const rSet = new Set<string>();
       for (const row of sd.rows) {
         const rawK  = String(row['__klasifikasi_raw'] ?? row['__klasifikasi'] ?? '');
-        const rawR  = String(row['__remark_raw']      ?? row['__remark']      ?? '');
+        const rawR  = String(row['__remark_raw']      ?? rawK); // same source as klasifikasi
         const docno = String(row['__docno_raw']        ?? '');
-        const k = matchKeywords(rawK, keywords, 'klasifikasi', docno, row) || extractKlasifikasi(rawK);
-        const r = matchKeywords(rawR, keywords, 'remark',       docno, row) || rawR.trim();
+        const k = matchKeywords(rawK, keywords, 'klasifikasi', docno, row);
+        const r = matchKeywords(rawR, keywords, 'remark',       docno, row);
         if (k) kSet.add(k);
         if (r) rSet.add(r);
       }
@@ -1214,22 +1246,44 @@ export default function FluktuasiOIPage() {
     return map;
   }, [sheetDataList, keywords]);
 
-  // Overlay live reasonMoM/reasonYoY computed from current keywords
+  // Overlay live reasonMoM/reasonYoY + recompute GAP/PCT from selected periods
   const rekapDisplayRowsLive = useMemo(() => {
-    if (!rekapSheetData || !sheetDataList.length) return rekapDisplayRows;
+    if (!rekapSheetData) return rekapDisplayRows;
+    const ac      = rekapSheetData.amountCols;
     const acctIdx = rekapSheetData.accountColIdx;
+    const momCI   = momSel?.curr ?? rekapSheetData.momCurrIdx;
+    const momPI   = momSel?.prev ?? rekapSheetData.momPrevIdx;
+    const yoyCI   = yoySel?.curr ?? rekapSheetData.yoyCurrIdx;
+    const yoyPI   = yoySel?.prev ?? rekapSheetData.yoyPrevIdx;
+    const periodChanged = !!(momSel || yoySel);
+
     return rekapDisplayRows.map(row => {
-      if (row.type !== 'detail') return row;
-      const acct = String(row.values[acctIdx] ?? '').trim();
-      const entry = acctReasonMapLive[acct];
-      if (!entry) return row;
-      return {
-        ...row,
-        reasonMoM: [...entry.klasifikasi].join('; '),
-        reasonYoY: [...entry.remark].join('; '),
-      };
+      // ── Recompute GAP/PCT if user selected custom periods ──
+      let updated = row;
+      if (periodChanged) {
+        const curr    = ac[momCI]  ? parseNum(row.values[ac[momCI].colIdx])  : 0;
+        const prev    = ac[momPI]  ? parseNum(row.values[ac[momPI].colIdx])  : 0;
+        const yoyCurr = ac[yoyCI]  ? parseNum(row.values[ac[yoyCI].colIdx])  : 0;
+        const yoyPrev = ac[yoyPI]  ? parseNum(row.values[ac[yoyPI].colIdx])  : 0;
+        const gapMoM  = curr - prev;
+        const pctMoM  = prev === 0 ? 0 : (gapMoM / Math.abs(prev)) * 100;
+        const gapYoY  = yoyCurr - yoyPrev;
+        const pctYoY  = yoyPrev === 0 ? 0 : (gapYoY / Math.abs(yoyPrev)) * 100;
+        updated = { ...row, gapMoM, pctMoM, gapYoY, pctYoY };
+      }
+      // ── Overlay klasifikasi/remark from live keywords ──
+      if (sheetDataList.length && row.type === 'detail') {
+        const acct  = String(row.values[acctIdx] ?? '').trim();
+        const entry = acctReasonMapLive[acct];
+        if (entry) updated = {
+          ...updated,
+          reasonMoM: [...entry.klasifikasi].join('; '),
+          reasonYoY: [...entry.remark].join('; '),
+        };
+      }
+      return updated;
     });
-  }, [rekapDisplayRows, acctReasonMapLive, rekapSheetData, sheetDataList]);
+  }, [rekapDisplayRows, acctReasonMapLive, rekapSheetData, sheetDataList, momSel, yoySel]);
 
   const rekapTotalPages = Math.ceil(rekapDisplayRowsLive.length / REKAP_PAGE_SIZE);
   const rekapPageRows   = useMemo(() =>
@@ -1910,6 +1964,55 @@ export default function FluktuasiOIPage() {
                     </button>
                   )}
                 </div>
+
+                {/* ── Period selector bar ── */}
+                {amountCols.length >= 2 && (() => {
+                  const effMC = momSel?.curr ?? momCurrIdx;
+                  const effMP = momSel?.prev ?? momPrevIdx;
+                  const effYC = yoySel?.curr ?? yoyCurrIdx;
+                  const effYP = yoySel?.prev ?? yoyPrevIdx;
+                  const colLabel = (i: number) => {
+                    const a = amountCols[i];
+                    return a ? `${a.yearLabel ? a.yearLabel + ' ' : ''}${a.dateLabel}`.trim() : `Col ${i}`;
+                  };
+                  const sel = "text-[11px] rounded border border-gray-300 bg-white px-1.5 py-0.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400";
+                  return (
+                    <div className="px-4 py-2.5 border-b border-gray-200 bg-blue-50 flex flex-wrap items-center gap-x-6 gap-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[11px] font-bold text-blue-700">MoM</span>
+                        <span className="text-[11px] text-gray-500">Periode ini:</span>
+                        <select className={sel} value={effMC}
+                          onChange={e => setMomSel(s => ({ curr: Number(e.target.value), prev: s?.prev ?? effMP }))}>
+                          {amountCols.map((_, i) => <option key={i} value={i}>{colLabel(i)}</option>)}
+                        </select>
+                        <span className="text-[11px] text-gray-400">vs</span>
+                        <select className={sel} value={effMP}
+                          onChange={e => setMomSel(s => ({ curr: s?.curr ?? effMC, prev: Number(e.target.value) }))}>
+                          {amountCols.map((_, i) => <option key={i} value={i}>{colLabel(i)}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[11px] font-bold text-green-700">YoY</span>
+                        <span className="text-[11px] text-gray-500">Periode ini:</span>
+                        <select className={sel} value={effYC}
+                          onChange={e => setYoySel(s => ({ curr: Number(e.target.value), prev: s?.prev ?? effYP }))}>
+                          {amountCols.map((_, i) => <option key={i} value={i}>{colLabel(i)}</option>)}
+                        </select>
+                        <span className="text-[11px] text-gray-400">vs</span>
+                        <select className={sel} value={effYP}
+                          onChange={e => setYoySel(s => ({ curr: s?.curr ?? effYC, prev: Number(e.target.value) }))}>
+                          {amountCols.map((_, i) => <option key={i} value={i}>{colLabel(i)}</option>)}
+                        </select>
+                      </div>
+                      {(momSel || yoySel) && (
+                        <button onClick={() => { setMomSel(null); setYoySel(null); }}
+                          className="text-[10px] px-2 py-0.5 rounded bg-gray-200 text-gray-600 hover:bg-gray-300">
+                          Reset default
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {rekapTotalPages > 1 && (
                   <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between text-xs text-gray-500">
