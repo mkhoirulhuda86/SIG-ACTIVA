@@ -11,6 +11,8 @@ type SheetData = {
   headers: string[];
   originalHeaders: string[]; // for display
   rows: Record<string, any>[];
+  klasifikasiColIdx?: number; // index into headers for source-text column
+  docnoColIdx?: number;       // index into headers for document-number column
 };
 
 /** Parsed amount column from rekap sheet */
@@ -635,7 +637,7 @@ export default function FluktuasiOIPage() {
   const [naturalInput, setNaturalInput] = useState('');
   const [keywordSearch, setKeywordSearch] = useState('');
   const [keywordPage, setKeywordPage] = useState(0);
-  const KEYWORD_PAGE_SIZE = 20;
+  const KEYWORD_PAGE_SIZE = 10;
   const [kwMode, setKwMode] = useState<'normal' | 'regex' | 'not' | 'docno' | 'col'>('normal');
   const [colHeader, setColHeader] = useState('');
   const [colPattern, setColPattern] = useState('');
@@ -1000,7 +1002,7 @@ export default function FluktuasiOIPage() {
           obj['__docno_raw']       = docnoText;
           rows.push(obj);
         }
-        result.push({ sheetName, headers, originalHeaders, rows });
+        result.push({ sheetName, headers, originalHeaders, rows, klasifikasiColIdx, docnoColIdx });
       }
       setSheetDataList(result);
 
@@ -1354,15 +1356,26 @@ export default function FluktuasiOIPage() {
   const liveKaPageRows = useMemo(() => {
     if (!kaPageRows.length || !keywords.length) return kaPageRows;
     const sheetCode = (activeSheet?.sheetName ?? '').match(/^(\d{5,})/)?.[1] ?? activeSheet?.sheetName ?? '';
+    const hdrs      = activeSheet?.headers ?? [];
+    // Use stored index; fallback to header-name detection for old DB-loaded data
+    const kColIdx = activeSheet?.klasifikasiColIdx ??
+      findColIdx(hdrs, ['Document Header Text','Header Text','Doc. Header Text','DocHeaderText',
+        'Header Dokumen','Deskripsi Header','Description','Keterangan','Uraian','Narasi','Nama Akun']);
+    const dColIdx = activeSheet?.docnoColIdx ??
+      findColIdx(hdrs, ['Document No.','Doc. No.','DocNo','Document Number','Belegnummer','Belnr',
+        'No. Dokumen','Nomor Dokumen']);
     const scopedKw = keywords.filter(kw => {
       const ac = (kw.accountCodes ?? '').trim();
       if (!ac) return true;
       return ac.split(',').map(s => s.trim()).includes(sheetCode);
     });
     return kaPageRows.map(row => {
-      const rawK  = String(row['__klasifikasi_raw'] ?? '');
-      const rawR  = String(row['__remark_raw']      ?? rawK);
-      const docno = String(row['__docno_raw']        ?? '');
+      // Prefer __klasifikasi_raw (set at upload); fallback to live header lookup for DB-loaded rows
+      const rawK  = String(row['__klasifikasi_raw'] ?? '') ||
+                    (kColIdx >= 0 ? String(row[hdrs[kColIdx]] ?? '') : '');
+      const rawR  = String(row['__remark_raw']      ?? '') || rawK;
+      const docno = String(row['__docno_raw']        ?? '') ||
+                    (dColIdx >= 0 ? String(row[hdrs[dColIdx]] ?? '') : '');
       return {
         ...row,
         __klasifikasi: matchKeywords(rawK, scopedKw, 'klasifikasi', docno, row) || row['__klasifikasi'] || '',
