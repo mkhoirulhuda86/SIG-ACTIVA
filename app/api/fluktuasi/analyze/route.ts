@@ -42,9 +42,9 @@ function parseNum(val: string | number | null | undefined): number {
 
 // ─── POST /api/fluktuasi/analyze ──────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY belum dikonfigurasi di .env.local' }, { status: 500 });
+    return NextResponse.json({ error: 'OPENROUTER_API_KEY belum dikonfigurasi di .env.local' }, { status: 500 });
   }
 
   const body: AnalyzeRequest = await req.json();
@@ -57,63 +57,72 @@ export async function POST(req: NextRequest) {
       ? fmtIDR(parseNum(p.value)) : '-'}`)
     .join('\n');
 
-  const momDirection = gapMoM >= 0 ? 'kenaikan' : 'penurunan';
-  const yoyDirection = gapYoY >= 0 ? 'kenaikan' : 'penurunan';
+  const prompt = `Kamu adalah analis keuangan senior perusahaan Indonesia. Tugas kamu adalah membuat analisis fluktuasi yang lengkap, tajam, dan siap masuk laporan keuangan internal manajemen.
 
-  const prompt = `Kamu adalah analis keuangan profesional perusahaan Indonesia. Buat analisis fluktuasi singkat untuk laporan keuangan.
+=== DATA AKUN ===
+Kode Akun : ${accountCode || '-'}
+Nama Akun : ${accountName || '-'}
 
-Detail akun:
-- Kode Akun: ${accountCode || '-'}
-- Nama Akun: ${accountName || '-'}
-
-Data per periode (dalam Rupiah):
+=== HISTORI NILAI PER PERIODE (Rupiah) ===
 ${periodLines}
 
-Perbandingan:
-- MoM (${currLabel} vs ${prevMoMLabel}): ${momDirection} ${fmtIDR(Math.abs(gapMoM))} (${pctStr(pctMoM)})
-- YoY (${currLabel} vs ${prevYoYLabel}): ${yoyDirection} ${fmtIDR(Math.abs(gapYoY))} (${pctStr(pctYoY)})
+=== BESARAN FLUKTUASI ===
+${type !== 'yoy' ? `MoM  : ${gapMoM >= 0 ? '+' : ''}${fmtIDR(gapMoM)} (${pctStr(pctMoM)})  →  ${currLabel} vs ${prevMoMLabel}` : ''}
+${type !== 'mom' ? `YoY  : ${gapYoY >= 0 ? '+' : ''}${fmtIDR(gapYoY)} (${pctStr(pctYoY)})  →  ${currLabel} vs ${prevYoYLabel}` : ''}
 
-Buat analisis untuk:
-${type === 'mom' ? '1. Reason MoM saja' : type === 'yoy' ? '1. Reason YoY saja' : '1. Reason MoM\n2. Reason YoY'}
+=== INSTRUKSI ===
+Buat analisis lengkap untuk setiap bagian yang diminta di bawah.
 
-Format WAJIB (sesuai contoh berikut, dalam Bahasa Indonesia profesional):
+Aturan wajib:
+1. Gunakan kalimat deklaratif langsung. DILARANG menggunakan kata: kemungkinan, mungkin, diperkirakan, diduga, tampaknya, sepertinya.
+2. Baca tren histori semua periode di atas — sebutkan pola tren (naik konsisten, turun lalu naik, dsb.) jika relevan.
+3. Setiap poin harus menyebut angka konkret dari data di atas (nilai atau persentase).
+4. Tulis minimal 3 poin penyebab yang berbeda — tidak boleh hanya 1 atau 2.
+5. Jika ada periode dengan lonjakan atau penurunan tajam, sebutkan periodenya secara eksplisit.
+6. Cantumkan nilai dalam Miliar (M) atau Juta (JT).
+7. Jika nilai fluktuasi 0 atau < 1%, cukup tulis: "Tidak ada fluktuasi signifikan."
+
+=== FORMAT OUTPUT (ikuti persis, tanpa teks tambahan di luar format ini) ===
 ${type !== 'yoy' ? `[MOM]
-${gapMoM >= 0 ? 'Kenaikan' : 'Penurunan'} ${accountName} senilai ${fmtIDR(Math.abs(gapMoM))} atas rincian berikut:
-   - [Kemungkinan penyebab 1 berdasarkan nama akun dan tren data]
-   - [Kemungkinan penyebab 2]
+${gapMoM >= 0 ? 'Kenaikan' : 'Penurunan'} ${accountName} sebesar ${fmtIDR(Math.abs(gapMoM))} (${pctStr(pctMoM)}) pada ${currLabel} dibandingkan ${prevMoMLabel}, dengan rincian sebagai berikut:
+   - [Penyebab utama — sertakan angka spesifik]
+   - [Penyebab kedua — sertakan angka atau tren]
+   - [Penyebab ketiga — kaitkan dengan konteks operasional/keuangan akun ini]
+   - [Penyebab tambahan jika relevan]
 ` : ''}${type !== 'mom' ? `[YOY]
-${gapYoY >= 0 ? 'Kenaikan' : 'Penurunan'} ${accountName} senilai ${fmtIDR(Math.abs(gapYoY))} atas rincian berikut:
-   - [Kemungkinan penyebab 1 berdasarkan nama akun dan tren data]
-   - [Kemungkinan penyebab 2]
-` : ''}
-Tulis 2-3 poin kemungkinan penyebab fluktuasi berdasarkan nama akun, tren data antar periode, dan konteks keuangan umum perusahaan. Cantumkan nilai dalam Miliar/Juta. Jika fluktuasi ${'< 1%'} atau nol, tuliskan "Tidak ada fluktuasi signifikan". Gunakan kata "${gapMoM >= 0 ? 'Kenaikan' : 'Penurunan'}" di awal kalimat.
-Balas HANYA dengan teks analisis saja, tidak ada penjelasan tambahan.`;
+${gapYoY >= 0 ? 'Kenaikan' : 'Penurunan'} ${accountName} sebesar ${fmtIDR(Math.abs(gapYoY))} (${pctStr(pctYoY)}) pada ${currLabel} dibandingkan ${prevYoYLabel}, dengan rincian sebagai berikut:
+   - [Penyebab utama — sertakan angka spesifik]
+   - [Penyebab kedua — sertakan angka atau tren]
+   - [Penyebab ketiga — kaitkan dengan konteks operasional/keuangan akun ini]
+   - [Penyebab tambahan jika relevan]
+` : ''}`;
 
   try {
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 600,
-            topP: 0.9,
-          },
-        }),
-      }
-    );
+    const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://sig-activa.vercel.app',
+        'X-Title': 'SIG Activa Fluktuasi Analyzer',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.0-flash-001',   // ganti model di sini jika diperlukan
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 1500,
+        top_p: 0.85,
+      }),
+    });
 
-    if (!geminiRes.ok) {
-      const err = await geminiRes.text();
-      console.error('Gemini API error:', err);
-      return NextResponse.json({ error: `Gemini error: ${geminiRes.status}` }, { status: 502 });
+    if (!orRes.ok) {
+      const err = await orRes.text();
+      console.error('OpenRouter API error:', err);
+      return NextResponse.json({ error: `OpenRouter error: ${orRes.status} — ${err}` }, { status: 502 });
     }
 
-    const data = await geminiRes.json();
-    const rawText: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const data = await orRes.json();
+    const rawText: string = data?.choices?.[0]?.message?.content ?? '';
 
     // Split into MoM and YoY sections
     let reasonMoM = '';
@@ -132,7 +141,7 @@ Balas HANYA dengan teks analisis saja, tidak ada penjelasan tambahan.`;
 
     return NextResponse.json({ reasonMoM, reasonYoY, raw: rawText });
   } catch (err) {
-    console.error('Analyze error:', err);
+    console.error('OpenRouter analyze error:', err);
     return NextResponse.json({ error: 'Gagal generate analisis' }, { status: 500 });
   }
 }

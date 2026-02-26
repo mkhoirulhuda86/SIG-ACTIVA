@@ -338,23 +338,115 @@ const FMT_PCT = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maxim
 const fmtRp  = (n: number) => FMT_RP.format(n);
 const fmtPct = (n: number) => FMT_PCT.format(n) + '%';
 
-/** Build a template analysis string when no keyword/AI reason exists yet */
+/** Build a full deterministic analysis string from period data (pre-AI) */
 const buildTemplateReason = (
-  gap: number, pct: number, accountName: string, side: 'mom' | 'yoy',
+  gap: number,
+  pct: number,
+  accountName: string,
+  side: 'mom' | 'yoy',
+  amountCols: AmountCol[],
+  rowValues: (string | number)[],
+  currIdx: number,
+  prevIdx: number,
 ): string => {
-  if (gap === 0) return `Tidak ada fluktuasi ${side === 'mom' ? 'MoM' : 'YoY'}.`;
-  const dir = gap > 0 ? 'Kenaikan' : 'Penurunan';
-  const abs = Math.abs(gap);
+  const name = accountName || 'Akun ini';
   const absPct = Math.abs(pct);
-  const comparison = side === 'mom' ? 'dibanding bulan sebelumnya (MoM)' : 'dibanding periode sama tahun lalu (YoY)';
-  const name = accountName ? accountName : 'akun ini';
-  let amtStr: string;
-  if (abs >= 1_000_000_000) amtStr = `${FMT_RP.format(Math.round(abs / 1_000_000_000 * 10) / 10)} M`;
-  else if (abs >= 1_000_000) amtStr = `${FMT_RP.format(Math.round(abs / 1_000_000))} JT`;
-  else amtStr = FMT_RP.format(abs);
-  return `${dir} ${name} sebesar ${amtStr} (${FMT_PCT.format(absPct)}%) ${comparison}.
-   - [Isi kemungkinan penyebab 1]
-   - [Isi kemungkinan penyebab 2]`;
+
+  if (gap === 0 || absPct < 0.01)
+    return `Tidak ada fluktuasi ${side === 'mom' ? 'MoM' : 'YoY'} — nilai ${name} tidak berubah pada periode ini.`;
+
+  const dir     = gap > 0 ? 'Kenaikan' : 'Penurunan';
+  const dirLow  = gap > 0 ? 'kenaikan' : 'penurunan';
+  const abs     = Math.abs(gap);
+  const fmtAmt  = (n: number) => {
+    const a = Math.abs(n);
+    if (a >= 1_000_000_000) return `${FMT_RP.format(Math.round(a / 1_000_000_000 * 10) / 10)} M`;
+    if (a >= 1_000_000)     return `${FMT_RP.format(Math.round(a / 1_000_000))} JT`;
+    if (a >= 1_000)         return `${FMT_RP.format(Math.round(a / 1_000))} RB`;
+    return FMT_RP.format(a);
+  };
+  const fmtFull = (n: number) => {
+    const a = Math.abs(n);
+    if (a >= 1_000_000_000) return `${FMT_RP.format(Math.round(a / 1_000_000_000 * 10) / 10)} M`;
+    if (a >= 1_000_000)     return `${FMT_RP.format(Math.round(a / 1_000_000))} JT`;
+    return FMT_RP.format(a);
+  };
+
+  // Collect point (non-cumulative) periods in order
+  const pointCols = amountCols
+    .map((ac, i) => ({ ac, i, val: parseNum(rowValues[ac.colIdx]) }))
+    .filter(x => !x.ac.isCumulative);
+
+  const currAC = amountCols[currIdx];
+  const prevAC = amountCols[prevIdx];
+  const currVal = currAC ? parseNum(rowValues[currAC.colIdx]) : 0;
+  const prevVal = prevAC ? parseNum(rowValues[prevAC.colIdx]) : 0;
+  const currLabel = currAC ? (currAC.dateLabel || currAC.label) : 'Periode ini';
+  const prevLabel = prevAC ? (prevAC.dateLabel || prevAC.label) : 'Periode sebelumnya';
+
+  // Magnitude classification
+  const magn = absPct >= 50 ? 'sangat tajam'
+    : absPct >= 20 ? 'signifikan'
+    : absPct >= 5  ? 'moderat'
+    : 'minor';
+
+  // Trend across ALL point periods
+  let trendLine = '';
+  if (pointCols.length >= 3) {
+    const vals = pointCols.map(x => x.val);
+    const nonZero = vals.filter(v => v !== 0);
+    const maxVal = Math.max(...nonZero);
+    const minVal = Math.min(...nonZero);
+    const firstNZ = nonZero[0] ?? 0;
+    const lastNZ  = nonZero[nonZero.length - 1] ?? 0;
+
+    // Count consecutive direction changes
+    let rises = 0, falls = 0;
+    for (let i = 1; i < vals.length; i++) {
+      if (vals[i] > vals[i - 1]) rises++;
+      else if (vals[i] < vals[i - 1]) falls++;
+    }
+    const total = rises + falls;
+    const trendDesc = total === 0 ? 'stabil'
+      : rises === total ? 'naik konsisten'
+      : falls === total ? 'turun konsisten'
+      : rises > falls   ? 'cenderung naik'
+      : 'cenderung turun';
+
+    // Highest and lowest period labels
+    const maxIdx = pointCols.findIndex(x => x.val === maxVal);
+    const minIdx = pointCols.findIndex(x => x.val === minVal);
+    const maxLabel = pointCols[maxIdx]?.ac.dateLabel || '';
+    const minLabel = pointCols[minIdx]?.ac.dateLabel || '';
+
+    const periodSummary = pointCols
+      .filter(x => x.val !== 0)
+      .slice(-5) // last 5 to keep it readable
+      .map(x => `${x.ac.dateLabel || x.ac.label}: ${fmtFull(x.val)}`)
+      .join(', ');
+
+    trendLine = `Tren nilai ${name} ${trendDesc} sepanjang periode yang tersedia (${periodSummary}). ` +
+      `Nilai tertinggi tercatat pada ${maxLabel} sebesar ${fmtFull(maxVal)}, nilai terendah pada ${minLabel} sebesar ${fmtFull(minVal)}.`;
+  }
+
+  // Direct period comparison bullet
+  const compLine = `Nilai ${currLabel} sebesar ${fmtFull(currVal)} ` +
+    `dibandingkan ${prevLabel} sebesar ${fmtFull(prevVal)}, ` +
+    `mencerminkan ${dirLow} sebesar ${fmtAmt(abs)} (${FMT_PCT.format(absPct)}%).`;
+
+  // Change rate context
+  const rateLine = `Perubahan sebesar ${FMT_PCT.format(absPct)}% tergolong ${magn} ` +
+    `untuk ${side === 'mom' ? 'perbandingan bulanan (MoM)' : 'perbandingan tahunan (YoY)'}.`;
+
+  const lines = [
+    `${dir} ${name} sebesar ${fmtAmt(abs)} (${FMT_PCT.format(absPct)}%) ` +
+      `pada ${currLabel} dibandingkan ${prevLabel}${side === 'mom' ? ' (MoM)' : ' (YoY)'}.`,
+    `   - ${compLine}`,
+    trendLine ? `   - ${trendLine}` : null,
+    `   - ${rateLine}`,
+  ].filter(Boolean);
+
+  return lines.join('\n');
 };
 
 const classifyRow = (values: any[], accountColIdx: number): RekapSheetRow['type'] => {
@@ -456,7 +548,8 @@ const parseAmountColLabel = (
   label: string,
   yearHint: string,
 ): { yearLabel: string; dateLabel: string; isCumulative: boolean } => {
-  const isCumulative = /total|up to|s\.d\.|ytd|kumulatif/i.test(label);
+  const cumulPattern = /total|up to|s\.d\.|ytd|kumulatif/i;
+  const isCumulative = cumulPattern.test(label) || cumulPattern.test(yearHint);
   const yearMatch = label.match(/20\d{2}/);
   const yearLabel = yearMatch ? yearMatch[0] : yearHint;
   return { yearLabel, dateLabel: label, isCumulative };
@@ -988,15 +1081,27 @@ export default function FluktuasiOIPage() {
           // Determine MoM and YoY column indices within amountCols array
           // Non-cumulative cols only for point-in-time comparison
           const pointCols = amountCols.filter((c) => !c.isCumulative);
-          // Use non-cumulative cols for both MoM and YoY
-          const momCurrAC  = pointCols.length >= 1 ? pointCols[pointCols.length - 1] : amountCols[amountCols.length - 1];
-          const momPrevAC  = pointCols.length >= 2 ? pointCols[pointCols.length - 2] : amountCols[Math.max(0, amountCols.length - 2)];
-          const yoyCurrAC  = momCurrAC;
-          const yoyPrevAC  = pointCols.length >= 2 ? pointCols[0] : amountCols[0];
-          const momCurrIdx = amountCols.findIndex(c => c.colIdx === momCurrAC?.colIdx);
-          const momPrevIdx = amountCols.findIndex(c => c.colIdx === momPrevAC?.colIdx);
+          // MoM: last two non-cumulative cols; if only 1 non-cumul, fall back to last two of all cols
+          const momCurrAC = pointCols.length >= 1
+            ? pointCols[pointCols.length - 1]
+            : amountCols[amountCols.length - 1];
+          const momPrevAC = pointCols.length >= 2
+            ? pointCols[pointCols.length - 2]
+            : amountCols.length >= 2
+              ? amountCols[amountCols.length - 2]   // any col other than the last
+              : amountCols[0];
+          // YoY: same curr; earliest available non-cumul col as prev
+          const yoyCurrAC = momCurrAC;
+          const yoyPrevAC = pointCols.length >= 2 ? pointCols[0]
+            : amountCols.length >= 2 ? amountCols[0]
+            : amountCols[0];
+          let momCurrIdx = amountCols.findIndex(c => c.colIdx === momCurrAC?.colIdx);
+          let momPrevIdx = amountCols.findIndex(c => c.colIdx === momPrevAC?.colIdx);
+          // Safety: if both indices resolved to same position, push prev one step back
+          if (momCurrIdx === momPrevIdx && momCurrIdx > 0) momPrevIdx = momCurrIdx - 1;
           const yoyCurrIdx = momCurrIdx;
-          const yoyPrevIdx = amountCols.findIndex(c => c.colIdx === yoyPrevAC?.colIdx);
+          let yoyPrevIdx = amountCols.findIndex(c => c.colIdx === yoyPrevAC?.colIdx);
+          if (yoyPrevIdx === yoyCurrIdx && yoyCurrIdx > 0) yoyPrevIdx = 0;
 
           // Build rows
           const rekapRows: RekapSheetRow[] = [];
@@ -1255,22 +1360,21 @@ export default function FluktuasiOIPage() {
     const momPI   = momSel?.prev ?? rekapSheetData.momPrevIdx;
     const yoyCI   = yoySel?.curr ?? rekapSheetData.yoyCurrIdx;
     const yoyPI   = yoySel?.prev ?? rekapSheetData.yoyPrevIdx;
-    const periodChanged = !!(momSel || yoySel);
 
     return rekapDisplayRows.map(row => {
-      // ── Recompute GAP/PCT if user selected custom periods ──
-      let updated = row;
-      if (periodChanged) {
-        const curr    = ac[momCI]  ? parseNum(row.values[ac[momCI].colIdx])  : 0;
-        const prev    = ac[momPI]  ? parseNum(row.values[ac[momPI].colIdx])  : 0;
-        const yoyCurr = ac[yoyCI]  ? parseNum(row.values[ac[yoyCI].colIdx])  : 0;
-        const yoyPrev = ac[yoyPI]  ? parseNum(row.values[ac[yoyPI].colIdx])  : 0;
-        const gapMoM  = curr - prev;
-        const pctMoM  = prev === 0 ? 0 : (gapMoM / Math.abs(prev)) * 100;
-        const gapYoY  = yoyCurr - yoyPrev;
-        const pctYoY  = yoyPrev === 0 ? 0 : (gapYoY / Math.abs(yoyPrev)) * 100;
-        updated = { ...row, gapMoM, pctMoM, gapYoY, pctYoY };
-      }
+      // ── Always recompute GAP/PCT from effective period indices ──
+      // (do not rely on baked-in values from parse time; those may be wrong
+      //  if column auto-detection picked the same index for curr and prev)
+      const curr    = ac[momCI]  ? parseNum(row.values[ac[momCI].colIdx])  : 0;
+      const prev    = ac[momPI]  ? parseNum(row.values[ac[momPI].colIdx])  : 0;
+      const yoyCurr = ac[yoyCI]  ? parseNum(row.values[ac[yoyCI].colIdx])  : 0;
+      const yoyPrev = ac[yoyPI]  ? parseNum(row.values[ac[yoyPI].colIdx])  : 0;
+      const gapMoM  = curr - prev;
+      const pctMoM  = prev === 0 ? 0 : (gapMoM / Math.abs(prev)) * 100;
+      const gapYoY  = yoyCurr - yoyPrev;
+      const pctYoY  = yoyPrev === 0 ? 0 : (gapYoY / Math.abs(yoyPrev)) * 100;
+      let updated: RekapSheetRow = { ...row, gapMoM, pctMoM, gapYoY, pctYoY };
+
       // ── Overlay klasifikasi/remark from live keywords ──
       if (sheetDataList.length && row.type === 'detail') {
         const acct  = String(row.values[acctIdx] ?? '').trim();
@@ -1858,8 +1962,10 @@ export default function FluktuasiOIPage() {
               const aiError   = aiErrors[key];
               const gapVal    = side === 'mom' ? row.gapMoM : row.gapYoY;
               const pctVal    = side === 'mom' ? row.pctMoM : row.pctYoY;
+              const effCI     = side === 'mom' ? (momSel?.curr ?? momCurrIdx) : (yoySel?.curr ?? yoyCurrIdx);
+              const effPI     = side === 'mom' ? (momSel?.prev ?? momPrevIdx) : (yoySel?.prev ?? yoyPrevIdx);
               const template  = !isSpecial && Math.abs(gapVal) !== 0
-                ? buildTemplateReason(gapVal, pctVal, descVal, side)
+                ? buildTemplateReason(gapVal, pctVal, descVal, side, amountCols, row.values, effCI, effPI)
                 : '';
               const displayed = aiText ?? (baseReason || template);
               const bgEven    = ri % 2 === 0 ? '#f0f3ff' : '#e8ecff';
@@ -1871,7 +1977,7 @@ export default function FluktuasiOIPage() {
                     <div className="flex flex-col gap-1">
                       {/* Text area — editable */}
                       <textarea
-                        rows={displayed ? Math.min(8, displayed.split('\n').length + 2) : 2}
+                        rows={displayed ? Math.min(14, displayed.split('\n').length + 2) : 3}
                         value={displayed || ''}
                         placeholder={loading ? 'Generating AI...' : ''}
                         onChange={e => setAiReasons(prev => ({
@@ -1883,7 +1989,7 @@ export default function FluktuasiOIPage() {
                           backgroundColor: loading ? '#f5f3ff' : '#fff',
                           fontStyle: !aiText && !baseReason && !!template ? 'italic' : 'normal',
                           color: !aiText && !baseReason && !!template ? '#9ca3af' : '#374151',
-                          fontFamily: 'inherit', minHeight: '52px',
+                          fontFamily: 'inherit', minHeight: '72px',
                         }}
                       />
                       {/* AI buttons row */}
@@ -2097,7 +2203,8 @@ export default function FluktuasiOIPage() {
                       {rekapPageRows.map((row, ri) => {
                         const globalRi  = rekapPage * REKAP_PAGE_SIZE + ri;
                         const s         = rekapRowStyle(row.type, globalRi);
-                        const isSpecial = row.type === 'category' || row.type === 'subtotal';
+                        const isCategory = row.type === 'category';
+                        const isSpecial  = row.type === 'category' || row.type === 'subtotal';
                         const gapColor  = (v: number) =>
                           isSpecial ? '#fff' : v < 0 ? '#b91c1c' : v > 0 ? '#15803d' : '#374151';
                         const rowHasData = hasData(row);
@@ -2135,34 +2242,34 @@ export default function FluktuasiOIPage() {
                             })}
                             {/* GAP MoM */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                              style={{ backgroundColor: isCategory ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.gapMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
-                              {!isSpecial && rowHasData ? fmtRp(row.gapMoM) : ''}
+                              {!isCategory && rowHasData ? fmtRp(row.gapMoM) : ''}
                             </td>
                             {/* MoM % */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                              style={{ backgroundColor: isCategory ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.pctMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
-                              {!isSpecial && rowHasData ? fmtPct(row.pctMoM) : ''}
+                              {!isCategory && rowHasData ? fmtPct(row.pctMoM) : ''}
                             </td>
                             {/* Reason MoM */}
                             <ReasonCell ri={ri} globalRi={globalRi} row={row} side="mom"
-                              baseReason={row.reasonMoM} isSpecial={isSpecial} s={s} descVal={descVal} />
+                              baseReason={row.reasonMoM} isSpecial={isCategory} s={s} descVal={descVal} />
                             {/* GAP YoY */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                              style={{ backgroundColor: isCategory ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.gapYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
-                              {!isSpecial && rowHasData ? fmtRp(row.gapYoY) : ''}
+                              {!isCategory && rowHasData ? fmtRp(row.gapYoY) : ''}
                             </td>
                             {/* YoY % */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                              style={{ backgroundColor: isCategory ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.pctYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
-                              {!isSpecial && rowHasData ? fmtPct(row.pctYoY) : ''}
+                              {!isCategory && rowHasData ? fmtPct(row.pctYoY) : ''}
                             </td>
                             {/* Reason YoY */}
                             <ReasonCell ri={ri} globalRi={globalRi} row={row} side="yoy"
-                              baseReason={row.reasonYoY} isSpecial={isSpecial} s={s} descVal={descVal} />
+                              baseReason={row.reasonYoY} isSpecial={isCategory} s={s} descVal={descVal} />
                           </tr>
                         );
                       })}
