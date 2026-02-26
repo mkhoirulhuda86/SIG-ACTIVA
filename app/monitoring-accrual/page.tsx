@@ -245,6 +245,7 @@ export default function MonitoringAccrualPage() {
   const [selectedCostCenterIds, setSelectedCostCenterIds] = useState<Set<number>>(new Set());
   const [deletingBulkCostCenter, setDeletingBulkCostCenter] = useState(false);
   const [uploadingCostCenterFile, setUploadingCostCenterFile] = useState(false);
+  const [expandedCostCenterGroups, setExpandedCostCenterGroups] = useState<Set<string>>(new Set());
   // Dialog header/line text untuk jurnal realisasi
   const [showJurnalHeaderModal, setShowJurnalHeaderModal] = useState(false);
   const [jurnalHeaderInput, setJurnalHeaderInput] = useState('');
@@ -4555,16 +4556,30 @@ export default function MonitoringAccrualPage() {
                       <span className="text-xs text-gray-500">({costCenterData.length} data)</span>
                     )}
                   </div>
-                  {costCenterData.length > 0 && selectedCostCenterIds.size > 0 && (
-                    <button
-                      onClick={handleBulkDeleteCostCenter}
-                      disabled={deletingBulkCostCenter}
-                      className="text-xs px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                    >
-                      <Trash2 size={12} />
-                      {deletingBulkCostCenter ? 'Menghapus...' : `Hapus (${selectedCostCenterIds.size})`}
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {costCenterData.length > 0 && (
+                      <button
+                        onClick={handleToggleSelectAllCostCenter}
+                        className="text-xs px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded transition-colors"
+                        title={selectedCostCenterIds.size === costCenterData.length ? 'Batal Pilih Semua' : 'Pilih Semua'}
+                      >
+                        {selectedCostCenterIds.size === costCenterData.length ? '✓ Semua' : 'Pilih Semua'}
+                      </button>
+                    )}
+                    {selectedCostCenterIds.size > 0 && (
+                      <>
+                        <span className="text-xs text-gray-600">{selectedCostCenterIds.size} terpilih</span>
+                        <button
+                          onClick={handleBulkDeleteCostCenter}
+                          disabled={deletingBulkCostCenter}
+                          className="text-xs px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                        >
+                          <Trash2 size={12} />
+                          {deletingBulkCostCenter ? 'Menghapus...' : 'Hapus Terpilih'}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {loadingCostCenterData ? (
@@ -4583,89 +4598,153 @@ export default function MonitoringAccrualPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-3 py-2 text-left w-8">
-                            <input
-                              type="checkbox"
-                              checked={selectedCostCenterIds.size === costCenterData.length}
-                              onChange={handleToggleSelectAllCostCenter}
-                              className="rounded border-gray-300"
-                            />
-                          </th>
-                          <th className="px-3 py-2 text-right font-semibold text-gray-600">Amount</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-600">Cost Center</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-600">Kode Akun Biaya</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-600">Header Text</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-600">Line Text</th>
-                          <th className="px-3 py-2 text-center font-semibold text-gray-600">Aksi</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {costCenterData.map(entry => (
-                          <tr key={entry.id} className="hover:bg-gray-50">
-                            <td className="px-3 py-2">
-                              <input
-                                type="checkbox"
-                                checked={selectedCostCenterIds.has(entry.id)}
-                                onChange={() => handleToggleCostCenterSelection(entry.id)}
-                                className="rounded border-gray-300"
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-right font-medium text-amber-700">
-                              {formatCurrency(entry.amount)}
-                            </td>
-                            <td className="px-3 py-2 text-gray-700">{entry.costCenter || '-'}</td>
-                            <td className="px-3 py-2 text-gray-700">{entry.kdAkunBiaya || '-'}</td>
-                            <td className="px-3 py-2 text-gray-500 text-xs max-w-[160px] truncate" title={entry.headerText || ''}>
-                              {entry.headerText || '-'}
-                            </td>
-                            <td className="px-3 py-2 text-gray-500 text-xs max-w-[160px] truncate" title={entry.lineText || ''}>
-                              {entry.lineText || '-'}
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="flex items-center justify-center gap-1">
-                                <button
-                                  onClick={() => {
-                                    setEditingCostCenterId(entry.id);
-                                    setCostCenterForm({
-                                      costCenter: entry.costCenter || '',
-                                      kdAkunBiaya: entry.kdAkunBiaya || '',
-                                      amount: entry.amount.toString(),
-                                      headerText: entry.headerText || '',
-                                      lineText: entry.lineText || '',
-                                      keterangan: entry.keterangan || '',
-                                    });
-                                  }}
-                                  className="text-blue-600 hover:text-blue-800 transition-colors p-1 hover:bg-blue-50 rounded"
-                                  title="Edit"
-                                >
-                                  <Edit2 size={16} />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteCostCenter(entry.id)}
-                                  className="text-red-600 hover:text-red-800 transition-colors p-1 hover:bg-red-50 rounded"
-                                  title="Hapus"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
+                  <div className="overflow-x-auto p-0">
+                    {(() => {
+                      // Group by kdAkunBiaya
+                      const grouped = costCenterData.reduce((acc, entry) => {
+                        const key = entry.kdAkunBiaya || '-';
+                        if (!acc[key]) acc[key] = [];
+                        acc[key].push(entry);
+                        return acc;
+                      }, {} as Record<string, CostCenterEntry[]>);
+
+                      return Object.entries(grouped).map(([kdAkunBiaya, items]) => {
+                        const hasMultiple = items.length > 1;
+                        const isExpanded = expandedCostCenterGroups.has(kdAkunBiaya);
+                        const totalGroupAmount = items.reduce((sum, item) => sum + item.amount, 0);
+
+                        return (
+                          <div key={kdAkunBiaya} className="mb-4 border border-gray-200 rounded-lg overflow-hidden">
+                            {/* Group Header */}
+                            <div className="bg-gradient-to-r from-amber-50 to-amber-100 px-4 py-3 flex items-center justify-between">
+                              <div
+                                className={`flex items-center gap-3 flex-1 ${hasMultiple ? 'cursor-pointer' : ''}`}
+                                onClick={() => {
+                                  if (hasMultiple) {
+                                    const newExpanded = new Set(expandedCostCenterGroups);
+                                    if (newExpanded.has(kdAkunBiaya)) {
+                                      newExpanded.delete(kdAkunBiaya);
+                                    } else {
+                                      newExpanded.add(kdAkunBiaya);
+                                    }
+                                    setExpandedCostCenterGroups(newExpanded);
+                                  }
+                                }}
+                              >
+                                {hasMultiple && (
+                                  <div className="text-amber-600">
+                                    {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-medium text-amber-700">Kode Akun Biaya:</span>
+                                    <span className="font-mono font-bold text-sm text-amber-900">{kdAkunBiaya}</span>
+                                    <span className="text-xs text-amber-600">({items.length} entri)</span>
+                                  </div>
+                                  {hasMultiple && (
+                                    <div className="text-xs text-amber-600 mt-1">
+                                      {items.length} Cost Center berbeda · Total: {formatCurrency(totalGroupAmount)}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="bg-amber-50 font-semibold">
-                          <td className="px-3 py-2 text-right text-amber-800 text-xs uppercase tracking-wide">Total</td>
-                          <td className="px-3 py-2 text-right text-amber-800">
-                            {formatCurrency(costCenterData.reduce((s, c) => s + c.amount, 0))}
-                          </td>
-                          <td colSpan={4} />
-                        </tr>
-                      </tfoot>
-                    </table>
+                              <div className="text-right">
+                                <div className="text-lg font-bold text-amber-900">{formatCurrency(totalGroupAmount)}</div>
+                              </div>
+                            </div>
+
+                            {/* Detail Table - show if single item OR expanded */}
+                            {(!hasMultiple || isExpanded) && (
+                              <table className="w-full text-sm">
+                                <thead className="bg-gray-50 border-b border-gray-200">
+                                  <tr>
+                                    <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 w-10">
+                                      <input
+                                        type="checkbox"
+                                        checked={items.every(item => selectedCostCenterIds.has(item.id))}
+                                        onChange={() => {
+                                          const allSelected = items.every(item => selectedCostCenterIds.has(item.id));
+                                          const newSet = new Set(selectedCostCenterIds);
+                                          items.forEach(item => {
+                                            if (allSelected) newSet.delete(item.id);
+                                            else newSet.add(item.id);
+                                          });
+                                          setSelectedCostCenterIds(newSet);
+                                        }}
+                                        className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                                        title="Pilih semua dalam grup ini"
+                                      />
+                                    </th>
+                                    <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">Amount</th>
+                                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 bg-yellow-50">Cost Center</th>
+                                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Header Text</th>
+                                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Line Text</th>
+                                    <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {items.map(entry => (
+                                    <tr key={entry.id} className={`hover:bg-amber-50 transition-colors ${selectedCostCenterIds.has(entry.id) ? 'bg-amber-50' : ''}`}>
+                                      <td className="px-3 py-2 text-center">
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedCostCenterIds.has(entry.id)}
+                                          onChange={() => handleToggleCostCenterSelection(entry.id)}
+                                          className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                                        />
+                                      </td>
+                                      <td className="px-4 py-2 text-right text-amber-700 font-semibold">{formatCurrency(entry.amount)}</td>
+                                      <td className="px-4 py-2 text-gray-800 font-mono text-xs bg-yellow-50">
+                                        <span className="font-semibold">{entry.costCenter || '-'}</span>
+                                      </td>
+                                      <td className="px-4 py-2 text-gray-600 text-xs">
+                                        <div className="max-w-[130px] truncate" title={entry.headerText || ''}>
+                                          {entry.headerText || '-'}
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-2 text-gray-600 text-xs">
+                                        <div className="max-w-[130px] truncate" title={entry.lineText || ''}>
+                                          {entry.lineText || '-'}
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-2 text-center">
+                                        <div className="flex items-center justify-center gap-2">
+                                          <button
+                                            onClick={() => {
+                                              setEditingCostCenterId(entry.id);
+                                              setCostCenterForm({
+                                                costCenter: entry.costCenter || '',
+                                                kdAkunBiaya: entry.kdAkunBiaya || '',
+                                                amount: entry.amount.toString(),
+                                                headerText: entry.headerText || '',
+                                                lineText: entry.lineText || '',
+                                                keterangan: entry.keterangan || '',
+                                              });
+                                            }}
+                                            className="text-blue-600 hover:text-blue-800 transition-colors p-1 hover:bg-blue-50 rounded"
+                                            title="Edit"
+                                          >
+                                            <Edit2 size={16} />
+                                          </button>
+                                          <button
+                                            onClick={() => handleDeleteCostCenter(entry.id)}
+                                            className="text-red-600 hover:text-red-800 transition-colors p-1 hover:bg-red-50 rounded"
+                                            title="Hapus"
+                                          >
+                                            <Trash2 size={16} />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 )}
               </div>
