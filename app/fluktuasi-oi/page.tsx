@@ -2258,14 +2258,14 @@ export default function FluktuasiOIPage() {
                             })}
                             {/* GAP MoM */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: hideMomYoy ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
-                                color: gapColor(row.gapMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
+                              style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                                color: gapColor(row.gapMoM), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#fde68a'}` }}>
                               {!hideMomYoy && rowHasData ? fmtRp(row.gapMoM) : ''}
                             </td>
                             {/* MoM % */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: hideMomYoy ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
-                                color: gapColor(row.pctMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
+                              style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                                color: gapColor(row.pctMoM), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#fde68a'}` }}>
                               {!hideMomYoy && rowHasData ? fmtPct(row.pctMoM) : ''}
                             </td>
                             {/* Reason MoM */}
@@ -2273,14 +2273,14 @@ export default function FluktuasiOIPage() {
                               baseReason={row.reasonMoM} isSpecial={hideReason} s={s} descVal={descVal} />
                             {/* GAP YoY */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: hideMomYoy ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
-                                color: gapColor(row.gapYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
+                              style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                                color: gapColor(row.gapYoY), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#fde68a'}` }}>
                               {!hideMomYoy && rowHasData ? fmtRp(row.gapYoY) : ''}
                             </td>
                             {/* YoY % */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: hideMomYoy ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
-                                color: gapColor(row.pctYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
+                              style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                                color: gapColor(row.pctYoY), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#fde68a'}` }}>
                               {!hideMomYoy && rowHasData ? fmtPct(row.pctYoY) : ''}
                             </td>
                             {/* Reason YoY */}
