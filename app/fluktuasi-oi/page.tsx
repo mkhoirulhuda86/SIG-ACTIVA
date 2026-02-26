@@ -93,11 +93,21 @@ const extractKlasifikasi = (text: string): string => {
 
 // Match text with keywords from database
 // Parse natural language keyword input
-const parseNaturalKeyword = (input: string): { keyword: string; type: string; result: string; priority: number; accountCodes: string } | null => {
+const parseNaturalKeyword = (input: string): { keyword: string; type: string; result: string; priority: number; accountCodes: string; sourceColumn: string } | null => {
   if (!input.trim()) return null;
 
   const text = input.toLowerCase();
   const original = input;
+
+  // ── Extract sourceColumn: "by kolom X" / "cek di kolom X" / "check column X"
+  // Distinct from col: mode — this just overrides which column the keyword text is matched against
+  let sourceColumn = '';
+  const srcColM = original.match(
+    /(?:by\s+kolom|cek\s+(?:di\s+)?kolom|check\s+(?:in\s+)?column)\s+["']?([^\s"',;:!?\n]+)["']?/i
+  );
+  if (srcColM) {
+    sourceColumn = srcColM[1].trim();
+  }
 
   // ── Extract accountCodes: "di akun '12345'" / "di akun 12345,67890" / "berlaku akun 62301 62302"
   let accountCodes = '';
@@ -137,13 +147,13 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     const resultVal = resultMatch[1].trim();
     const exclusions = quotedWords.filter(w => w.toLowerCase() !== resultVal.toLowerCase());
     if (exclusions.length > 0) {
-      return { keyword: `not:${exclusions.join(',')}`, type, result: resultVal, priority, accountCodes };
+      return { keyword: `not:${exclusions.join(',')}`, type, result: resultVal, priority, accountCodes, sourceColumn };
     }
     const bareM = original.match(/(?:kata|text|teks)\s+([\w\s,\/|]+?)(?:\s+maka|\s+berisi|$)/i);
     if (bareM) {
       const words = bareM[1].trim().split(/\s*(?:,|atau|or|dan|and|\/|\|)\s*/).filter(Boolean);
       if (words.length > 0) {
-        return { keyword: `not:${words.join(',')}`, type, result: resultVal, priority, accountCodes };
+        return { keyword: `not:${words.join(',')}`, type, result: resultVal, priority, accountCodes, sourceColumn };
       }
     }
   }
@@ -163,7 +173,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
       const hasNumber = /(?:nomor|angka|kode|aset|number|digit|\d)/.test(text);
       const hasFraction = /(?:karakter|huruf|kata|word|\\w)/.test(text);
       const suffix = hasNumber ? '\\d+' : hasFraction ? '\\w+' : '\\S+';
-      return { keyword: `regex:${anchor} ${suffix}`, type, result: '', priority, accountCodes };
+      return { keyword: `regex:${anchor} ${suffix}`, type, result: '', priority, accountCodes, sourceColumn };
     }
   }
 
@@ -176,7 +186,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     if (patternM) {
       const pattern = patternM[1].trim();
       const result = resultMatch ? resultMatch[1].trim() : '';
-      return { keyword: `regex:${pattern}`, type, result, priority, accountCodes };
+      return { keyword: `regex:${pattern}`, type, result, priority, accountCodes, sourceColumn };
     }
   }
 
@@ -186,7 +196,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
   );
   if (docnoM && resultMatch) {
     const val = docnoM[1].replace(/\*$/, '');
-    return { keyword: `docno:${val}`, type, result: resultMatch[1].trim(), priority, accountCodes };
+    return { keyword: `docno:${val}`, type, result: resultMatch[1].trim(), priority, accountCodes, sourceColumn };
   }
 
   // ── Col mode: "jika kolom X diawali/mengandung/= Y maka berisi Z"
@@ -204,7 +214,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     // Avoid matching header text columns (kolom P/AD/AE) being treated as col:
     const skipCols = ['p', 'ad', 'ae', 'header', 'text', 'klasifikasi', 'remark', 'keterangan', 'uraian'];
     if (!skipCols.includes(colName.toLowerCase())) {
-      return { keyword: `col:${colName}:${pattern}`, type, result: resultMatch[1].trim(), priority, accountCodes };
+      return { keyword: `col:${colName}:${pattern}`, type, result: resultMatch[1].trim(), priority, accountCodes, sourceColumn };
     }
   }
 
@@ -213,10 +223,10 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
   if (!keywordMatch) keywordMatch = original.match(/(?:jika ada text|text)\s+([\w\s]+?)\s+(?:maka|then)/i);
 
   if (keywordMatch && resultMatch) {
-    return { keyword: keywordMatch[1].trim(), type, result: resultMatch[1].trim(), priority, accountCodes };
+    return { keyword: keywordMatch[1].trim(), type, result: resultMatch[1].trim(), priority, accountCodes, sourceColumn };
   }
   if (keywordMatch) {
-    return { keyword: keywordMatch[1].trim(), type, result: keywordMatch[1].trim(), priority, accountCodes };
+    return { keyword: keywordMatch[1].trim(), type, result: keywordMatch[1].trim(), priority, accountCodes, sourceColumn };
   }
 
   return null;
@@ -236,6 +246,18 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
   // Separate positive (including docno/col) and NOT keywords
   const positiveKeywords = relevantKeywords.filter(kw => !kw.keyword.toLowerCase().startsWith('not:'));
   const notKeywords = relevantKeywords.filter(kw => kw.keyword.toLowerCase().startsWith('not:'));
+
+  // ── Helper: resolve effective text for a keyword (sourceColumn overrides default text)
+  const getEffText = (kw: Keyword): { str: string; lower: string } => {
+    const sc = (kw.sourceColumn ?? '').trim();
+    if (sc && rowData) {
+      const exactKey = Object.keys(rowData).find(k => k === sc);
+      const ciKey    = exactKey ?? Object.keys(rowData).find(k => k.toLowerCase() === sc.toLowerCase());
+      const val = ciKey ? String(rowData[ciKey] ?? '').trim() : '';
+      if (val !== '') return { str: val, lower: val.toLowerCase() };
+    }
+    return { str: textStr, lower: textLower };
+  };
 
   // ── Pass 1: positive / regex / docno / col keywords (checked in priority order)
   for (const kw of positiveKeywords) {
@@ -296,12 +318,13 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
       continue;
     }
 
-    // ── Regex / Pattern mode (against text column)
+    // ── Regex / Pattern mode — respects sourceColumn
     if (kwLower.startsWith('regex:')) {
+      const { str: effStr } = getEffText(kw);
       try {
         const pattern = kw.keyword.slice(6).trim();
         const regex = new RegExp(pattern, 'i');
-        const match = textStr.match(regex);
+        const match = effStr.match(regex);
         if (match) {
           if (!kw.result || kw.result.trim() === '{match}') return match[0];
           let result = kw.result;
@@ -317,18 +340,20 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
       continue;
     }
 
-    // ── Normal text includes matching
+    // ── Normal text includes matching — respects sourceColumn
+    const { lower: effLower } = getEffText(kw);
     const keywordLower = kw.keyword.toLowerCase();
-    if (textLower.includes(keywordLower)) {
+    if (effLower.includes(keywordLower)) {
       return kw.result;
     }
   }
 
-  // ── Pass 2: NOT keywords (only if no positive match)
+  // ── Pass 2: NOT keywords (only if no positive match) — respects sourceColumn
   for (const kw of notKeywords) {
+    const { lower: effLower } = getEffText(kw);
     // Syntax: "not:word1,word2" → match if text contains NONE of word1, word2
     const exclusions = kw.keyword.slice(4).trim().split(/[,|]/).map(s => s.trim().toLowerCase()).filter(Boolean);
-    const hasExcluded = exclusions.some(excl => textLower.includes(excl));
+    const hasExcluded = exclusions.some(excl => effLower.includes(excl));
     if (!hasExcluded) {
       return kw.result;
     }
@@ -595,7 +620,8 @@ type Keyword = {
   type: string;
   result: string;
   priority: number;
-  accountCodes: string; // comma-separated; empty = berlaku untuk semua
+  accountCodes: string;  // comma-separated; empty = berlaku untuk semua
+  sourceColumn: string;  // column header name to match against; empty = default description col
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -631,6 +657,7 @@ export default function FluktuasiOIPage() {
     result: '',
     priority: 0,
     accountCodes: '',
+    sourceColumn: '',
   });
   const [keywordFilter, setKeywordFilter] = useState<'all' | 'klasifikasi' | 'remark'>('all');
   const [inputMode, setInputMode] = useState<'simple' | 'advanced'>('simple');
@@ -742,7 +769,7 @@ export default function FluktuasiOIPage() {
         loadKeywords();
         setShowKeywordModal(false);
         setEditingKeyword(null);
-        setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0, accountCodes: '' });
+        setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0, accountCodes: '', sourceColumn: '' });
         setNaturalInput('');
         setInputMode('simple');
         setKwMode('normal');
@@ -791,7 +818,7 @@ export default function FluktuasiOIPage() {
   // ── Open Edit Modal ────────────────────────────────────────────────────────
   const handleEditKeyword = (kw: Keyword) => {
     setEditingKeyword(kw);
-    setKeywordForm({ keyword: kw.keyword, type: kw.type, result: kw.result, priority: kw.priority, accountCodes: kw.accountCodes ?? '' });
+    setKeywordForm({ keyword: kw.keyword, type: kw.type, result: kw.result, priority: kw.priority, accountCodes: kw.accountCodes ?? '', sourceColumn: kw.sourceColumn ?? '' });
     // Detect and sync kwMode
     const lk = kw.keyword.toLowerCase();
     if (lk.startsWith('col:')) {
@@ -1536,7 +1563,7 @@ export default function FluktuasiOIPage() {
                   <button
                     onClick={() => {
                       setEditingKeyword(null);
-                      setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0, accountCodes: '' });
+                      setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0, accountCodes: '', sourceColumn: '' });
                       setKwMode('normal');
                       setColHeader('');
                       setColPattern('');
@@ -1628,6 +1655,9 @@ export default function FluktuasiOIPage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Berlaku di Akun
                     </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Cek di Kolom
+                    </th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Aksi
                     </th>
@@ -1650,7 +1680,7 @@ export default function FluktuasiOIPage() {
                     if (keywords.length === 0) {
                       return (
                         <tr>
-                          <td colSpan={6} className="px-4 py-8 text-center">
+                          <td colSpan={7} className="px-4 py-8 text-center">
                             <div className="text-gray-400 mb-2">
                               <FileSpreadsheet className="mx-auto mb-2" size={40} />
                             </div>
@@ -1664,7 +1694,7 @@ export default function FluktuasiOIPage() {
                     if (filteredKeywords.length === 0) {
                       return (
                         <tr>
-                          <td colSpan={6} className="px-4 py-8 text-center">
+                          <td colSpan={7} className="px-4 py-8 text-center">
                             <p className="text-sm text-gray-500">Tidak ada keyword yang cocok dengan pencarian.</p>
                             <p className="text-xs text-gray-400 mt-1">Coba kata kunci pencarian lain atau ubah filter.</p>
                           </td>
@@ -1738,6 +1768,11 @@ export default function FluktuasiOIPage() {
                                   <span key={c} className="inline-flex px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-mono mr-1 mb-1">{c.trim()}</span>
                                 ))
                               : <span className="text-gray-400 italic">Semua</span>}
+                          </td>
+                          <td className="px-4 py-3 text-xs">
+                            {kw.sourceColumn
+                              ? <span className="inline-flex px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-mono">{kw.sourceColumn}</span>
+                              : <span className="text-gray-400 italic">Otomatis</span>}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center gap-2">
@@ -2465,6 +2500,7 @@ export default function FluktuasiOIPage() {
                       <li>• Kolom bebas: jika kolom Account diawali 18 maka berisi &quot;Y&quot;</li>
                       <li>• Tambah: remark / priority 10</li>
                       <li>• Akun tertentu: ... di akun 62301 / di akun &apos;62301,62401&apos;</li>
+                      <li>• Kolom sumber: by kolom &quot;Document Header Text&quot;, text &quot;SLL&quot; berisi &quot;Sindikasi SLL&quot;</li>
                     </ul>
                   </div>
                   
@@ -2505,6 +2541,9 @@ export default function FluktuasiOIPage() {
                             <div><span className="font-semibold">Priority:</span> {parsed.priority}</div>
                             {parsed.accountCodes && (
                               <div><span className="font-semibold">Berlaku di Akun:</span> <code className="bg-green-100 px-1 rounded">{parsed.accountCodes}</code></div>
+                            )}
+                            {parsed.sourceColumn && (
+                              <div><span className="font-semibold">Cek di Kolom:</span> <code className="bg-amber-100 px-1 rounded">{parsed.sourceColumn}</code></div>
                             )}
                             {isExtractKw && (
                               <div className="mt-1.5 pt-1.5 border-t border-green-200 text-green-600">
@@ -2774,6 +2813,27 @@ export default function FluktuasiOIPage() {
                     </p>
                   </div>
 
+                  {/* Source Column */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Cek di Kolom
+                      <span className="ml-2 text-xs font-normal text-gray-500">(kosong = kolom deskripsi/header teks)</span>
+                    </label>
+                    <select
+                      value={keywordForm.sourceColumn}
+                      onChange={(e) => setKeywordForm({ ...keywordForm, sourceColumn: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-white text-sm"
+                    >
+                      <option value="">— Otomatis (kolom deskripsi default) —</option>
+                      {availableColumns.map(col => (
+                        <option key={col} value={col}>{col}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1.5">
+                      Pilih kolom yang akan dicocokkan dengan keyword ini. Misal: kolom "Assignment" atau "Text".
+                    </p>
+                  </div>
+
                   {/* Account Code Scope */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -2817,7 +2877,7 @@ export default function FluktuasiOIPage() {
                 onClick={() => {
                   setShowKeywordModal(false);
                   setEditingKeyword(null);
-                  setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0, accountCodes: '' });
+                  setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0, accountCodes: '', sourceColumn: '' });
                   setNaturalInput('');
                   setInputMode('simple');
                   setKwMode('normal');

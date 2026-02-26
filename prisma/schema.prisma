@@ -233,6 +233,7 @@ model FluktuasiKeyword {
   result       String   // Hasil yang akan ditampilkan
   priority     Int      @default(0) // Prioritas (makin besar makin prioritas)
   accountCodes String   @default("") // Koma-separated account codes; kosong = berlaku untuk semua
+  sourceColumn String   @default("") // Nama kolom sumber pencocokan; kosong = kolom deskripsi default
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
