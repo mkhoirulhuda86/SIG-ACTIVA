@@ -366,6 +366,41 @@ const classifyRow = (values: any[], accountColIdx: number): RekapSheetRow['type'
 };
 
 /**
+ * Convert Excel date serial number to a readable date string like "31-Jan-25"
+ */
+const excelSerialToDateStr = (serial: number): string => {
+  const date = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+  if (isNaN(date.getTime())) return String(serial);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const dd = String(date.getUTCDate()).padStart(2, '0');
+  const mm = months[date.getUTCMonth()];
+  const yy = String(date.getUTCFullYear()).slice(-2);
+  return `${dd}-${mm}-${yy}`;
+};
+
+/** Convert a cell value that might be an Excel date serial to a display string */
+const normalizeHeaderCell = (val: any): string => {
+  const s = String(val ?? '').trim();
+  if (s === '') return '';
+  if (typeof val === 'number' && val > 40000 && val < 70000) return excelSerialToDateStr(val);
+  if (/^\d{5}$/.test(s)) {
+    const n = parseInt(s);
+    if (n > 40000 && n < 70000) return excelSerialToDateStr(n);
+  }
+  return s;
+};
+
+/** Returns true if a header label looks like a date/period (amount column header) */
+const looksLikeDateHeader = (label: string, topLabel: string): boolean => {
+  const combined = `${topLabel} ${label}`.toLowerCase();
+  if (/20\d{2}/.test(combined)) return true;
+  if (/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|mei|agt|okt)\b/i.test(combined)) return true;
+  if (/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/.test(combined)) return true;
+  if (/total|up to|s\.d\.|ytd|kumulatif/i.test(combined)) return true;
+  return false;
+};
+
+/**
  * Try to detect the "year" and "date" labels from a rekap header.
  * Rekap sheets often have two header rows: row 0 = year, row 1 = specific date.
  * We check if the header label looks like a date (contains month abbrev or slash-date).
@@ -422,6 +457,7 @@ export default function FluktuasiOIPage() {
   // ── AI Reason State ────────────────────────────────────────────────────────
   const [aiReasons,  setAiReasons]  = useState<Record<number, { mom?: string; yoy?: string }>>({});
   const [aiLoading,  setAiLoading]  = useState<Record<string, boolean>>({});
+  const [aiErrors,   setAiErrors]   = useState<Record<string, string>>({});
   
   // ── Keyword Management States ──────────────────────────────────────────────
   const [keywords, setKeywords] = useState<Keyword[]>([]);
@@ -810,8 +846,8 @@ export default function FluktuasiOIPage() {
           const maxCols = Math.max(topRow.length, bottomRow.length);
           let currentTopLabel = '';
           for (let c = 0; c < maxCols; c++) {
-            const t = String(topRow[c] ?? '').trim();
-            const b = String(bottomRow[c] ?? '').trim();
+            const t = normalizeHeaderCell(topRow[c]);
+            const b = normalizeHeaderCell(bottomRow[c]);
             if (t) currentTopLabel = t;
             topLabels.push(currentTopLabel);
             bottomLabels.push(b);
@@ -841,6 +877,9 @@ export default function FluktuasiOIPage() {
           const amountCols: AmountCol[] = [];
           for (let col = 0; col < headers.length; col++) {
             if (col === accountColIdx) continue;
+            // Header must look like a date/period to be an amount column
+            // This prevents description columns from being misclassified
+            if (!looksLikeDateHeader(fullHeaders[col], topLabels[col])) continue;
             let numCnt = 0, nonEmpty = 0;
             for (let r = hRow2 + 1; r < Math.min(rawR.length, hRow2 + 25); r++) {
               const v = rawR[r]?.[col];
@@ -945,6 +984,7 @@ export default function FluktuasiOIPage() {
     if (!rekapSheetData) return;
     const key = type === 'both' ? `${rowIdx}-both` : `${rowIdx}-${type}`;
     setAiLoading(prev => ({ ...prev, [key]: true }));
+    setAiErrors(prev => { const n = { ...prev }; delete n[key]; return n; });
     try {
       const { amountCols, momCurrIdx, momPrevIdx, yoyCurrIdx, yoyPrevIdx } = rekapSheetData;
       const currAmt   = amountCols[momCurrIdx];
@@ -973,6 +1013,22 @@ export default function FluktuasiOIPage() {
         }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        const errMsg = res.status === 429
+          ? 'Rate limit Gemini tercapai. Tunggu beberapa menit lalu coba lagi.'
+          : res.status === 500 && data.error?.includes('GEMINI_API_KEY')
+            ? 'GEMINI_API_KEY belum dikonfigurasi di server.'
+            : (data.error || `Error ${res.status}`);
+        const affectedKeys = type === 'both'
+          ? [`${rowIdx}-mom`, `${rowIdx}-yoy`]
+          : [key];
+        setAiErrors(prev => {
+          const n = { ...prev };
+          affectedKeys.forEach(k => { n[k] = errMsg; });
+          return n;
+        });
+        return;
+      }
       setAiReasons(prev => ({
         ...prev,
         [rowIdx]: {
@@ -981,8 +1037,15 @@ export default function FluktuasiOIPage() {
           ...(type !== 'mom'  ? { yoy: data.reasonYoY || data.reason || '' } : {}),
         },
       }));
-    } catch {
-      // ignore
+    } catch (e) {
+      const affectedKeys = type === 'both'
+        ? [`${rowIdx}-mom`, `${rowIdx}-yoy`]
+        : [key];
+      setAiErrors(prev => {
+        const n = { ...prev };
+        affectedKeys.forEach(k => { n[k] = 'Gagal menghubungi server AI.'; });
+        return n;
+      });
     } finally {
       setAiLoading(prev => { const n = { ...prev }; delete n[key]; return n; });
     }
@@ -1589,7 +1652,12 @@ export default function FluktuasiOIPage() {
           {rekapSheetData && (() => {
             const { accountColIdx, amountCols, momCurrIdx, momPrevIdx, yoyCurrIdx, yoyPrevIdx } = rekapSheetData;
             const amtColSet  = new Set(amountCols.map(ac => ac.colIdx));
-            const descColIdx = rekapSheetData.headers.findIndex((_, ci) => ci !== accountColIdx && !amtColSet.has(ci));
+            // Find description columns: non-account, non-amount, and BEFORE the first amount column
+            const firstAmtIdx = amountCols.length > 0 ? Math.min(...amountCols.map(ac => ac.colIdx)) : Infinity;
+            const descColIdxList = rekapSheetData.headers
+              .map((_, ci) => ci)
+              .filter(ci => ci !== accountColIdx && !amtColSet.has(ci) && ci < firstAmtIdx);
+            const descColIdx = descColIdxList[0] ?? -1;
             const prevAmt    = amountCols[momPrevIdx];
             const yoyPrev    = amountCols[yoyPrevIdx];
             const prevLabel  = prevAmt?.dateLabel  || prevAmt?.label  || '';
@@ -1610,6 +1678,7 @@ export default function FluktuasiOIPage() {
               const bothKey   = `${globalRi}-both`;
               const loading   = aiLoading[key] || aiLoading[bothKey];
               const aiText    = aiReasons[globalRi]?.[side];
+              const aiError   = aiErrors[key];
               const displayed = aiText ?? baseReason;
               const gapVal    = side === 'mom' ? row.gapMoM : row.gapYoY;
               const bgEven    = ri % 2 === 0 ? '#f0f3ff' : '#e8ecff';
@@ -1633,30 +1702,35 @@ export default function FluktuasiOIPage() {
                           fontFamily: 'inherit', minHeight: '40px' }}
                       />
                       {/* AI buttons row */}
-                      <div className="flex items-center gap-1 flex-wrap">
-                        {loading ? (
-                          <span className="text-[9px] text-purple-600 animate-pulse font-medium">✨ Generating...</span>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => generateReason(globalRi, side, row, descVal)}
-                              disabled={Math.abs(gapVal) === 0}
-                              title={`Generate AI Reason ${side.toUpperCase()}`}
-                              className="px-1.5 py-0.5 text-[9px] rounded bg-purple-100 text-purple-700 hover:bg-purple-200 disabled:opacity-30 whitespace-nowrap font-medium">
-                              ✨ AI {side.toUpperCase()}
-                            </button>
-                            {aiText && (
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {loading ? (
+                            <span className="text-[9px] text-purple-600 animate-pulse font-medium">Generating...</span>
+                          ) : (
+                            <>
                               <button
-                                onClick={() => setAiReasons(prev => ({
-                                  ...prev,
-                                  [globalRi]: { ...prev[globalRi], [side]: undefined },
-                                }))}
-                                title="Hapus teks AI, kembalikan ke data sheet"
-                                className="px-1.5 py-0.5 text-[9px] rounded bg-red-50 text-red-500 hover:bg-red-100 whitespace-nowrap">
-                                ✕ reset
+                                onClick={() => generateReason(globalRi, side, row, descVal)}
+                                disabled={Math.abs(gapVal) === 0}
+                                title={`Generate AI Reason ${side.toUpperCase()}`}
+                                className="px-1.5 py-0.5 text-[9px] rounded bg-purple-100 text-purple-700 hover:bg-purple-200 disabled:opacity-30 whitespace-nowrap font-medium">
+                                AI {side.toUpperCase()}
                               </button>
-                            )}
-                          </>
+                              {aiText && (
+                                <button
+                                  onClick={() => setAiReasons(prev => ({
+                                    ...prev,
+                                    [globalRi]: { ...prev[globalRi], [side]: undefined },
+                                  }))}
+                                  title="Hapus teks AI, kembalikan ke data sheet"
+                                  className="px-1.5 py-0.5 text-[9px] rounded bg-red-50 text-red-500 hover:bg-red-100 whitespace-nowrap">
+                                  ✕ reset
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                        {aiError && (
+                          <span className="text-[9px] text-red-500 leading-tight">{aiError}</span>
                         )}
                       </div>
                     </div>
@@ -1687,9 +1761,7 @@ export default function FluktuasiOIPage() {
                     onClick={() => {
                       rekapDisplayRows.forEach((row, gi) => {
                         if (row.type === 'detail') {
-                          const amtColSet2 = new Set(amountCols.map(ac => ac.colIdx));
-                          const di = rekapSheetData.headers.findIndex((_, ci) => ci !== accountColIdx && !amtColSet2.has(ci));
-                          const dn = di >= 0 ? String(row.values[di] ?? '') : '';
+                          const dn = descColIdx >= 0 ? String(row.values[descColIdx] ?? '') : '';
                           generateReason(gi, 'both', row, dn);
                         }
                       });
@@ -1697,7 +1769,7 @@ export default function FluktuasiOIPage() {
                     className="px-3 py-1.5 text-xs rounded-lg font-medium whitespace-nowrap"
                     style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}
                     title="Generate AI analisis untuk semua baris detail sekaligus">
-                    ✨ Generate All AI
+                    Generate All AI
                   </button>
                 </div>
 
@@ -1721,12 +1793,12 @@ export default function FluktuasiOIPage() {
                       <tr>
                         <th className="px-3 py-1 text-white text-[10px] font-bold"
                           style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}></th>
-                        {descColIdx >= 0 && (
-                          <th className="px-3 py-1 text-white text-[10px] font-bold italic"
+                        {descColIdxList.map(ci => (
+                          <th key={ci} className="px-3 py-1 text-white text-[10px] font-bold italic"
                             style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>
                             Description
                           </th>
-                        )}
+                        ))}
                         {amountCols.map((ac) => (
                           <th key={ac.colIdx} className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
                             style={{ backgroundColor: amtColBg(ac), border: '1px solid rgba(255,255,255,0.2)' }}>
@@ -1750,12 +1822,12 @@ export default function FluktuasiOIPage() {
                       <tr>
                         <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)' }}>Account</th>
-                        {descColIdx >= 0 && (
-                          <th className="px-3 py-1.5 text-white text-[10px] font-semibold italic text-center"
+                        {descColIdxList.map(ci => (
+                          <th key={ci} className="px-3 py-1.5 text-white text-[10px] font-semibold italic text-center"
                             style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)', minWidth: '180px' }}>
-                            {rekapSheetData.originalHeaders?.[descColIdx] || rekapSheetData.headers[descColIdx]}
+                            {rekapSheetData.originalHeaders?.[ci] || rekapSheetData.headers[ci]}
                           </th>
-                        )}
+                        ))}
                         {amountCols.map((ac) => (
                           <th key={ac.colIdx} className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
                             style={{ backgroundColor: amtColBg(ac), border: '1px solid rgba(255,255,255,0.2)', minWidth: '90px' }}>
@@ -1797,13 +1869,13 @@ export default function FluktuasiOIPage() {
                               style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}`, minWidth: '80px' }}>
                               {acctVal}
                             </td>
-                            {/* Description */}
-                            {descColIdx >= 0 && (
-                              <td className="px-3 py-1.5"
+                            {/* Description columns */}
+                            {descColIdxList.map(ci => (
+                              <td key={ci} className="px-3 py-1.5"
                                 style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}`, minWidth: '180px' }}>
-                                {descVal}
+                                {String(row.values[ci] ?? '')}
                               </td>
-                            )}
+                            ))}
                             {/* All amount columns */}
                             {amountCols.map((ac) => {
                               const v = row.values[ac.colIdx];
