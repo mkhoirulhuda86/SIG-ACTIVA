@@ -246,6 +246,13 @@ export default function MonitoringAccrualPage() {
   const [deletingBulkCostCenter, setDeletingBulkCostCenter] = useState(false);
   const [uploadingCostCenterFile, setUploadingCostCenterFile] = useState(false);
   const [expandedCostCenterGroups, setExpandedCostCenterGroups] = useState<Set<string>>(new Set());
+  // Portal dropdown untuk jurnal group rincian accrual
+  const [openCostCenterGroupDropdown, setOpenCostCenterGroupDropdown] = useState<{
+    key: string;
+    items: CostCenterEntry[];
+    accrualItem: Accrual;
+    rect: { top: number; right: number };
+  } | null>(null);
   // Dialog header/line text untuk jurnal realisasi
   const [showJurnalHeaderModal, setShowJurnalHeaderModal] = useState(false);
   const [jurnalHeaderInput, setJurnalHeaderInput] = useState('');
@@ -1612,6 +1619,79 @@ export default function MonitoringAccrualPage() {
     URL.revokeObjectURL(url);
   };
 
+  // Download Jurnal SAP Excel untuk Group Rincian Accrual (per kdAkunBiaya)
+  const handleDownloadJurnalSAPPerRincianGroup = async (entries: CostCenterEntry[], item: Accrual, kdAkunBiaya: string, headerText = '', lineText = '') => {
+    try {
+      const { ExcelJS: ExcelJSLib } = await loadExcelLibraries();
+      const companyCode = item.companyCode || '2000';
+      const workbook = new ExcelJSLib.Workbook();
+      const worksheet = workbook.addWorksheet('Jurnal SAP');
+      const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFE699' } };
+      const headers1 = ['xblnr','bukrs','blart','bldat','budat','waers','kursf','bktxt','zuonr','hkont','wrbtr','sgtxt','prctr','kostl','','nplnr','aufnr','valut','flag'];
+      const headers2 = ['Reference','company','doc type','doc date','posting date','currency','kurs','header text','Vendor/cu:','account','amount','line text','profit center','cost center','','Network','order numi','value date',''];
+      worksheet.getRow(1).height = 15; worksheet.getRow(1).values = headers1;
+      worksheet.getRow(1).eachCell((cell: any) => { cell.fill = headerFill; cell.font = { name: 'Calibri', size: 11, bold: true }; cell.alignment = { horizontal: 'center', vertical: 'bottom' }; });
+      worksheet.getRow(2).height = 15; worksheet.getRow(2).values = headers2;
+      worksheet.getRow(2).eachCell((cell: any) => { cell.fill = headerFill; cell.font = { name: 'Calibri', size: 11, bold: true }; cell.alignment = { horizontal: 'center', vertical: 'bottom' }; });
+      worksheet.columns = [{width:12},{width:10},{width:9},{width:9},{width:12},{width:10},{width:8},{width:30},{width:12},{width:12},{width:15},{width:30},{width:12},{width:12},{width:3},{width:10},{width:12},{width:12},{width:5}];
+      const today = new Date();
+      const docDate = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+      const total = entries.reduce((s,e) => s + Math.abs(e.amount), 0);
+      let currentRow = 3;
+      const writeRow = (hkont: string, wrbtr: number, kostl: string, bktxt: string, sgtxt: string) => {
+        const row = worksheet.getRow(currentRow++);
+        row.height = 15;
+        row.getCell(1).value=''; row.getCell(2).value=companyCode; row.getCell(3).value='SA';
+        row.getCell(4).value=docDate; row.getCell(5).value=docDate; row.getCell(6).value='IDR';
+        row.getCell(7).value=''; row.getCell(8).value=bktxt; row.getCell(9).value='';
+        row.getCell(10).value=hkont;
+        row.getCell(11).value=Math.round(Math.abs(wrbtr))*(wrbtr<0?-1:1);
+        row.getCell(11).numFmt='0';
+        row.getCell(12).value=sgtxt; row.getCell(13).value=''; row.getCell(14).value=kostl;
+        row.getCell(15).value=''; row.getCell(16).value=''; row.getCell(17).value='';
+        row.getCell(18).value=''; row.getCell(19).value='G';
+      };
+      // 1 baris KREDIT: kdAkr, -total
+      writeRow(item.kdAkr, -Math.round(total), '', headerText, lineText);
+      // N baris DEBIT: per entry
+      for (const e of entries) {
+        writeRow(e.kdAkunBiaya || item.kdAkunBiaya, Math.round(Math.abs(e.amount)), e.costCenter || item.costCenter || '', e.headerText || headerText, e.lineText || lineText);
+      }
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Jurnal_SAP_Accrual_${kdAkunBiaya}_${companyCode}_${entries.length}entri.xlsx`;
+      document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error generating jurnal rincian accrual group:', error);
+      alert('Gagal membuat jurnal SAP. Silakan coba lagi.');
+    }
+  };
+
+  // Download Jurnal SAP TXT untuk Group Rincian Accrual (per kdAkunBiaya)
+  const handleDownloadJurnalSAPPerRincianGroupTxt = (entries: CostCenterEntry[], item: Accrual, kdAkunBiaya: string, headerText = '', lineText = '') => {
+    const companyCode = item.companyCode || '2000';
+    const today = new Date();
+    const docDate = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+    const total = entries.reduce((s,e) => s + Math.abs(e.amount), 0);
+    const rows: string[][] = [];
+    // 1 baris KREDIT: kdAkr, -total
+    rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '', headerText, '', item.kdAkr, (-Math.round(total)).toString(), lineText, '', '', '', '', '', '', 'G']);
+    // N baris DEBIT: per entry
+    for (const e of entries) {
+      rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '', e.headerText || headerText, '', e.kdAkunBiaya || item.kdAkunBiaya, Math.round(Math.abs(e.amount)).toString(), e.lineText || lineText, '', e.costCenter || item.costCenter || '', '', '', '', '', 'G']);
+    }
+    const txtContent = rows.map(row => row.join('\t')).join('\n');
+    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Jurnal_SAP_Accrual_${kdAkunBiaya}_${companyCode}_${entries.length}entri.txt`;
+    document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
+  };
+
   
   const handleDownloadJurnalSAPTxt = (item: Accrual, headerText = '', lineText = '') => {
     // Use company code from item
@@ -2929,19 +3009,19 @@ export default function MonitoringAccrualPage() {
                 background: #94a3b8;
               }
               .table-container {
-                min-height: calc(100vh - 400px);
-                max-height: calc(100vh - 350px);
+                min-height: calc(100vh - 320px);
+                max-height: calc(100vh - 260px);
                 overflow: auto;
               }
             `}</style>
             <div
               className="table-container custom-scrollbar"
             >
-              <table className="w-full text-xs sm:text-sm" style={{ minWidth: '1800px' }}>
+              <table className="w-full text-sm" style={{ minWidth: '1900px' }}>
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-[5] shadow-sm">
                   <tr>
                     {canEdit && (
-                      <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap w-10 bg-gray-50">
+                      <th className="px-2 py-4 text-center text-sm font-semibold text-gray-700 whitespace-nowrap w-10 bg-gray-50">
                         <input
                           type="checkbox"
                           checked={filteredData.length > 0 && filteredData.every((item) => selectedIds.has(item.id))}
@@ -2957,61 +3037,61 @@ export default function MonitoringAccrualPage() {
                         />
                       </th>
                     )}
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap w-12 bg-gray-50">
+                    <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 whitespace-nowrap w-12 bg-gray-50">
                       ▼
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
                       Company Code
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
                       No PO
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
                       Assignment/Order
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
                       Kode Akun Accrual
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
                       Kode Akun Biaya
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
                       Vendor
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
                       Deskripsi
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
                       Header Text
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
+                    <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
                       Klasifikasi
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
+                    <th className="px-4 py-4 text-right text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
                       Amount
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
                       Cost Center
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
+                    <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
                       Start Date
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
+                    <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
                       Periode
                     </th>
-                    <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ maxWidth: '140px' }}>
+                    <th className="px-3 py-4 text-right text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ maxWidth: '140px' }}>
                       Saldo Awal
                     </th>
-                    <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ maxWidth: '140px' }}>
+                    <th className="px-3 py-4 text-right text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ maxWidth: '140px' }}>
                       Total Accrual
                     </th>
-                    <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ maxWidth: '140px' }}>
+                    <th className="px-3 py-4 text-right text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ maxWidth: '140px' }}>
                       Total Realisasi
                     </th>
-                    <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ maxWidth: '140px' }}>
+                    <th className="px-3 py-4 text-right text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ maxWidth: '140px' }}>
                       Saldo
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ minWidth: '140px' }}>
                       Actions
                     </th>
                   </tr>
@@ -3041,8 +3121,8 @@ export default function MonitoringAccrualPage() {
                       <React.Fragment key={kodeAkun}>
                         {/* Kode Akun Group Header */}
                         <tr className="bg-blue-50 font-semibold">
-                          {canEdit && <td className="px-2 py-3 bg-blue-50" />}
-                          <td className="px-4 py-3 text-center bg-blue-50">
+                          {canEdit && <td className="px-2 py-4 bg-blue-50" />}
+                          <td className="px-4 py-4 text-center bg-blue-50">
                             <button
                               onClick={() => {
                                 const newExpanded = new Set(expandedKodeAkun);
@@ -3058,36 +3138,36 @@ export default function MonitoringAccrualPage() {
                               {isKodeAkunExpanded ? '▼' : '▶'}
                             </button>
                           </td>
-                          <td colSpan={9} className="px-4 py-3 text-left text-blue-900 bg-blue-50">
+                          <td colSpan={9} className="px-4 py-4 text-left text-blue-900 bg-blue-50">
                             Kode Akun: {kodeAkun}
                           </td>
-                          <td className="px-4 py-3 text-right font-bold text-blue-900 bg-blue-50">
+                          <td className="px-4 py-4 text-right font-bold text-blue-900 bg-blue-50">
                             {formatCurrency(totalAmountKodeAkun)}
                           </td>
-                          <td className="px-4 py-3 bg-blue-50"></td>
-                          <td className="px-4 py-3 bg-blue-50"></td>
-                          <td className="px-4 py-3 bg-blue-50"></td>
-                          <td className="px-2 py-3 text-right font-bold text-blue-900 bg-blue-50" style={{ maxWidth: '140px' }}>
+                          <td className="px-4 py-4 bg-blue-50"></td>
+                          <td className="px-4 py-4 bg-blue-50"></td>
+                          <td className="px-4 py-4 bg-blue-50"></td>
+                          <td className="px-3 py-4 text-right font-bold text-blue-900 bg-blue-50" style={{ maxWidth: '140px' }}>
                             <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalSaldoAwalKodeAkun)}>
                               {formatCurrency(totalSaldoAwalKodeAkun)}
                             </div>
                           </td>
-                          <td className="px-2 py-3 text-right font-bold text-blue-900 bg-blue-50" style={{ maxWidth: '140px' }}>
+                          <td className="px-3 py-4 text-right font-bold text-blue-900 bg-blue-50" style={{ maxWidth: '140px' }}>
                             <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalAccrualKodeAkun)}>
                               {formatCurrency(totalAccrualKodeAkun)}
                             </div>
                           </td>
-                          <td className="px-2 py-3 text-right font-bold text-blue-900 bg-blue-50" style={{ maxWidth: '140px' }}>
+                          <td className="px-3 py-4 text-right font-bold text-blue-900 bg-blue-50" style={{ maxWidth: '140px' }}>
                             <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalRealisasiKodeAkun)}>
                               {formatCurrency(totalRealisasiKodeAkun)}
                             </div>
                           </td>
-                          <td className="px-2 py-3 text-right font-bold text-blue-900 bg-blue-50" style={{ maxWidth: '140px' }}>
+                          <td className="px-3 py-4 text-right font-bold text-blue-900 bg-blue-50" style={{ maxWidth: '140px' }}>
                             <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalSaldoKodeAkun)}>
                               {formatCurrency(totalSaldoKodeAkun)}
                             </div>
                           </td>
-                          <td className="px-4 py-3 bg-blue-50">
+                          <td className="px-4 py-4 bg-blue-50">
                             <div className="flex items-center justify-center gap-1">
                               <div className="relative">
                                 <button
@@ -3242,8 +3322,8 @@ export default function MonitoringAccrualPage() {
                           return (
                             <React.Fragment key={vendorKey}>
                               <tr className="bg-green-50 font-semibold">
-                                {canEdit && <td className="px-2 py-3 bg-green-50" />}
-                                <td className="px-4 py-3 text-center bg-green-50">
+                                {canEdit && <td className="px-2 py-4 bg-green-50" />}
+                                <td className="px-4 py-4 text-center bg-green-50">
                                   <button
                                     onClick={() => {
                                       const newExpanded = new Set(expandedVendor);
@@ -3259,36 +3339,36 @@ export default function MonitoringAccrualPage() {
                                     {isVendorExpanded ? '▼' : '▶'}
                                   </button>
                                 </td>
-                                <td colSpan={9} className="px-4 py-3 text-left text-green-900 bg-green-50">
+                                <td colSpan={9} className="px-4 py-4 text-left text-green-900 bg-green-50">
                                   Vendor: {vendor}
                                 </td>
-                                <td className="px-4 py-3 text-right font-bold text-green-900 bg-green-50">
+                                <td className="px-4 py-4 text-right font-bold text-green-900 bg-green-50">
                                   {formatCurrency(totalAmountVendor)}
                                 </td>
-                                <td className="px-4 py-3 bg-green-50"></td>
-                                <td className="px-4 py-3 bg-green-50"></td>
-                                <td className="px-4 py-3 bg-green-50"></td>
-                                <td className="px-2 py-3 text-right font-bold text-green-900 bg-green-50" style={{ maxWidth: '140px' }}>
+                                <td className="px-4 py-4 bg-green-50"></td>
+                                <td className="px-4 py-4 bg-green-50"></td>
+                                <td className="px-4 py-4 bg-green-50"></td>
+                                <td className="px-3 py-4 text-right font-bold text-green-900 bg-green-50" style={{ maxWidth: '140px' }}>
                                   <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalSaldoAwalVendor)}>
                                     {formatCurrency(totalSaldoAwalVendor)}
                                   </div>
                                 </td>
-                                <td className="px-2 py-3 text-right font-bold text-green-900 bg-green-50" style={{ maxWidth: '140px' }}>
+                                <td className="px-3 py-4 text-right font-bold text-green-900 bg-green-50" style={{ maxWidth: '140px' }}>
                                   <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalAccrualVendor)}>
                                     {formatCurrency(totalAccrualVendor)}
                                   </div>
                                 </td>
-                                <td className="px-2 py-3 text-right font-bold text-green-900 bg-green-50" style={{ maxWidth: '140px' }}>
+                                <td className="px-3 py-4 text-right font-bold text-green-900 bg-green-50" style={{ maxWidth: '140px' }}>
                                   <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalRealisasiVendor)}>
                                     {formatCurrency(totalRealisasiVendor)}
                                   </div>
                                 </td>
-                                <td className="px-2 py-3 text-right font-bold text-green-900 bg-green-50" style={{ maxWidth: '140px' }}>
+                                <td className="px-3 py-4 text-right font-bold text-green-900 bg-green-50" style={{ maxWidth: '140px' }}>
                                   <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalSaldoVendor)}>
                                     {formatCurrency(totalSaldoVendor)}
                                   </div>
                                 </td>
-                                <td className="px-4 py-3 bg-green-50"></td>
+                                <td className="px-4 py-4 bg-green-50"></td>
                               </tr>
 
                               {isVendorExpanded && items.map((item) => {
@@ -3403,78 +3483,40 @@ export default function MonitoringAccrualPage() {
                             <td colSpan={canEdit ? 20 : 19} className="px-4 py-4 bg-gray-50">
                               <div className="ml-8">
                                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Detail Periode</h4>
-                                <table className="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
+                                <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
                                   <thead className="bg-white">
                                     <tr>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-700 bg-white" style={{ width: '80px' }}>Periode</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-700 bg-white" style={{ width: '100px' }}>Bulan</th>
-                                      <th className="px-3 py-2 text-right font-semibold text-gray-700 bg-white" style={{ maxWidth: '130px' }}>Accrual</th>
-                                      <th className="px-3 py-2 text-right font-semibold text-blue-700 bg-white" style={{ maxWidth: '130px' }}>Total Realisasi</th>
-                                      <th className="px-3 py-2 text-right font-semibold text-gray-700 bg-white" style={{ maxWidth: '130px' }}>Saldo</th>
-                                      <th className="px-3 py-2 text-center font-semibold text-gray-700 bg-white" style={{ minWidth: '200px' }}>Action</th>
+                                      <th className="px-4 py-3 text-left font-semibold text-gray-700 bg-white" style={{ width: '90px' }}>Periode</th>
+                                      <th className="px-4 py-3 text-left font-semibold text-gray-700 bg-white" style={{ width: '120px' }}>Bulan</th>
+                                      <th className="px-4 py-3 text-right font-semibold text-gray-700 bg-white" style={{ maxWidth: '150px' }}>Accrual</th>
+                                      <th className="px-4 py-3 text-right font-semibold text-blue-700 bg-white" style={{ maxWidth: '150px' }}>Total Realisasi</th>
+                                      <th className="px-4 py-3 text-right font-semibold text-gray-700 bg-white" style={{ maxWidth: '150px' }}>Saldo</th>
+                                      <th className="px-4 py-3 text-center font-semibold text-gray-700 bg-white" style={{ minWidth: '220px' }}>Action</th>
                                     </tr>
                                   </thead>
                                   <tbody className="bg-white divide-y divide-gray-200">
                                     {item.periodes?.map((periode) => (
                                       <React.Fragment key={periode.id}>
                                       <tr className="hover:bg-gray-50">
-                                        <td className="px-3 py-2 text-gray-700 bg-white">Periode {periode.periodeKe}</td>
-                                        <td className="px-3 py-2 text-gray-700 bg-white">{periode.bulan}</td>
-                                        <td className="px-3 py-2 text-right text-gray-800 font-medium bg-white" style={{ maxWidth: '130px' }}>
+                                        <td className="px-4 py-3 text-gray-700 bg-white">Periode {periode.periodeKe}</td>
+                                        <td className="px-4 py-3 text-gray-700 bg-white">{periode.bulan}</td>
+                                        <td className="px-4 py-3 text-right text-gray-800 font-medium bg-white" style={{ maxWidth: '150px' }}>
                                           <span className="truncate overflow-hidden text-ellipsis" title={formatCurrency(Math.abs(periode.amountAccrual))}>
                                             {formatCurrency(Math.abs(periode.amountAccrual))}
                                           </span>
                                         </td>
-                                        <td className="px-3 py-2 text-right text-blue-700 bg-white" style={{ maxWidth: '130px' }}>
+                                        <td className="px-4 py-3 text-right text-blue-700 bg-white" style={{ maxWidth: '150px' }}>
                                           <span className="truncate block overflow-hidden text-ellipsis" title={formatCurrency(periode.totalRealisasi || 0)}>
                                             {formatCurrency(periode.totalRealisasi || 0)}
                                           </span>
                                         </td>
-                                        <td className="px-3 py-2 text-right text-gray-800 font-semibold bg-white" style={{ maxWidth: '130px' }}>
+                                        <td className="px-4 py-3 text-right text-gray-800 font-semibold bg-white" style={{ maxWidth: '150px' }}>
                                           <span className="truncate block overflow-hidden text-ellipsis" title={formatCurrency(periode.saldo || 0)}>
                                             {formatCurrency(periode.saldo || 0)}
                                           </span>
                                         </td>
-                                        <td className="px-3 py-2 text-center bg-white">
+                                        <td className="px-4 py-3 text-center bg-white">
                                           <div className="flex items-center justify-center gap-1">
-                                            <div className="relative">
-                                              <button
-                                                onClick={() => {
-                                                  const dropdown = document.getElementById(`jurnal-dropdown-${item.id}-${periode.id}`);
-                                                  if (dropdown) {
-                                                    dropdown.classList.toggle('hidden');
-                                                  }
-                                                }}
-                                                className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded transition-colors flex items-center gap-1"
-                                                title="Download Jurnal SAP Periode"
-                                              >
-                                                <Download size={12} />
-                                                <ChevronDown size={10} />
-                                              </button>
-                                              <div
-                                                id={`jurnal-dropdown-${item.id}-${periode.id}`}
-                                                className="hidden absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-10"
-                                              >
-                                                <button
-                                                  onClick={() => {
-                                                    promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriode(item, periode, ht, lt));
-                                                    document.getElementById(`jurnal-dropdown-${item.id}-${periode.id}`)?.classList.add('hidden');
-                                                  }}
-                                                  className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors"
-                                                >
-                                                  Download Excel
-                                                </button>
-                                                <button
-                                                  onClick={() => {
-                                                    promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriodeTxt(item, periode, ht, lt));
-                                                    document.getElementById(`jurnal-dropdown-${item.id}-${periode.id}`)?.classList.add('hidden');
-                                                  }}
-                                                  className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-green-50 transition-colors"
-                                                >
-                                                  Download TXT
-                                                </button>
-                                              </div>
-                                            </div>
                                             <button
                                               onClick={() => handleOpenCostCenterModal(item, periode)}
                                               className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded transition-colors"
@@ -4649,8 +4691,32 @@ export default function MonitoringAccrualPage() {
                                   )}
                                 </div>
                               </div>
-                              <div className="text-right">
-                                <div className="text-lg font-bold text-amber-900">{formatCurrency(totalGroupAmount)}</div>
+                              <div className="flex items-center gap-3">
+                                {/* Download Jurnal Button */}
+                                {costCenterModalAccrual && (
+                                  <div className="relative">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (openCostCenterGroupDropdown?.key === kdAkunBiaya) {
+                                          setOpenCostCenterGroupDropdown(null);
+                                        } else {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          setOpenCostCenterGroupDropdown({ key: kdAkunBiaya, items, accrualItem: costCenterModalAccrual!, rect: { top: rect.bottom, right: window.innerWidth - rect.right } });
+                                        }
+                                      }}
+                                      className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded transition-colors flex items-center gap-1 shadow-sm"
+                                      title="Download Jurnal SAP untuk semua rincian dalam grup ini"
+                                    >
+                                      <Download size={14} />
+                                      <span className="font-medium">Download Jurnal</span>
+                                      <ChevronDown size={12} />
+                                    </button>
+                                  </div>
+                                )}
+                                <div className="text-right">
+                                  <div className="text-lg font-bold text-amber-900">{formatCurrency(totalGroupAmount)}</div>
+                                </div>
                               </div>
                             </div>
 
@@ -4960,6 +5026,36 @@ export default function MonitoringAccrualPage() {
         </div>
       )}
       {/* Portal dropdown Cost Element Jurnal (agar tidak terclip overflow-hidden modal) */}
+      {openCostCenterGroupDropdown && (
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setOpenCostCenterGroupDropdown(null)} />
+          <div
+            className="fixed z-[9999] w-48 bg-white border border-gray-200 rounded-lg shadow-xl"
+            style={{ top: openCostCenterGroupDropdown.rect.top + 4, right: openCostCenterGroupDropdown.rect.right }}
+          >
+            <button
+              onClick={() => {
+                promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerRincianGroup(openCostCenterGroupDropdown.items, openCostCenterGroupDropdown.accrualItem, openCostCenterGroupDropdown.key, ht, lt));
+                setOpenCostCenterGroupDropdown(null);
+              }}
+              className="block w-full text-left px-3 py-2.5 text-xs text-gray-700 hover:bg-green-50 transition-colors rounded-t-lg border-b border-gray-100"
+            >
+              <div className="font-medium">Download Excel</div>
+              <div className="text-[10px] text-gray-500">{openCostCenterGroupDropdown.items.length} entri rincian</div>
+            </button>
+            <button
+              onClick={() => {
+                promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerRincianGroupTxt(openCostCenterGroupDropdown.items, openCostCenterGroupDropdown.accrualItem, openCostCenterGroupDropdown.key, ht, lt));
+                setOpenCostCenterGroupDropdown(null);
+              }}
+              className="block w-full text-left px-3 py-2.5 text-xs text-gray-700 hover:bg-green-50 transition-colors rounded-b-lg"
+            >
+              <div className="font-medium">Download TXT</div>
+              <div className="text-[10px] text-gray-500">{openCostCenterGroupDropdown.items.length} entri rincian</div>
+            </button>
+          </div>
+        </>
+      )}
       {openGroupDropdown && (
         <>
           <div className="fixed inset-0 z-[9998]" onClick={() => setOpenGroupDropdown(null)} />
