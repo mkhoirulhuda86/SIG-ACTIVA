@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -338,20 +338,49 @@ const FMT_PCT = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maxim
 const fmtRp  = (n: number) => FMT_RP.format(n);
 const fmtPct = (n: number) => FMT_PCT.format(n) + '%';
 
+/** Build a template analysis string when no keyword/AI reason exists yet */
+const buildTemplateReason = (
+  gap: number, pct: number, accountName: string, side: 'mom' | 'yoy',
+): string => {
+  if (gap === 0) return `Tidak ada fluktuasi ${side === 'mom' ? 'MoM' : 'YoY'}.`;
+  const dir = gap > 0 ? 'Kenaikan' : 'Penurunan';
+  const abs = Math.abs(gap);
+  const absPct = Math.abs(pct);
+  const comparison = side === 'mom' ? 'dibanding bulan sebelumnya (MoM)' : 'dibanding periode sama tahun lalu (YoY)';
+  const name = accountName ? accountName : 'akun ini';
+  let amtStr: string;
+  if (abs >= 1_000_000_000) amtStr = `${FMT_RP.format(Math.round(abs / 1_000_000_000 * 10) / 10)} M`;
+  else if (abs >= 1_000_000) amtStr = `${FMT_RP.format(Math.round(abs / 1_000_000))} JT`;
+  else amtStr = FMT_RP.format(abs);
+  return `${dir} ${name} sebesar ${amtStr} (${FMT_PCT.format(absPct)}%) ${comparison}.
+   - [Isi kemungkinan penyebab 1]
+   - [Isi kemungkinan penyebab 2]`;
+};
+
 const classifyRow = (values: any[], accountColIdx: number): RekapSheetRow['type'] => {
   if (values.every((v) => v === '' || v === null || v === undefined)) return 'empty';
   const acct = String(values[accountColIdx] ?? '').trim();
 
-  // Explicit subtotal keyword in any text cell
-  const hasSubtotalKeyword = values.some((v) =>
-    /\b(total|jumlah|sub[\s\-]?total|gesamt)\b/i.test(String(v ?? '')));
+  // If row has a proper numeric account code (5+ digits), classify by account pattern only
+  // This prevents keyword false-positives from SAP-generated totals in other columns
+  if (/^\d{5,}$/.test(acct)) {
+    // Account ends in 4+ zeros → subtotal (e.g. 71510000, 71500000)
+    if (/0{4,}$/.test(acct)) return 'subtotal';
+    // Otherwise it's a detail account regardless of other columns
+    return 'detail';
+  }
+
+  // No valid account code — check for explicit subtotal keywords in text cells
+  const hasSubtotalKeyword = values.some((v, i) => {
+    if (i === accountColIdx) return false;
+    // Only match against text cells, not numeric values
+    const s = String(v ?? '');
+    if (/^[\d\s.,\-]+$/.test(s)) return false;
+    return /\b(total|jumlah|sub[\s\-]?total|gesamt)\b/i.test(s);
+  });
   if (hasSubtotalKeyword) return 'subtotal';
 
-  // Account ends in 4+ zeros → subtotal
-  if (/\d/.test(acct) && /0{4,}$/.test(acct)) return 'subtotal';
-
-  // No account number but row has at least one numeric value → subtotal row
-  // (SAP rekap: subtotal rows often have blank account col but carry amounts)
+  // No account and no keywords — if has numeric values it's a category subtotal row
   if (!acct || !/\d/.test(acct)) {
     const hasNumeric = values.some((v, i) => {
       if (i === accountColIdx) return false;
@@ -382,10 +411,28 @@ const excelSerialToDateStr = (serial: number): string => {
 const normalizeHeaderCell = (val: any): string => {
   const s = String(val ?? '').trim();
   if (s === '') return '';
+  // Excel serial number
   if (typeof val === 'number' && val > 40000 && val < 70000) return excelSerialToDateStr(val);
   if (/^\d{5}$/.test(s)) {
     const n = parseInt(s);
     if (n > 40000 && n < 70000) return excelSerialToDateStr(n);
+  }
+  // Normalize string dates: DD/MM/YYYY or DD-MM-YYYY → DD-Mon-YY
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if (m) {
+    const dd = m[1].padStart(2, '0');
+    const mo = parseInt(m[2]) - 1;
+    const yy = m[3].slice(-2);
+    if (mo >= 0 && mo < 12) return `${dd}-${MONTHS[mo]}-${yy}`;
+  }
+  // Also handle YYYY/MM/DD or YYYY-MM-DD
+  const m2 = s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
+  if (m2) {
+    const dd = m2[3].padStart(2, '0');
+    const mo = parseInt(m2[2]) - 1;
+    const yy = m2[1].slice(-2);
+    if (mo >= 0 && mo < 12) return `${dd}-${MONTHS[mo]}-${yy}`;
   }
   return s;
 };
@@ -458,6 +505,8 @@ export default function FluktuasiOIPage() {
   const [aiReasons,  setAiReasons]  = useState<Record<number, { mom?: string; yoy?: string }>>({});
   const [aiLoading,  setAiLoading]  = useState<Record<string, boolean>>({});
   const [aiErrors,   setAiErrors]   = useState<Record<string, string>>({});
+  const [aiBatch,    setAiBatch]    = useState<{ done: number; total: number } | null>(null);
+  const aiCancelRef = useRef(false);
   
   // ── Keyword Management States ──────────────────────────────────────────────
   const [keywords, setKeywords] = useState<Keyword[]>([]);
@@ -796,6 +845,10 @@ export default function FluktuasiOIPage() {
           
           obj['__klasifikasi'] = matchKeywords(klasifikasiText, keywords, 'klasifikasi', docnoText, obj) || extractKlasifikasi(klasifikasiText);
           obj['__remark']      = matchKeywords(remarkText, keywords, 'remark', docnoText, obj) || remarkText.trim();
+          // Store raw source text so keywords can be re-matched reactively after the file is parsed
+          obj['__klasifikasi_raw'] = klasifikasiText;
+          obj['__remark_raw']      = remarkText;
+          obj['__docno_raw']       = docnoText;
           rows.push(obj);
         }
         result.push({ sheetName, headers, originalHeaders, rows });
@@ -903,14 +956,15 @@ export default function FluktuasiOIPage() {
           // Determine MoM and YoY column indices within amountCols array
           // Non-cumulative cols only for point-in-time comparison
           const pointCols = amountCols.filter((c) => !c.isCumulative);
-          // MoM: last two non-cumulative cols
-          const momCurrIdx = amountCols.length >= 1 ? amountCols.length - 1 : 0;
-          const momPrevIdx = amountCols.length >= 2 ? amountCols.length - 2 : 0;
-          // YoY: last col vs first point-in-time col with same month (heuristic: first non-cumulative)
+          // Use non-cumulative cols for both MoM and YoY
+          const momCurrAC  = pointCols.length >= 1 ? pointCols[pointCols.length - 1] : amountCols[amountCols.length - 1];
+          const momPrevAC  = pointCols.length >= 2 ? pointCols[pointCols.length - 2] : amountCols[Math.max(0, amountCols.length - 2)];
+          const yoyCurrAC  = momCurrAC;
+          const yoyPrevAC  = pointCols.length >= 2 ? pointCols[0] : amountCols[0];
+          const momCurrIdx = amountCols.findIndex(c => c.colIdx === momCurrAC?.colIdx);
+          const momPrevIdx = amountCols.findIndex(c => c.colIdx === momPrevAC?.colIdx);
           const yoyCurrIdx = momCurrIdx;
-          const yoyPrevIdx = pointCols.length >= 2
-            ? amountCols.findIndex((c) => c.colIdx === pointCols[0].colIdx)
-            : 0;
+          const yoyPrevIdx = amountCols.findIndex(c => c.colIdx === yoyPrevAC?.colIdx);
 
           // Build rows
           const rekapRows: RekapSheetRow[] = [];
@@ -974,21 +1028,22 @@ export default function FluktuasiOIPage() {
   // ── Download (via API → ExcelJS with full formatting) ────────────────────────
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // ── Generate AI reason for a rekap row ────────────────────────────────────
+  // ── Generate AI reason for a rekap row (with auto-retry on 429) ──────────
   const generateReason = async (
     rowIdx: number,
     type: 'mom' | 'yoy' | 'both',
     row: RekapSheetRow,
     accountName: string,
-  ) => {
-    if (!rekapSheetData) return;
+    _retry = 0,
+  ): Promise<boolean> => {
+    if (!rekapSheetData) return false;
     const key = type === 'both' ? `${rowIdx}-both` : `${rowIdx}-${type}`;
     setAiLoading(prev => ({ ...prev, [key]: true }));
     setAiErrors(prev => { const n = { ...prev }; delete n[key]; return n; });
     try {
       const { amountCols, momCurrIdx, momPrevIdx, yoyCurrIdx, yoyPrevIdx } = rekapSheetData;
-      const currAmt   = amountCols[momCurrIdx];
-      const prevAmt   = amountCols[momPrevIdx];
+      const currAmt    = amountCols[momCurrIdx];
+      const prevAmt    = amountCols[momPrevIdx];
       const yoyCurrAmt = amountCols[yoyCurrIdx];
       const yoyPrevAmt = amountCols[yoyPrevIdx];
       const periods = amountCols.map(ac => ({
@@ -1014,41 +1069,62 @@ export default function FluktuasiOIPage() {
       });
       const data = await res.json();
       if (!res.ok) {
+        // Auto-retry with exponential backoff on 429 (max 3 retries: 8s / 16s / 32s)
+        if (res.status === 429 && _retry < 3) {
+          const waitMs = (2 ** _retry) * 8000;
+          setAiErrors(prev => ({ ...prev, [key]: `Rate limit — retry dalam ${waitMs / 1000}s...` }));
+          await new Promise(r => setTimeout(r, waitMs));
+          setAiLoading(prev => { const n = { ...prev }; delete n[key]; return n; });
+          return generateReason(rowIdx, type, row, accountName, _retry + 1);
+        }
         const errMsg = res.status === 429
-          ? 'Rate limit Gemini tercapai. Tunggu beberapa menit lalu coba lagi.'
+          ? 'Rate limit Gemini. Coba lagi dalam beberapa menit.'
           : res.status === 500 && data.error?.includes('GEMINI_API_KEY')
             ? 'GEMINI_API_KEY belum dikonfigurasi di server.'
             : (data.error || `Error ${res.status}`);
-        const affectedKeys = type === 'both'
-          ? [`${rowIdx}-mom`, `${rowIdx}-yoy`]
-          : [key];
-        setAiErrors(prev => {
-          const n = { ...prev };
-          affectedKeys.forEach(k => { n[k] = errMsg; });
-          return n;
-        });
-        return;
+        const affectedKeys = type === 'both' ? [`${rowIdx}-mom`, `${rowIdx}-yoy`] : [key];
+        setAiErrors(prev => { const n = { ...prev }; affectedKeys.forEach(k => { n[k] = errMsg; }); return n; });
+        return false;
       }
       setAiReasons(prev => ({
         ...prev,
         [rowIdx]: {
           ...prev[rowIdx],
-          ...(type !== 'yoy'  ? { mom: data.reasonMoM || data.reason || '' } : {}),
-          ...(type !== 'mom'  ? { yoy: data.reasonYoY || data.reason || '' } : {}),
+          ...(type !== 'yoy' ? { mom: data.reasonMoM || data.reason || '' } : {}),
+          ...(type !== 'mom' ? { yoy: data.reasonYoY || data.reason || '' } : {}),
         },
       }));
+      return true;
     } catch (e) {
-      const affectedKeys = type === 'both'
-        ? [`${rowIdx}-mom`, `${rowIdx}-yoy`]
-        : [key];
-      setAiErrors(prev => {
-        const n = { ...prev };
-        affectedKeys.forEach(k => { n[k] = 'Gagal menghubungi server AI.'; });
-        return n;
-      });
+      const affectedKeys = type === 'both' ? [`${rowIdx}-mom`, `${rowIdx}-yoy`] : [key];
+      setAiErrors(prev => { const n = { ...prev }; affectedKeys.forEach(k => { n[k] = 'Gagal menghubungi server AI.'; }); return n; });
+      return false;
     } finally {
       setAiLoading(prev => { const n = { ...prev }; delete n[key]; return n; });
     }
+  };
+
+  const generateAllSequential = async (
+    rows: typeof rekapDisplayRows,
+    dColIdx: number
+  ) => {
+    const detailRows = rows
+      .map((row, gi) => ({ row, gi }))
+      .filter(({ row }) => row.type === 'detail');
+    aiCancelRef.current = false;
+    setAiBatch({ done: 0, total: detailRows.length });
+    let done = 0;
+    for (const { row, gi } of detailRows) {
+      if (aiCancelRef.current) break;
+      const dn = dColIdx >= 0 ? String(row.values[dColIdx] ?? '') : '';
+      await generateReason(gi, 'both', row, dn);
+      done++;
+      setAiBatch({ done, total: detailRows.length });
+      if (done < detailRows.length && !aiCancelRef.current) {
+        await new Promise(r => setTimeout(r, 4200));
+      }
+    }
+    setAiBatch(null);
   };
 
   const handleDownload = async () => {
@@ -1115,10 +1191,50 @@ export default function FluktuasiOIPage() {
   const rekapDisplayRows = useMemo(() =>
     (rekapSheetData?.rows ?? []).filter((r) => r.type !== 'empty'),
   [rekapSheetData]);
-  const rekapTotalPages = Math.ceil(rekapDisplayRows.length / REKAP_PAGE_SIZE);
+
+  // Reactively recompute klasifikasi/remark from current keywords state
+  // (so the table updates immediately when keywords are added/edited/deleted)
+  const acctReasonMapLive = useMemo(() => {
+    const map: Record<string, { klasifikasi: Set<string>; remark: Set<string> }> = {};
+    for (const sd of sheetDataList) {
+      const code = sd.sheetName.trim();
+      const kSet = new Set<string>();
+      const rSet = new Set<string>();
+      for (const row of sd.rows) {
+        const rawK  = String(row['__klasifikasi_raw'] ?? row['__klasifikasi'] ?? '');
+        const rawR  = String(row['__remark_raw']      ?? row['__remark']      ?? '');
+        const docno = String(row['__docno_raw']        ?? '');
+        const k = matchKeywords(rawK, keywords, 'klasifikasi', docno, row) || extractKlasifikasi(rawK);
+        const r = matchKeywords(rawR, keywords, 'remark',       docno, row) || rawR.trim();
+        if (k) kSet.add(k);
+        if (r) rSet.add(r);
+      }
+      map[code] = { klasifikasi: kSet, remark: rSet };
+    }
+    return map;
+  }, [sheetDataList, keywords]);
+
+  // Overlay live reasonMoM/reasonYoY computed from current keywords
+  const rekapDisplayRowsLive = useMemo(() => {
+    if (!rekapSheetData || !sheetDataList.length) return rekapDisplayRows;
+    const acctIdx = rekapSheetData.accountColIdx;
+    return rekapDisplayRows.map(row => {
+      if (row.type !== 'detail') return row;
+      const acct = String(row.values[acctIdx] ?? '').trim();
+      const entry = acctReasonMapLive[acct];
+      if (!entry) return row;
+      return {
+        ...row,
+        reasonMoM: [...entry.klasifikasi].join('; '),
+        reasonYoY: [...entry.remark].join('; '),
+      };
+    });
+  }, [rekapDisplayRows, acctReasonMapLive, rekapSheetData, sheetDataList]);
+
+  const rekapTotalPages = Math.ceil(rekapDisplayRowsLive.length / REKAP_PAGE_SIZE);
   const rekapPageRows   = useMemo(() =>
-    rekapDisplayRows.slice(rekapPage * REKAP_PAGE_SIZE, (rekapPage + 1) * REKAP_PAGE_SIZE),
-  [rekapDisplayRows, rekapPage]);
+    rekapDisplayRowsLive.slice(rekapPage * REKAP_PAGE_SIZE, (rekapPage + 1) * REKAP_PAGE_SIZE),
+  [rekapDisplayRowsLive, rekapPage]);
 
   // Reset pages when switching tabs
   const switchTab = useCallback((idx: number) => { setActiveSheetIdx(idx); setKaPage(0); }, []);
@@ -1652,11 +1768,18 @@ export default function FluktuasiOIPage() {
           {rekapSheetData && (() => {
             const { accountColIdx, amountCols, momCurrIdx, momPrevIdx, yoyCurrIdx, yoyPrevIdx } = rekapSheetData;
             const amtColSet  = new Set(amountCols.map(ac => ac.colIdx));
-            // Find description columns: non-account, non-amount, and BEFORE the first amount column
+            // Find description columns: non-account, non-amount, before first amount col, AND have data
             const firstAmtIdx = amountCols.length > 0 ? Math.min(...amountCols.map(ac => ac.colIdx)) : Infinity;
             const descColIdxList = rekapSheetData.headers
               .map((_, ci) => ci)
-              .filter(ci => ci !== accountColIdx && !amtColSet.has(ci) && ci < firstAmtIdx);
+              .filter(ci => {
+                if (ci === accountColIdx || amtColSet.has(ci) || ci >= firstAmtIdx) return false;
+                // Only include columns that have at least one non-empty value in data rows
+                return rekapSheetData.rows.some(r => {
+                  const v = String(r.values[ci] ?? '').trim();
+                  return v !== '';
+                });
+              });
             const descColIdx = descColIdxList[0] ?? -1;
             const prevAmt    = amountCols[momPrevIdx];
             const yoyPrev    = amountCols[yoyPrevIdx];
@@ -1679,8 +1802,12 @@ export default function FluktuasiOIPage() {
               const loading   = aiLoading[key] || aiLoading[bothKey];
               const aiText    = aiReasons[globalRi]?.[side];
               const aiError   = aiErrors[key];
-              const displayed = aiText ?? baseReason;
               const gapVal    = side === 'mom' ? row.gapMoM : row.gapYoY;
+              const pctVal    = side === 'mom' ? row.pctMoM : row.pctYoY;
+              const template  = !isSpecial && Math.abs(gapVal) !== 0
+                ? buildTemplateReason(gapVal, pctVal, descVal, side)
+                : '';
+              const displayed = aiText ?? (baseReason || template);
               const bgEven    = ri % 2 === 0 ? '#f0f3ff' : '#e8ecff';
               return (
                 <td className="px-2 py-1"
@@ -1690,16 +1817,20 @@ export default function FluktuasiOIPage() {
                     <div className="flex flex-col gap-1">
                       {/* Text area — editable */}
                       <textarea
-                        rows={displayed ? Math.min(8, displayed.split('\n').length + 1) : 2}
+                        rows={displayed ? Math.min(8, displayed.split('\n').length + 2) : 2}
                         value={displayed || ''}
-                        placeholder={loading ? 'Generating AI...' : '— belum ada analisis'}
+                        placeholder={loading ? 'Generating AI...' : ''}
                         onChange={e => setAiReasons(prev => ({
                           ...prev,
                           [globalRi]: { ...prev[globalRi], [side]: e.target.value },
                         }))}
                         className="w-full text-[10px] resize-y rounded border border-indigo-200 p-1.5 leading-relaxed focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                        style={{ backgroundColor: loading ? '#f5f3ff' : '#fff', fontStyle: displayed ? 'normal' : 'italic',
-                          fontFamily: 'inherit', minHeight: '40px' }}
+                        style={{
+                          backgroundColor: loading ? '#f5f3ff' : '#fff',
+                          fontStyle: !aiText && !baseReason && !!template ? 'italic' : 'normal',
+                          color: !aiText && !baseReason && !!template ? '#9ca3af' : '#374151',
+                          fontFamily: 'inherit', minHeight: '52px',
+                        }}
                       />
                       {/* AI buttons row */}
                       <div className="flex flex-col gap-1">
@@ -1715,7 +1846,7 @@ export default function FluktuasiOIPage() {
                                 className="px-1.5 py-0.5 text-[9px] rounded bg-purple-100 text-purple-700 hover:bg-purple-200 disabled:opacity-30 whitespace-nowrap font-medium">
                                 AI {side.toUpperCase()}
                               </button>
-                              {aiText && (
+                              {(aiText) && (
                                 <button
                                   onClick={() => setAiReasons(prev => ({
                                     ...prev,
@@ -1757,25 +1888,32 @@ export default function FluktuasiOIPage() {
                     </p>
                   </div>
                   {/* Generate All AI Button */}
-                  <button
-                    onClick={() => {
-                      rekapDisplayRows.forEach((row, gi) => {
-                        if (row.type === 'detail') {
-                          const dn = descColIdx >= 0 ? String(row.values[descColIdx] ?? '') : '';
-                          generateReason(gi, 'both', row, dn);
-                        }
-                      });
-                    }}
-                    className="px-3 py-1.5 text-xs rounded-lg font-medium whitespace-nowrap"
-                    style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}
-                    title="Generate AI analisis untuk semua baris detail sekaligus">
-                    Generate All AI
-                  </button>
+                  {aiBatch ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-white/80 animate-pulse">
+                        {aiBatch.done}/{aiBatch.total} akun...
+                      </span>
+                      <button
+                        onClick={() => { aiCancelRef.current = true; setAiBatch(null); }}
+                        className="px-2 py-1 text-xs rounded font-medium"
+                        style={{ backgroundColor: 'rgba(239,68,68,0.8)', color: '#fff' }}>
+                        Stop
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => generateAllSequential(rekapDisplayRows, descColIdx)}
+                      className="px-3 py-1.5 text-xs rounded-lg font-medium whitespace-nowrap"
+                      style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}
+                      title="Generate AI analisis untuk semua baris detail — 1 per 4 detik (anti rate-limit)">
+                      Generate All AI
+                    </button>
+                  )}
                 </div>
 
                 {rekapTotalPages > 1 && (
                   <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between text-xs text-gray-500">
-                    <span><span className="font-semibold text-gray-800">{rekapDisplayRows.length}</span> baris</span>
+                    <span><span className="font-semibold text-gray-800">{rekapDisplayRowsLive.length}</span> baris</span>
                     <span className="flex items-center gap-1">
                       <button onClick={() => setRekapPage((p) => Math.max(0, p - 1))} disabled={rekapPage === 0}
                         className="px-2 py-0.5 rounded border text-gray-600 hover:bg-gray-100 disabled:opacity-30">‹</button>
@@ -1896,13 +2034,13 @@ export default function FluktuasiOIPage() {
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
                               style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.gapMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
-                              {rowHasData ? fmtRp(row.gapMoM) : ''}
+                              {!isSpecial && rowHasData ? fmtRp(row.gapMoM) : ''}
                             </td>
                             {/* MoM % */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
                               style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.pctMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
-                              {rowHasData ? fmtPct(row.pctMoM) : ''}
+                              {!isSpecial && rowHasData ? fmtPct(row.pctMoM) : ''}
                             </td>
                             {/* Reason MoM */}
                             <ReasonCell ri={ri} globalRi={globalRi} row={row} side="mom"
@@ -1911,13 +2049,13 @@ export default function FluktuasiOIPage() {
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
                               style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.gapYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
-                              {rowHasData ? fmtRp(row.gapYoY) : ''}
+                              {!isSpecial && rowHasData ? fmtRp(row.gapYoY) : ''}
                             </td>
                             {/* YoY % */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
                               style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.pctYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
-                              {rowHasData ? fmtPct(row.pctYoY) : ''}
+                              {!isSpecial && rowHasData ? fmtPct(row.pctYoY) : ''}
                             </td>
                             {/* Reason YoY */}
                             <ReasonCell ri={ri} globalRi={globalRi} row={row} side="yoy"
