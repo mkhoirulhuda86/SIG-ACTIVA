@@ -352,7 +352,7 @@ const buildTemplateReason = (
   const name = accountName || 'Akun ini';
   const absPct = Math.abs(pct);
 
-  if (gap === 0 || absPct < 0.01)
+  if (gap === 0)
     return `Tidak ada fluktuasi ${side === 'mom' ? 'MoM' : 'YoY'} — nilai ${name} tidak berubah pada periode ini.`;
 
   const dir     = gap > 0 ? 'Kenaikan' : 'Penurunan';
@@ -582,6 +582,7 @@ type Keyword = {
   type: string;
   result: string;
   priority: number;
+  accountCodes: string; // comma-separated; empty = berlaku untuk semua
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -616,6 +617,7 @@ export default function FluktuasiOIPage() {
     type: 'klasifikasi',
     result: '',
     priority: 0,
+    accountCodes: '',
   });
   const [keywordFilter, setKeywordFilter] = useState<'all' | 'klasifikasi' | 'remark'>('all');
   const [inputMode, setInputMode] = useState<'simple' | 'advanced'>('simple');
@@ -727,7 +729,7 @@ export default function FluktuasiOIPage() {
         loadKeywords();
         setShowKeywordModal(false);
         setEditingKeyword(null);
-        setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
+        setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0, accountCodes: '' });
         setNaturalInput('');
         setInputMode('simple');
         setKwMode('normal');
@@ -765,7 +767,7 @@ export default function FluktuasiOIPage() {
   // ── Open Edit Modal ────────────────────────────────────────────────────────
   const handleEditKeyword = (kw: Keyword) => {
     setEditingKeyword(kw);
-    setKeywordForm({ keyword: kw.keyword, type: kw.type, result: kw.result, priority: kw.priority });
+    setKeywordForm({ keyword: kw.keyword, type: kw.type, result: kw.result, priority: kw.priority, accountCodes: kw.accountCodes ?? '' });
     // Detect and sync kwMode
     const lk = kw.keyword.toLowerCase();
     if (lk.startsWith('col:')) {
@@ -1332,6 +1334,18 @@ export default function FluktuasiOIPage() {
     return m;
   }, [rekapSheetData]);
 
+  // Account codes available from the loaded rekap sheet (for the keyword form selector)
+  const availableAccountCodes = useMemo(() => {
+    const fromRekap = (rekapSheetData?.rows ?? [])
+      .filter(r => r.type === 'detail')
+      .map(r => String(r.values[rekapSheetData!.accountColIdx] ?? '').trim())
+      .filter(c => /^\d{5,}$/.test(c));
+    const fromSheets = sheetDataList
+      .map(s => s.sheetName.trim())
+      .filter(c => /^\d{5,}$/.test(c));
+    return [...new Set([...fromRekap, ...fromSheets])].sort();
+  }, [rekapSheetData, sheetDataList]);
+
   // Paginated rekap rows (skip empty)
   const rekapDisplayRows = useMemo(() =>
     (rekapSheetData?.rows ?? []).filter((r) => r.type !== 'empty'),
@@ -1343,18 +1357,28 @@ export default function FluktuasiOIPage() {
     const map: Record<string, { klasifikasi: Set<string>; remark: Set<string> }> = {};
     for (const sd of sheetDataList) {
       const code = sd.sheetName.trim();
+      // Extract just the numeric part if sheetName has description appended
+      const numCode = code.match(/^(\d{5,})/)?.[1] ?? code;
+      // Only use keywords that either have no accountCodes restriction, or include this code
+      const scopedKw = keywords.filter(kw => {
+        const ac = (kw.accountCodes ?? '').trim();
+        if (!ac) return true;
+        return ac.split(',').map(s => s.trim()).includes(numCode);
+      });
       const kSet = new Set<string>();
       const rSet = new Set<string>();
       for (const row of sd.rows) {
         const rawK  = String(row['__klasifikasi_raw'] ?? row['__klasifikasi'] ?? '');
         const rawR  = String(row['__remark_raw']      ?? rawK); // same source as klasifikasi
         const docno = String(row['__docno_raw']        ?? '');
-        const k = matchKeywords(rawK, keywords, 'klasifikasi', docno, row);
-        const r = matchKeywords(rawR, keywords, 'remark',       docno, row);
+        const k = matchKeywords(rawK, scopedKw, 'klasifikasi', docno, row);
+        const r = matchKeywords(rawR, scopedKw, 'remark',       docno, row);
         if (k) kSet.add(k);
         if (r) rSet.add(r);
       }
       map[code] = { klasifikasi: kSet, remark: rSet };
+      // Also store under the numeric-only key so rekap lookup (acctIdx) always hits
+      if (numCode !== code) map[numCode] = { klasifikasi: kSet, remark: rSet };
     }
     return map;
   }, [sheetDataList, keywords]);
@@ -1446,7 +1470,7 @@ export default function FluktuasiOIPage() {
                   <button
                     onClick={() => {
                       setEditingKeyword(null);
-                      setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
+                      setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0, accountCodes: '' });
                       setKwMode('normal');
                       setColHeader('');
                       setColPattern('');
@@ -1535,6 +1559,9 @@ export default function FluktuasiOIPage() {
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Priority
                     </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Berlaku di Akun
+                    </th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Aksi
                     </th>
@@ -1557,7 +1584,7 @@ export default function FluktuasiOIPage() {
                     if (keywords.length === 0) {
                       return (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center">
+                          <td colSpan={6} className="px-4 py-8 text-center">
                             <div className="text-gray-400 mb-2">
                               <FileSpreadsheet className="mx-auto mb-2" size={40} />
                             </div>
@@ -1571,7 +1598,7 @@ export default function FluktuasiOIPage() {
                     if (filteredKeywords.length === 0) {
                       return (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center">
+                          <td colSpan={6} className="px-4 py-8 text-center">
                             <p className="text-sm text-gray-500">Tidak ada keyword yang cocok dengan pencarian.</p>
                             <p className="text-xs text-gray-400 mt-1">Coba kata kunci pencarian lain atau ubah filter.</p>
                           </td>
@@ -1638,6 +1665,13 @@ export default function FluktuasiOIPage() {
                             <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-sm font-semibold text-gray-700">
                               {kw.priority}
                             </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs">
+                            {kw.accountCodes
+                              ? kw.accountCodes.split(',').filter(Boolean).map(c => (
+                                  <span key={c} className="inline-flex px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-mono mr-1 mb-1">{c.trim()}</span>
+                                ))
+                              : <span className="text-gray-400 italic">Semua</span>}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center gap-2">
@@ -1975,7 +2009,8 @@ export default function FluktuasiOIPage() {
               const template  = !isSpecial && Math.abs(gapVal) !== 0
                 ? buildTemplateReason(gapVal, pctVal, descVal, side, amountCols, row.values, effCI, effPI)
                 : '';
-              const displayed = aiText ?? (baseReason || template);
+              // Use || so that empty-string aiText (cleared/failed AI) falls back to template
+              const displayed = aiText || baseReason || template;
               const bgEven    = ri % 2 === 0 ? '#f0f3ff' : '#e8ecff';
               return (
                 <td className="px-2 py-1"
@@ -2667,6 +2702,41 @@ export default function FluktuasiOIPage() {
                       Priority lebih tinggi akan diutamakan (0-100). Default: 0
                     </p>
                   </div>
+
+                  {/* Account Code Scope */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Berlaku di Akun
+                      <span className="ml-2 text-xs font-normal text-gray-500">(kosong = berlaku untuk semua akun)</span>
+                    </label>
+                    {availableAccountCodes.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic">Upload file Excel terlebih dahulu untuk melihat daftar akun</p>
+                    ) : (
+                      <div className="border border-gray-200 rounded-lg p-2 max-h-40 overflow-y-auto bg-gray-50 flex flex-wrap gap-1.5">
+                        {availableAccountCodes.map(code => {
+                          const selected = (keywordForm.accountCodes ?? '').split(',').map(c => c.trim()).filter(Boolean).includes(code);
+                          return (
+                            <button key={code} type="button"
+                              onClick={() => {
+                                const current = (keywordForm.accountCodes ?? '').split(',').map(c => c.trim()).filter(Boolean);
+                                const next = selected ? current.filter(c => c !== code) : [...current, code];
+                                setKeywordForm({ ...keywordForm, accountCodes: next.join(',') });
+                              }}
+                              className={`px-2 py-1 rounded text-[11px] font-mono border transition ${
+                                selected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-blue-50 hover:border-blue-300'
+                              }`}
+                            >{code}</button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {keywordForm.accountCodes && (
+                      <button type="button" onClick={() => setKeywordForm({ ...keywordForm, accountCodes: '' })}
+                        className="mt-1.5 text-xs text-gray-400 hover:text-red-500 transition">
+                        Hapus semua pilihan (berlaku ke semua akun)
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -2676,7 +2746,7 @@ export default function FluktuasiOIPage() {
                 onClick={() => {
                   setShowKeywordModal(false);
                   setEditingKeyword(null);
-                  setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0 });
+                  setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0, accountCodes: '' });
                   setNaturalInput('');
                   setInputMode('simple');
                   setKwMode('normal');

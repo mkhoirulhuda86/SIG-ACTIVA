@@ -81,6 +81,7 @@ export async function POST(req: NextRequest) {
         type,
         result: (result ?? '').trim(),
         priority: parseInt(priority, 10) || 0,
+        accountCodes: (body.accountCodes ?? '').trim(),
       },
     });
 
@@ -124,6 +125,7 @@ export async function PUT(req: NextRequest) {
     }
     if (result !== undefined) data.result = result.trim();
     if (priority !== undefined) data.priority = parseInt(priority, 10);
+    if (body.accountCodes !== undefined) data.accountCodes = (body.accountCodes ?? '').trim();
 
     // Check for duplicate keyword when updating (exclude current record)
     if (keyword !== undefined && type !== undefined) {
