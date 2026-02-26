@@ -1349,6 +1349,28 @@ export default function FluktuasiOIPage() {
   const kaTotalPages = Math.ceil(kaRows.length / KA_PAGE_SIZE);
   const kaPageRows   = useMemo(() => kaRows.slice(kaPage * KA_PAGE_SIZE, (kaPage + 1) * KA_PAGE_SIZE), [kaRows, kaPage]);
 
+  // Re-run keyword matching live on the visible KA rows so that keywords added/changed
+  // after upload are reflected immediately without needing to re-upload the file.
+  const liveKaPageRows = useMemo(() => {
+    if (!kaPageRows.length || !keywords.length) return kaPageRows;
+    const sheetCode = (activeSheet?.sheetName ?? '').match(/^(\d{5,})/)?.[1] ?? activeSheet?.sheetName ?? '';
+    const scopedKw = keywords.filter(kw => {
+      const ac = (kw.accountCodes ?? '').trim();
+      if (!ac) return true;
+      return ac.split(',').map(s => s.trim()).includes(sheetCode);
+    });
+    return kaPageRows.map(row => {
+      const rawK  = String(row['__klasifikasi_raw'] ?? '');
+      const rawR  = String(row['__remark_raw']      ?? rawK);
+      const docno = String(row['__docno_raw']        ?? '');
+      return {
+        ...row,
+        __klasifikasi: matchKeywords(rawK, scopedKw, 'klasifikasi', docno, row) || row['__klasifikasi'] || '',
+        __remark:      matchKeywords(rawR, scopedKw, 'remark',       docno, row) || row['__remark']      || '',
+      } as Record<string, any>;
+    });
+  }, [kaPageRows, keywords, activeSheet]);
+
   // Precomputed amountCols set for O(1) lookup per cell
   const amtColMap = useMemo(() => {
     const m = new Map<number, AmountCol>();
@@ -1965,7 +1987,7 @@ export default function FluktuasiOIPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {kaPageRows.map((row, ri) => {
+                        {liveKaPageRows.map((row, ri) => {
                           const globalRi = kaPage * KA_PAGE_SIZE + ri;
                           const rowBg = globalRi % 2 === 0 ? '#ffffff' : '#eff6ff';
                           const addBg = globalRi % 2 === 0 ? '#fff5f5' : '#fff0f0';
