@@ -1081,27 +1081,35 @@ export default function FluktuasiOIPage() {
           // Determine MoM and YoY column indices within amountCols array
           // Non-cumulative cols only for point-in-time comparison
           const pointCols = amountCols.filter((c) => !c.isCumulative);
-          // MoM: last two non-cumulative cols; if only 1 non-cumul, fall back to last two of all cols
+
+          // MoM curr: last non-cumulative col, or last of any col
           const momCurrAC = pointCols.length >= 1
             ? pointCols[pointCols.length - 1]
             : amountCols[amountCols.length - 1];
-          const momPrevAC = pointCols.length >= 2
-            ? pointCols[pointCols.length - 2]
-            : amountCols.length >= 2
-              ? amountCols[amountCols.length - 2]   // any col other than the last
-              : amountCols[0];
-          // YoY: same curr; earliest available non-cumul col as prev
-          const yoyCurrAC = momCurrAC;
-          const yoyPrevAC = pointCols.length >= 2 ? pointCols[0]
-            : amountCols.length >= 2 ? amountCols[0]
-            : amountCols[0];
-          let momCurrIdx = amountCols.findIndex(c => c.colIdx === momCurrAC?.colIdx);
-          let momPrevIdx = amountCols.findIndex(c => c.colIdx === momPrevAC?.colIdx);
-          // Safety: if both indices resolved to same position, push prev one step back
-          if (momCurrIdx === momPrevIdx && momCurrIdx > 0) momPrevIdx = momCurrIdx - 1;
+          const momCurrIdx = amountCols.findIndex(c => c.colIdx === momCurrAC?.colIdx);
+
+          // MoM prev: second-to-last non-cumul col if available;
+          // otherwise the column IMMEDIATELY BEFORE momCurrIdx in amountCols
+          // (do NOT use amountCols.length-2 which can equal momCurrIdx itself)
+          let momPrevIdx: number;
+          if (pointCols.length >= 2) {
+            momPrevIdx = amountCols.findIndex(c => c.colIdx === pointCols[pointCols.length - 2].colIdx);
+          } else if (momCurrIdx > 0) {
+            momPrevIdx = momCurrIdx - 1;
+          } else if (amountCols.length > 1) {
+            momPrevIdx = 1; // curr is at 0, pick next
+          } else {
+            momPrevIdx = 0; // only one column — nothing to compare
+          }
+
+          // YoY: same curr; earliest available non-cumul col as prev (or first of all)
           const yoyCurrIdx = momCurrIdx;
-          let yoyPrevIdx = amountCols.findIndex(c => c.colIdx === yoyPrevAC?.colIdx);
-          if (yoyPrevIdx === yoyCurrIdx && yoyCurrIdx > 0) yoyPrevIdx = 0;
+          let yoyPrevIdx = pointCols.length >= 2
+            ? amountCols.findIndex(c => c.colIdx === pointCols[0].colIdx)
+            : amountCols.length >= 2 ? 0 : 0;
+          if (yoyPrevIdx === yoyCurrIdx && amountCols.length > 1) {
+            yoyPrevIdx = yoyCurrIdx > 0 ? 0 : 1;
+          }
 
           // Build rows
           const rekapRows: RekapSheetRow[] = [];
@@ -2203,13 +2211,21 @@ export default function FluktuasiOIPage() {
                       {rekapPageRows.map((row, ri) => {
                         const globalRi  = rekapPage * REKAP_PAGE_SIZE + ri;
                         const s         = rekapRowStyle(row.type, globalRi);
+                        const acctVal    = String(row.values[accountColIdx] ?? '');
+                        const descVal    = descColIdx >= 0 ? String(row.values[descColIdx] ?? '') : '';
                         const isCategory = row.type === 'category';
+                        // Subtotal with an account code (e.g. 71400000) → treated like a detail label, no MoM/YoY
+                        const isAccountSubtotal = row.type === 'subtotal' && /^\d{5,}$/.test(acctVal);
+                        // Subtotal without account code → section total, show MoM/YoY but no Reason
+                        const isSectionTotal = row.type === 'subtotal' && !(/^\d{5,}$/.test(acctVal));
+                        // Whether to hide MoM/YoY entirely (category rows and account-based subtotals)
+                        const hideMomYoy = isCategory || isAccountSubtotal;
+                        // Whether to hide Reason column (all non-detail rows)
+                        const hideReason = isCategory || isAccountSubtotal || isSectionTotal;
                         const isSpecial  = row.type === 'category' || row.type === 'subtotal';
                         const gapColor  = (v: number) =>
                           isSpecial ? '#fff' : v < 0 ? '#b91c1c' : v > 0 ? '#15803d' : '#374151';
                         const rowHasData = hasData(row);
-                        const acctVal    = String(row.values[accountColIdx] ?? '');
-                        const descVal    = descColIdx >= 0 ? String(row.values[descColIdx] ?? '') : '';
                         return (
                           <tr key={ri}>
                             {/* Account */}
@@ -2242,34 +2258,34 @@ export default function FluktuasiOIPage() {
                             })}
                             {/* GAP MoM */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: isCategory ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                              style={{ backgroundColor: hideMomYoy ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.gapMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
-                              {!isCategory && rowHasData ? fmtRp(row.gapMoM) : ''}
+                              {!hideMomYoy && rowHasData ? fmtRp(row.gapMoM) : ''}
                             </td>
                             {/* MoM % */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: isCategory ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                              style={{ backgroundColor: hideMomYoy ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.pctMoM), fontWeight: s.weight, border: '1px solid #fde68a' }}>
-                              {!isCategory && rowHasData ? fmtPct(row.pctMoM) : ''}
+                              {!hideMomYoy && rowHasData ? fmtPct(row.pctMoM) : ''}
                             </td>
                             {/* Reason MoM */}
                             <ReasonCell ri={ri} globalRi={globalRi} row={row} side="mom"
-                              baseReason={row.reasonMoM} isSpecial={isCategory} s={s} descVal={descVal} />
+                              baseReason={row.reasonMoM} isSpecial={hideReason} s={s} descVal={descVal} />
                             {/* GAP YoY */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: isCategory ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                              style={{ backgroundColor: hideMomYoy ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.gapYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
-                              {!isCategory && rowHasData ? fmtRp(row.gapYoY) : ''}
+                              {!hideMomYoy && rowHasData ? fmtRp(row.gapYoY) : ''}
                             </td>
                             {/* YoY % */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: isCategory ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                              style={{ backgroundColor: hideMomYoy ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.pctYoY), fontWeight: s.weight, border: '1px solid #fde68a' }}>
-                              {!isCategory && rowHasData ? fmtPct(row.pctYoY) : ''}
+                              {!hideMomYoy && rowHasData ? fmtPct(row.pctYoY) : ''}
                             </td>
                             {/* Reason YoY */}
                             <ReasonCell ri={ri} globalRi={globalRi} row={row} side="yoy"
-                              baseReason={row.reasonYoY} isSpecial={isCategory} s={s} descVal={descVal} />
+                              baseReason={row.reasonYoY} isSpecial={hideReason} s={s} descVal={descVal} />
                           </tr>
                         );
                       })}
