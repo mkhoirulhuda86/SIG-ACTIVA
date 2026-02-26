@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SheetData = {
@@ -91,11 +91,27 @@ const extractKlasifikasi = (text: string): string => {
 
 // Match text with keywords from database
 // Parse natural language keyword input
-const parseNaturalKeyword = (input: string): { keyword: string; type: string; result: string; priority: number } | null => {
+const parseNaturalKeyword = (input: string): { keyword: string; type: string; result: string; priority: number; accountCodes: string } | null => {
   if (!input.trim()) return null;
 
   const text = input.toLowerCase();
   const original = input;
+
+  // ── Extract accountCodes: "di akun '12345'" / "di akun 12345,67890" / "berlaku akun 62301 62302"
+  let accountCodes = '';
+  const acctM = original.match(
+    /(?:hanya\s+)?(?:berlaku\s+)?(?:di\s+)?akun\s+["']?([\d][\d,\s]*)["\'$]/i
+  ) ?? original.match(
+    /(?:hanya\s+)?(?:berlaku\s+)?di\s+akun\s+["']?([\d][\d,\s]*)/i
+  );
+  if (acctM) {
+    accountCodes = acctM[1]
+      .trim()
+      .split(/[,\s]+/)
+      .map(s => s.trim())
+      .filter(s => /^\d{5,}$/.test(s))
+      .join(',');
+  }
 
   // ── Extract result/output (text in quotes after "berisi", "maka berisi", etc.)
   let resultMatch = text.match(/(?:berisi|is|result|output|hasil)\s*["']([^"']+)["']/i);
@@ -115,20 +131,17 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
   // Trigger: "tidak ada", "tidak terdapat", "tidak mengandung", "tanpa kata", "kecuali"
   const isNotMode = /(?:jika\s+)?(?:tidak\s+(?:ada|terdapat|mengandung)|tanpa\s+kata|kecuali)/i.test(text);
   if (isNotMode && resultMatch) {
-    // Extract all words in quotes: 'K3' dan 'SLA'  →  K3,SLA
     const quotedWords = [...original.matchAll(/["']([^"']+)["']/g)].map(m => m[1].trim());
-    // Filter out the result value itself
     const resultVal = resultMatch[1].trim();
     const exclusions = quotedWords.filter(w => w.toLowerCase() !== resultVal.toLowerCase());
     if (exclusions.length > 0) {
-      return { keyword: `not:${exclusions.join(',')}`, type, result: resultVal, priority };
+      return { keyword: `not:${exclusions.join(',')}`, type, result: resultVal, priority, accountCodes };
     }
-    // Fallback: try comma/atau separated words without quotes after "kata"
     const bareM = original.match(/(?:kata|text|teks)\s+([\w\s,\/|]+?)(?:\s+maka|\s+berisi|$)/i);
     if (bareM) {
       const words = bareM[1].trim().split(/\s*(?:,|atau|or|dan|and|\/|\|)\s*/).filter(Boolean);
       if (words.length > 0) {
-        return { keyword: `not:${words.join(',')}`, type, result: resultVal, priority };
+        return { keyword: `not:${words.join(',')}`, type, result: resultVal, priority, accountCodes };
       }
     }
   }
@@ -145,12 +158,10 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     const skipTokens = ['text', 'p', 'ad', 'ae', 'kolom', 'klasifikasi', 'remark'];
     const anchor = allQuoted.find(w => !skipTokens.includes(w.toLowerCase()));
     if (anchor) {
-      // Detect if number/code suffix expected
       const hasNumber = /(?:nomor|angka|kode|aset|number|digit|\d)/.test(text);
       const hasFraction = /(?:karakter|huruf|kata|word|\\w)/.test(text);
       const suffix = hasNumber ? '\\d+' : hasFraction ? '\\w+' : '\\S+';
-      // Result is dynamic (auto from match), so empty string = {match}
-      return { keyword: `regex:${anchor} ${suffix}`, type, result: '', priority };
+      return { keyword: `regex:${anchor} ${suffix}`, type, result: '', priority, accountCodes };
     }
   }
 
@@ -163,7 +174,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     if (patternM) {
       const pattern = patternM[1].trim();
       const result = resultMatch ? resultMatch[1].trim() : '';
-      return { keyword: `regex:${pattern}`, type, result, priority };
+      return { keyword: `regex:${pattern}`, type, result, priority, accountCodes };
     }
   }
 
@@ -172,8 +183,8 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     /(?:nomor\s+dokumen|no\.?\s*dok(?:umen)?|doc(?:ument)?\s*no\.?|belegnummer)\s+(?:diawali|=|starts?\s*with|adalah|berisi|sama\s+dengan)\s+["']?([\w\d\*]+)["']?/i
   );
   if (docnoM && resultMatch) {
-    const val = docnoM[1].replace(/\*$/, ''); // strip trailing wildcard — docno: always uses startsWith
-    return { keyword: `docno:${val}`, type, result: resultMatch[1].trim(), priority };
+    const val = docnoM[1].replace(/\*$/, '');
+    return { keyword: `docno:${val}`, type, result: resultMatch[1].trim(), priority, accountCodes };
   }
 
   // ── Col mode: "jika kolom X diawali/mengandung/= Y maka berisi Z"
@@ -191,7 +202,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     // Avoid matching header text columns (kolom P/AD/AE) being treated as col:
     const skipCols = ['p', 'ad', 'ae', 'header', 'text', 'klasifikasi', 'remark', 'keterangan', 'uraian'];
     if (!skipCols.includes(colName.toLowerCase())) {
-      return { keyword: `col:${colName}:${pattern}`, type, result: resultMatch[1].trim(), priority };
+      return { keyword: `col:${colName}:${pattern}`, type, result: resultMatch[1].trim(), priority, accountCodes };
     }
   }
 
@@ -200,10 +211,10 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
   if (!keywordMatch) keywordMatch = original.match(/(?:jika ada text|text)\s+([\w\s]+?)\s+(?:maka|then)/i);
 
   if (keywordMatch && resultMatch) {
-    return { keyword: keywordMatch[1].trim(), type, result: resultMatch[1].trim(), priority };
+    return { keyword: keywordMatch[1].trim(), type, result: resultMatch[1].trim(), priority, accountCodes };
   }
   if (keywordMatch) {
-    return { keyword: keywordMatch[1].trim(), type, result: keywordMatch[1].trim(), priority };
+    return { keyword: keywordMatch[1].trim(), type, result: keywordMatch[1].trim(), priority, accountCodes };
   }
 
   return null;
@@ -748,9 +759,20 @@ export default function FluktuasiOIPage() {
   const handleDeleteKeyword = async (id: number) => {
     if (!confirm('Yakin hapus keyword ini?')) return;
     try {
-      const res = await fetch(`/api/fluktuasi/keywords?id=${id}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`/api/fluktuasi/keywords?id=${id}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (result.success) { loadKeywords(); }
+      else { alert(result.error); }
+    } catch (error) {
+      console.error('Error deleting keyword:', error);
+      alert('Gagal menghapus keyword');
+    }
+  };
+
+  const handleDeleteAllKeywords = async () => {
+    if (!confirm(`Yakin hapus SEMUA ${keywords.length} keyword? Tindakan ini tidak dapat dibatalkan.`)) return;
+    try {
+      const res = await fetch('/api/fluktuasi/keywords?all=true', { method: 'DELETE' });
       const result = await res.json();
       if (result.success) {
         alert(result.message);
@@ -759,8 +781,8 @@ export default function FluktuasiOIPage() {
         alert(result.error);
       }
     } catch (error) {
-      console.error('Error deleting keyword:', error);
-      alert('Gagal menghapus keyword');
+      console.error('Error deleting all keywords:', error);
+      alert('Gagal menghapus semua keyword');
     }
   };
 
@@ -1457,7 +1479,7 @@ export default function FluktuasiOIPage() {
                   <h2 className="text-lg font-semibold text-gray-800">Master Keywords</h2>
                   <p className="text-sm text-gray-500 mt-1">Kelola keyword untuk klasifikasi dan remark - digunakan otomatis saat upload file</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {keywords.length === 0 && (
                     <button
                       onClick={handleLoadExamples}
@@ -1465,6 +1487,15 @@ export default function FluktuasiOIPage() {
                     >
                       <Download size={16} />
                       Load Contoh
+                    </button>
+                  )}
+                  {keywords.length > 0 && (
+                    <button
+                      onClick={handleDeleteAllKeywords}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
+                    >
+                      <Trash2 size={16} />
+                      Hapus Semua
                     </button>
                   )}
                   <button
@@ -2009,8 +2040,9 @@ export default function FluktuasiOIPage() {
               const template  = !isSpecial && Math.abs(gapVal) !== 0
                 ? buildTemplateReason(gapVal, pctVal, descVal, side, amountCols, row.values, effCI, effPI)
                 : '';
-              // Use || so that empty-string aiText (cleared/failed AI) falls back to template
-              const displayed = aiText || baseReason || template;
+              // Template takes priority over raw keyword classification (baseReason);
+              // baseReason is only used as last-resort fallback when there is no gap-based template.
+              const displayed = aiText || template || baseReason;
               const bgEven    = ri % 2 === 0 ? '#f0f3ff' : '#e8ecff';
               return (
                 <td className="px-2 py-1"
@@ -2030,8 +2062,8 @@ export default function FluktuasiOIPage() {
                         className="w-full text-[10px] resize-y rounded border border-indigo-200 p-1.5 leading-relaxed focus:outline-none focus:ring-1 focus:ring-indigo-400"
                         style={{
                           backgroundColor: loading ? '#f5f3ff' : '#fff',
-                          fontStyle: !aiText && !baseReason && !!template ? 'italic' : 'normal',
-                          color: !aiText && !baseReason && !!template ? '#9ca3af' : '#374151',
+                          fontStyle: !aiText && !!template ? 'italic' : 'normal',
+                          color: !aiText && !!template ? '#9ca3af' : '#374151',
                           fontFamily: 'inherit', minHeight: '72px',
                         }}
                       />
@@ -2397,6 +2429,7 @@ export default function FluktuasiOIPage() {
                       <li>• Nomor dok: jika nomor dokumen diawali 18 maka berisi &quot;Y&quot;</li>
                       <li>• Kolom bebas: jika kolom Account diawali 18 maka berisi &quot;Y&quot;</li>
                       <li>• Tambah: remark / priority 10</li>
+                      <li>• Akun tertentu: ... di akun 62301 / di akun &apos;62301,62401&apos;</li>
                     </ul>
                   </div>
                   
@@ -2435,6 +2468,9 @@ export default function FluktuasiOIPage() {
                               }
                             </div>
                             <div><span className="font-semibold">Priority:</span> {parsed.priority}</div>
+                            {parsed.accountCodes && (
+                              <div><span className="font-semibold">Berlaku di Akun:</span> <code className="bg-green-100 px-1 rounded">{parsed.accountCodes}</code></div>
+                            )}
                             {isExtractKw && (
                               <div className="mt-1.5 pt-1.5 border-t border-green-200 text-green-600">
                                 Contoh: jika teks Excel berisi &quot;RoU 380000000077&quot;, maka Klasifikasi = &quot;RoU 380000000077&quot;

@@ -169,11 +169,20 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-// DELETE: Hapus keyword
+// DELETE: Hapus keyword (id=<n>) atau semua (all=true)
 export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const id = searchParams.get('id');
+    const id  = searchParams.get('id');
+    const all = searchParams.get('all');
+
+    if (all === 'true') {
+      const { count } = await prisma.fluktuasiKeyword.deleteMany({});
+      return NextResponse.json({
+        success: true,
+        message: `${count} keyword berhasil dihapus`,
+      });
+    }
 
     if (!id) {
       return NextResponse.json(
