@@ -796,7 +796,7 @@ const OPENROUTER_MODELS = [
   { id: 'meta-llama/llama-3.3-70b-instruct:free',             label: 'Llama 3.3 70B',              keyIdx: 3  },
   { id: 'nvidia/nemotron-3-nano-30b-a3b:free',               label: 'NVIDIA Nemotron 3 Nano',     keyIdx: 4  },
   { id: 'arcee-ai/trinity-mini:free',                        label: 'Arcee Trinity Mini',         keyIdx: 5  },
-  { id: 'deepseek/deepseek-r1:free',                          label: 'DeepSeek R1',                keyIdx: 6  },
+  { id: 'google/gemma-3-27b-it:free',                         label: 'Google Gemma 3 27B',         keyIdx: 6  },
   { id: 'upstage/solar-pro-3:free',                          label: 'Upstage Solar Pro 3',        keyIdx: 7  },
   { id: 'openai/gpt-4o-mini',                                label: 'GPT-4o Mini',                keyIdx: 8  },
   { id: 'nvidia/nemotron-nano-12b-v2-vl:free',               label: 'NVIDIA Nemotron Nano 12B',   keyIdx: 9  },
