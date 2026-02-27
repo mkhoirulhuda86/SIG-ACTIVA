@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import { broadcast } from '@/lib/sse';
 
 // GET all users
 export async function GET(request: NextRequest) {
@@ -101,6 +102,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    broadcast('users');
     return NextResponse.json({
       success: true,
       user,

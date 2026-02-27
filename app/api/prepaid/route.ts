@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { broadcast } from '@/lib/sse';
 
 // GET - Mengambil semua data prepaid
 export async function GET(request: NextRequest) {
@@ -184,6 +185,7 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    broadcast('prepaid');
     return NextResponse.json(prepaid, { status: 201 });
   } catch (error) {
     console.error('Error creating prepaid:', error);
@@ -251,6 +253,7 @@ export async function PUT(request: NextRequest) {
       }
     });
 
+    broadcast('prepaid');
     return NextResponse.json(prepaid);
   } catch (error) {
     console.error('Error updating prepaid:', error);
@@ -277,6 +280,7 @@ export async function DELETE(request: NextRequest) {
       const result = await prisma.prepaid.deleteMany({
         where: { id: { in: idList } },
       });
+      broadcast('prepaid');
       return NextResponse.json({ message: `${result.count} prepaid berhasil dihapus`, count: result.count });
     }
 
@@ -292,6 +296,7 @@ export async function DELETE(request: NextRequest) {
       where: { id: parseInt(id) }
     });
 
+    broadcast('prepaid');
     return NextResponse.json({ message: 'Prepaid deleted successfully' });
   } catch (error) {
     console.error('Error deleting prepaid:', error);

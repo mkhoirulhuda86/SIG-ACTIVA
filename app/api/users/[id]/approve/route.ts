@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { broadcast } from '@/lib/sse';
 
 export async function PUT(
   request: NextRequest,
@@ -39,6 +40,7 @@ export async function PUT(
       },
     });
 
+    broadcast('users');
     return NextResponse.json({
       success: true,
       user,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { broadcast } from '@/lib/sse';
 
 const exampleKeywords = [
   // Klasifikasi keywords
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    broadcast('fluktuasi');
     return NextResponse.json({
       success: true,
       message: `Seed completed! ${inserted} keywords added, ${skipped} skipped (already exists)`,

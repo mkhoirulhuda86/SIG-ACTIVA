@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight, Trash2, ChevronDown } from 'lucide-react';
+import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SheetData = {
@@ -881,6 +882,12 @@ export default function FluktuasiOIPage() {
     loadKeywords();
     loadDbStats();
   }, []);
+
+  // Realtime: refresh keywords & rekap DB saat user lain update data fluktuasi
+  useRealtimeUpdates(['fluktuasi'], () => {
+    loadKeywords();
+    loadDbStats();
+  });
 
   // ── Load keywords ──────────────────────────────────────────────────────────
   const loadKeywords = async () => {

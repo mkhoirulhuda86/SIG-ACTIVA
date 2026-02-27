@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { parseExcelFile, ExcelAccrualData } from '@/app/utils/excelParser';
+import { broadcast } from '@/lib/sse';
 
 // Vercel function timeout: 300 detik (5 menit) untuk Pro plan, atau sesuai kebutuhan
 export const maxDuration = 300;
@@ -186,6 +187,7 @@ export async function POST(request: NextRequest) {
       console.log(`Processed batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(accruals.length / BATCH_SIZE)}: ${results.length} success, ${processedErrors.length} errors`);
     }
 
+    broadcast('accrual');
     return NextResponse.json({
       message: `Successfully processed ${results.length} baris`,
       results,

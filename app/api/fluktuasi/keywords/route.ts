@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { broadcast } from '@/lib/sse';
 
 // GET: Ambil semua keywords
 export async function GET(req: NextRequest) {
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    broadcast('fluktuasi');
     return NextResponse.json({
       success: true,
       message: 'Keyword berhasil ditambahkan',
@@ -157,6 +159,7 @@ export async function PUT(req: NextRequest) {
       data,
     });
 
+    broadcast('fluktuasi');
     return NextResponse.json({
       success: true,
       message: 'Keyword berhasil diupdate',
@@ -180,6 +183,7 @@ export async function DELETE(req: NextRequest) {
 
     if (all === 'true') {
       const { count } = await prisma.fluktuasiKeyword.deleteMany({});
+      broadcast('fluktuasi');
       return NextResponse.json({
         success: true,
         message: `${count} keyword berhasil dihapus`,
@@ -197,6 +201,7 @@ export async function DELETE(req: NextRequest) {
       where: { id: parseInt(id, 10) },
     });
 
+    broadcast('fluktuasi');
     return NextResponse.json({
       success: true,
       message: 'Keyword berhasil dihapus',

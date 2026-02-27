@@ -6,6 +6,7 @@ import { Search, Download, Plus, MoreVertical, X, Edit2, Trash2, Upload, Chevron
 import dynamic from 'next/dynamic';
 import { exportToCSV } from '../utils/exportUtils';
 import { KODE_AKUN_KLASIFIKASI } from '../utils/accrualKlasifikasi';
+import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 
 // Lazy load components yang tidak critical untuk initial render
 const Sidebar = dynamic(() => import('../components/Sidebar'), { 
@@ -410,6 +411,9 @@ export default function MonitoringAccrualPage() {
       setLoading(false);
     }
   };
+
+  // Realtime: refresh list when another user mutates accrual/realisasi data
+  useRealtimeUpdates(['accrual'], () => { fetchAccrualData(); });
 
   // Format currency: tanda negatif langsung di depan angka (Rp -11.045.599.003) agar tidak membingungkan
   const formatCurrency = useCallback((amount: number) => {

@@ -8,6 +8,7 @@ import Header from '../components/Header';
 import ExcelImport from '../components/ExcelImport';
 import MaterialPivotTable from '../components/MaterialPivotTable';
 import { exportToExcel } from '../utils/exportUtils';
+import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 
 interface MaterialData {
   materialId: string;
@@ -34,6 +35,7 @@ export default function LaporanMaterialPage() {
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [userRole, setUserRole] = useState<string>('');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [materialRefreshKey, setMaterialRefreshKey] = useState(0);
 
   // Load user role from localStorage
   useEffect(() => {
@@ -66,7 +68,10 @@ export default function LaporanMaterialPage() {
     };
 
     loadHistory();
-  }, []);
+  }, [materialRefreshKey]);
+
+  // Realtime: reload when another user imports/deletes material data
+  useRealtimeUpdates(['material'], () => { setMaterialRefreshKey(k => k + 1); });
 
   // Load data when selected date changes
   useEffect(() => {

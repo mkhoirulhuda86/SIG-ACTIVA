@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { broadcast } from '@/lib/sse';
 
 // POST - Add realisasi to a periode
 export async function POST(request: NextRequest) {
@@ -27,6 +28,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    broadcast('accrual');
     return NextResponse.json(realisasi, { status: 201 });
   } catch (error) {
     console.error('Error creating realisasi:', error);
@@ -94,6 +96,7 @@ export async function DELETE(request: NextRequest) {
         where: { id: { in: ids } },
       });
 
+      broadcast('accrual');
       return NextResponse.json({
         message: `${result.count} realisasi berhasil dihapus`,
         count: result.count,
@@ -114,6 +117,7 @@ export async function DELETE(request: NextRequest) {
       },
     });
 
+    broadcast('accrual');
     return NextResponse.json({ message: 'Realisasi deleted successfully' });
   } catch (error) {
     console.error('Error deleting realisasi:', error);
@@ -162,6 +166,7 @@ export async function PUT(request: NextRequest) {
       },
     });
 
+    broadcast('accrual');
     return NextResponse.json(realisasi);
   } catch (error) {
     console.error('Error updating realisasi:', error);

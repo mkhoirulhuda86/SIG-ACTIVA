@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import * as XLSX from 'xlsx';
+import { broadcast } from '@/lib/sse';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -296,6 +297,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    broadcast('prepaid');
     return NextResponse.json({
       success: true,
       created: createdCount,

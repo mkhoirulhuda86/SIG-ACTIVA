@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { broadcast } from '@/lib/sse';
 
 // GET - Fetch all material data or get list of import dates
 export async function GET(request: NextRequest) {
@@ -182,6 +183,7 @@ export async function POST(request: NextRequest) {
 
     console.log('Data saved. Import date:', importDate);
 
+    broadcast('material');
     return NextResponse.json({ 
       success: true, 
       count: records.length,
@@ -209,10 +211,12 @@ export async function DELETE(request: NextRequest) {
           importDate: new Date(importDate)
         }
       });
+      broadcast('material');
       return NextResponse.json({ success: true, message: `Deleted data for ${importDate}` });
     } else {
       // Delete all
       await prisma.materialData.deleteMany({});
+      broadcast('material');
       return NextResponse.json({ success: true, message: 'Deleted all data' });
     }
   } catch (error) {

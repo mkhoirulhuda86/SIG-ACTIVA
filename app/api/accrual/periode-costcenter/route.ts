@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { broadcast } from '@/lib/sse';
 
 // GET - List all cost center entries for a periode
 export async function GET(request: NextRequest) {
@@ -46,6 +47,7 @@ export async function POST(request: NextRequest) {
     // Recalculate amountAccrual = sum of all cost center entries for this periode
     await recalcPeriodeAmount(parseInt(accrualPeriodeId));
 
+    broadcast('accrual');
     return NextResponse.json(entry, { status: 201 });
   } catch (error) {
     console.error('Error creating cost center entry:', error);
@@ -76,6 +78,7 @@ export async function PUT(request: NextRequest) {
 
     await recalcPeriodeAmount(entry.accrualPeriodeId);
 
+    broadcast('accrual');
     return NextResponse.json(entry);
   } catch (error) {
     console.error('Error updating cost center entry:', error);
@@ -109,6 +112,7 @@ export async function DELETE(request: NextRequest) {
 
       if (first) await recalcPeriodeAmount(first.accrualPeriodeId);
 
+      broadcast('accrual');
       return NextResponse.json({ message: `${result.count} entries deleted`, count: result.count });
     }
 
@@ -120,6 +124,7 @@ export async function DELETE(request: NextRequest) {
 
     await recalcPeriodeAmount(entry.accrualPeriodeId);
 
+    broadcast('accrual');
     return NextResponse.json({ message: 'Entry deleted' });
   } catch (error) {
     console.error('Error deleting cost center entry:', error);

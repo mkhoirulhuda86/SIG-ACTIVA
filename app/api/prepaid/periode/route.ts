@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { broadcast } from '@/lib/sse';
 
 // PUT - Tandai periode sebagai telah diamortisasi
 export async function PUT(request: NextRequest) {
@@ -68,6 +69,7 @@ export async function PUT(request: NextRequest) {
       });
     }
 
+    broadcast('prepaid');
     return NextResponse.json(periode);
   } catch (error) {
     console.error('Error updating periode:', error);

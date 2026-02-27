@@ -6,6 +6,7 @@ import AuthGuard from '../components/AuthGuard';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import TableSkeleton from '../components/TableSkeleton';
+import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 
 interface User {
   id: number;
@@ -56,6 +57,9 @@ export default function UserManagementPage() {
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  // Realtime: refresh saat admin lain tambah/edit/approve/hapus user
+  useRealtimeUpdates(['users'], () => { fetchUsers(); });
 
   const fetchUsers = useCallback(async () => {
     try {

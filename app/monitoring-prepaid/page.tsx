@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Download, Plus, Edit, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock, Upload } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { exportToCSV } from '../utils/exportUtils';
+import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 
 // Lazy load components
 const Sidebar = dynamic(() => import('../components/Sidebar'), { ssr: false });
@@ -146,6 +147,9 @@ export default function MonitoringPrepaidPage() {
       setLoading(false);
     }
   };
+
+  // Realtime: refresh when another user adds/updates/deletes prepaid
+  useRealtimeUpdates(['prepaid'], () => { fetchPrepaidData(); });
 
   // Calculate totals
   const totalPrepaidValue = prepaidData.reduce((sum, item) => sum + item.totalAmount, 0);

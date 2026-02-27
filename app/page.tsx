@@ -9,6 +9,7 @@ import RekonsiliasiCard from './components/RekonsiliasiCard';
 import SimpleBarChart from './components/SimpleBarChart';
 import DonutChart from './components/DonutChart';
 import StatusCard from './components/StatusCard';
+import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 
 interface DashboardSummary {
   material: {
@@ -48,6 +49,12 @@ export default function DashboardPage() {
     fetchDashboardStats();
     fetchDashboardSummary();
   }, []);
+
+  // Realtime: re-fetch whenever any accrual/realisasi data changes
+  useRealtimeUpdates(['accrual'], () => {
+    fetchDashboardStats();
+    fetchDashboardSummary();
+  });
 
   const fetchDashboardStats = useCallback(async () => {
     try {

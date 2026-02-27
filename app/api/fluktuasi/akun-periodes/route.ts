@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { broadcast } from '@/lib/sse';
 
 // ─── GET: Ambil semua account-period records ─────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -77,6 +78,7 @@ export async function POST(req: NextRequest) {
     const failed  = results.filter((r) => r.status === 'rejected').length;
     const success = results.length - failed;
 
+    broadcast('fluktuasi');
     return NextResponse.json({
       success: true,
       message: `${success} record berhasil disimpan${failed ? `, ${failed} gagal` : ''}`,
@@ -106,6 +108,7 @@ export async function DELETE(req: NextRequest) {
       },
     });
 
+    broadcast('fluktuasi');
     return NextResponse.json({
       success: true,
       message: `${deleted.count} record berhasil dihapus`,

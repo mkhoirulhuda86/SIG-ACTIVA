@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import { broadcast } from '@/lib/sse';
 
 // GET single user
 export async function GET(
@@ -124,6 +125,7 @@ export async function PUT(
       },
     });
 
+    broadcast('users');
     return NextResponse.json({
       success: true,
       user,
@@ -163,6 +165,7 @@ export async function DELETE(
       where: { id: userId },
     });
 
+    broadcast('users');
     return NextResponse.json({
       success: true,
       message: 'User berhasil dihapus',

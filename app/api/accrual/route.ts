@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { broadcast } from '@/lib/sse';
 
 // GET - Fetch all accrual data with periodes and realisasi
 export async function GET(request: NextRequest) {
@@ -220,6 +221,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    broadcast('accrual');
     return NextResponse.json(accrual, { status: 201 });
   } catch (error) {
     console.error('Error creating accrual:', error);
@@ -252,6 +254,7 @@ export async function DELETE(request: NextRequest) {
       const result = await prisma.accrual.deleteMany({
         where: { id: { in: ids } },
       });
+      broadcast('accrual');
       return NextResponse.json({
         message: `${result.count} accrual berhasil dihapus`,
         count: result.count,
@@ -271,6 +274,7 @@ export async function DELETE(request: NextRequest) {
       },
     });
 
+    broadcast('accrual');
     return NextResponse.json({ message: 'Accrual deleted successfully' });
   } catch (error) {
     console.error('Error deleting accrual:', error);
@@ -423,6 +427,7 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
+    broadcast('accrual');
     return NextResponse.json(accrual);
   } catch (error) {
     console.error('Error updating accrual:', error);
