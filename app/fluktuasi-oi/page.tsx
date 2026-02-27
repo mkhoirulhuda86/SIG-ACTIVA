@@ -2132,6 +2132,8 @@ export default function FluktuasiOIPage() {
               const bothKey   = `${globalRi}-both`;
               const loading   = aiLoading[key] || aiLoading[bothKey];
               const aiText    = aiReasons[globalRi]?.[side];
+              // Use key-existence check (not truthiness) so user can clear to empty string without reverting
+              const hasOverride = side in (aiReasons[globalRi] ?? {});
               const aiError   = aiErrors[key];
               const gapVal    = side === 'mom' ? row.gapMoM : row.gapYoY;
               const pctVal    = side === 'mom' ? row.pctMoM : row.pctYoY;
@@ -2140,9 +2142,8 @@ export default function FluktuasiOIPage() {
               const template  = !isSpecial && Math.abs(gapVal) !== 0
                 ? buildTemplateReason(gapVal, pctVal, descVal, side, amountCols, row.values, effCI, effPI)
                 : '';
-              // Template takes priority over raw keyword classification (baseReason);
-              // baseReason is only used as last-resort fallback when there is no gap-based template.
-              const displayed = aiText || template || baseReason;
+              // hasOverride = user/AI has explicitly set a value (including empty string)
+              const displayed = hasOverride ? (aiText ?? '') : (template || baseReason);
               const bgEven    = ri % 2 === 0 ? '#f0f3ff' : '#e8ecff';
               return (
                 <td className="px-2 py-1"
@@ -2162,8 +2163,8 @@ export default function FluktuasiOIPage() {
                         className="w-full text-[10px] resize-y rounded border border-indigo-200 p-1.5 leading-relaxed focus:outline-none focus:ring-1 focus:ring-indigo-400"
                         style={{
                           backgroundColor: loading ? '#f5f3ff' : '#fff',
-                          fontStyle: !aiText && !!template ? 'italic' : 'normal',
-                          color: !aiText && !!template ? '#9ca3af' : '#374151',
+                          fontStyle: !hasOverride && !!template ? 'italic' : 'normal',
+                          color: !hasOverride && !!template ? '#9ca3af' : '#374151',
                           fontFamily: 'inherit', minHeight: '72px',
                         }}
                       />
@@ -2181,12 +2182,17 @@ export default function FluktuasiOIPage() {
                                 className="px-1.5 py-0.5 text-[9px] rounded bg-purple-100 text-purple-700 hover:bg-purple-200 disabled:opacity-30 whitespace-nowrap font-medium">
                                 AI {side.toUpperCase()}
                               </button>
-                              {(aiText) && (
+                              {hasOverride && (
                                 <button
-                                  onClick={() => setAiReasons(prev => ({
-                                    ...prev,
-                                    [globalRi]: { ...prev[globalRi], [side]: undefined },
-                                  }))}
+                                  onClick={() => setAiReasons(prev => {
+                                    const updated = { ...prev };
+                                    if (updated[globalRi]) {
+                                      const inner = { ...updated[globalRi] } as Record<string, string | undefined>;
+                                      delete inner[side];
+                                      updated[globalRi] = inner as { mom?: string; yoy?: string };
+                                    }
+                                    return updated;
+                                  })}
                                   title="Hapus teks AI, kembalikan ke data sheet"
                                   className="px-1.5 py-0.5 text-[9px] rounded bg-red-50 text-red-500 hover:bg-red-100 whitespace-nowrap">
                                   ✕ reset
