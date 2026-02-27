@@ -2442,8 +2442,8 @@ export default function FluktuasiOIPage() {
                               {!hideMomYoy && rowHasData ? fmtPct(row.pctMoM) : ''}
                             </td>
                             {/* Reason MoM */}
-                            <ReasonCell ri={ri} globalRi={globalRi} row={row} side="mom"
-                              baseReason={row.reasonMoM} isSpecial={hideReason} s={s} descVal={descVal} />
+                            {ReasonCell({ ri, globalRi, row, side: 'mom',
+                              baseReason: row.reasonMoM, isSpecial: hideReason, s, descVal })}
                             {/* GAP YoY */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
                               style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
@@ -2457,8 +2457,8 @@ export default function FluktuasiOIPage() {
                               {!hideMomYoy && rowHasData ? fmtPct(row.pctYoY) : ''}
                             </td>
                             {/* Reason YoY */}
-                            <ReasonCell ri={ri} globalRi={globalRi} row={row} side="yoy"
-                              baseReason={row.reasonYoY} isSpecial={hideReason} s={s} descVal={descVal} />
+                            {ReasonCell({ ri, globalRi, row, side: 'yoy',
+                              baseReason: row.reasonYoY, isSpecial: hideReason, s, descVal })}
                           </tr>
                         );
                       })}
