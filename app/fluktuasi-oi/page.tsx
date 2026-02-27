@@ -2594,7 +2594,7 @@ export default function FluktuasiOIPage() {
                 ? buildTemplateReason(gapVal, pctVal, descVal, side, amountCols, row.values, effCI, effPI)
                 : '';
               // hasOverride = user/AI has explicitly set a value (including empty string)
-              const displayed = hasOverride ? (aiText ?? '') : (template || baseReason);
+              const displayed = hasOverride ? (aiText ?? '') : template;
               const bgEven    = ri % 2 === 0 ? '#f0f3ff' : '#e8ecff';
               return (
                 <td className="px-2 py-1"
