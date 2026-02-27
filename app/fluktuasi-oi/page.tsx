@@ -500,7 +500,7 @@ const buildRekapFromAkunPeriodes = (
       gapMoM,  pctMoM,
       gapYoY,  pctYoY,
       reasonMoM: [...klasifikasi].filter(Boolean).join('; '),
-      reasonYoY: [...remark].filter(Boolean).join('; '),
+      reasonYoY: '',
     });
   }
 
