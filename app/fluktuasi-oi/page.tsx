@@ -791,15 +791,15 @@ type ChatPanel = {
 // keyIdx 1–11 = OPENROUTER_API_KEY_1 … _11 (each locked to one model)
 const OPENROUTER_MODELS = [
   { id: 'google/gemini-2.0-flash-001',                       label: 'Gemini 2.0 Flash',           keyIdx: 0  },
-  { id: 'meta-llama/llama-3.3-70b-instruct',                 label: 'Llama 3.3 70B',              keyIdx: 1  },
-  { id: 'deepseek/deepseek-chat',                            label: 'DeepSeek Chat V3',            keyIdx: 2  },
-  { id: 'deepseek/deepseek-r1',                              label: 'DeepSeek R1',                 keyIdx: 3  },
-  { id: 'microsoft/phi-4',                                   label: 'Microsoft Phi-4',             keyIdx: 4  },
-  { id: 'google/gemini-flash-1.5',                           label: 'Gemini 1.5 Flash',            keyIdx: 5  },
+  { id: 'arcee-ai/trinity-large-preview:free',               label: 'Arcee Trinity Large',        keyIdx: 1  },
+  { id: 'stepfun/step-3.5-flash:free',                       label: 'StepFun Step 3.5 Flash',     keyIdx: 2  },
+  { id: 'openai/gpt-oss-120b:free',                          label: 'GPT-OSS 120B',               keyIdx: 3  },
+  { id: 'nvidia/nemotron-3-nano-30b-a3b:free',               label: 'NVIDIA Nemotron 3 Nano',     keyIdx: 4  },
+  { id: 'arcee-ai/trinity-mini:free',                        label: 'Arcee Trinity Mini',         keyIdx: 5  },
   { id: 'nvidia/llama-3.1-nemotron-ultra-253b-v1',           label: 'NVIDIA Nemotron Ultra 253B', keyIdx: 6  },
-  { id: 'qwen/qwen-2.5-72b-instruct',                        label: 'Qwen 2.5 72B',               keyIdx: 7  },
+  { id: 'upstage/solar-pro-3:free',                          label: 'Upstage Solar Pro 3',        keyIdx: 7  },
   { id: 'openai/gpt-4o-mini',                                label: 'GPT-4o Mini',                keyIdx: 8  },
-  { id: 'cohere/command-r-plus-08-2024',                     label: 'Cohere Command R+',          keyIdx: 9  },
+  { id: 'nvidia/nemotron-nano-12b-v2-vl:free',               label: 'NVIDIA Nemotron Nano 12B',   keyIdx: 9  },
   { id: 'z-ai/glm-4.5-air',                                  label: 'Z.ai GLM 4.5 Air',           keyIdx: 10 },
   { id: 'mistralai/mistral-small-3.1-24b-instruct',          label: 'Mistral Small 3.1 24B',      keyIdx: 11 },
 ];
