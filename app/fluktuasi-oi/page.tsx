@@ -772,6 +772,38 @@ type Keyword = {
   sourceColumn: string;  // column header name to match against; empty = default description col
 };
 
+// ─── AI Chatbot ─────────────────────────────────────────────────────────────
+type ChatMsg  = { role: 'user' | 'assistant'; content: string };
+type ChatPanel = {
+  open: boolean;
+  globalRi: number;
+  accountCode: string;
+  accountName: string;
+  model: string;
+  keyIdx: number;
+  messages: ChatMsg[];
+  input: string;
+  loading: boolean;
+  systemCtx: string;
+};
+
+// keyIdx 0 = OPENROUTER_API_KEY (Free Models Router)
+// keyIdx 1–11 = OPENROUTER_API_KEY_1 … _11 (each locked to one model)
+const OPENROUTER_MODELS = [
+  { id: 'google/gemini-2.0-flash-001',                       label: 'Gemini 2.0 Flash (Free)',    keyIdx: 0  },
+  { id: 'arcee-ai/arcee-nova',                               label: 'Arcee Trinity Large',        keyIdx: 1  },
+  { id: 'nousresearch/hermes-3-llama-3.1-405b-instruct',     label: 'Hermes 3 405B',              keyIdx: 2  },
+  { id: 'stepfun/step-3-5-flash',                            label: 'StepFun 3.5 Flash',          keyIdx: 3  },
+  { id: 'venice-ai/uncensored-hermes-3-llama-3-70b',         label: 'Venice Uncensored',          keyIdx: 4  },
+  { id: 'liquid/lfm-2.5-1.2b-thinking',                     label: 'LiquidAI LFM2.5 Thinking',   keyIdx: 5  },
+  { id: 'nvidia/nemotron-3-nano-30b-a3b',                    label: 'NVIDIA Nemotron Nano 30B',   keyIdx: 6  },
+  { id: 'qwen/qwen3-coder-480b-a35b',                        label: 'Qwen3 Coder 480B',           keyIdx: 7  },
+  { id: 'openai/gpt-oss-120b',                               label: 'GPT-OSS 120B',               keyIdx: 8  },
+  { id: 'qwen/qwen3-4b',                                     label: 'Qwen3 4B',                   keyIdx: 9  },
+  { id: 'z-ai/glm-4.5-air',                                  label: 'Z.ai GLM 4.5 Air',           keyIdx: 10 },
+  { id: 'mistralai/mistral-small-3.1-24b-instruct',          label: 'Mistral Small 3.1 24B',      keyIdx: 11 },
+];
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function FluktuasiOIPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -788,8 +820,7 @@ export default function FluktuasiOIPage() {
   const [aiErrors,   setAiErrors]   = useState<Record<string, string>>({});
   const [aiBatch,    setAiBatch]    = useState<{ done: number; total: number } | null>(null);
   const aiCancelRef = useRef(false);
-  // Per-account context notes for AI (keyed by account code)
-  const [accountNotes, setAccountNotes] = useState<Record<string, string>>({});
+  const [chat, setChat] = useState<ChatPanel | null>(null);
 
   // Period selection for MoM / YoY — null = use auto-detected default
   const [momSel, setMomSel] = useState<{ curr: number; prev: number } | null>(null);
@@ -1540,7 +1571,6 @@ export default function FluktuasiOIPage() {
           .sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount))
           .slice(0, 12);
       }
-      const aiNotes = accountNotes[acctCode] ?? '';
       const res = await fetch('/api/fluktuasi/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1557,7 +1587,6 @@ export default function FluktuasiOIPage() {
           prevYoYLabel: yoyPrevAmt?.dateLabel || yoyPrevAmt?.label || '',
           amountPeriods: periods,
           subBreakdown: subBreakdown.length > 0 ? subBreakdown : undefined,
-          notes: aiNotes || undefined,
         }),
       });
       const data = await res.json();
@@ -1618,6 +1647,67 @@ export default function FluktuasiOIPage() {
       }
     }
     setAiBatch(null);
+  };
+
+  // ── AI Chatbot ──────────────────────────────────────────────────────────────
+  const openChat = (globalRi: number, row: RekapSheetRow, accountName: string) => {
+    if (!rekapSheetData) return;
+    const acctCode = String(row.values[rekapSheetData.accountColIdx] ?? '').trim();
+    const { amountCols } = rekapSheetData;
+    const periodLines = amountCols
+      .map(ac => `${ac.dateLabel || ac.label}: ${fmtRp(parseNum(row.values[ac.colIdx] ?? 0))}`)
+      .join('\n');
+    const matchSd = sheetDataList.find(s => {
+      const code = s.sheetName.trim().match(/^(\d{5,})/)?.[1] ?? s.sheetName.trim();
+      return code === acctCode || s.sheetName.trim() === acctCode;
+    });
+    let breakdownLines = '';
+    if (matchSd) {
+      const aggMap = new Map<string, number>();
+      for (const r of matchSd.rows) {
+        const k = String(r['__klasifikasi'] ?? r['__klasifikasi_raw'] ?? '').trim() || '(Tidak berkategori)';
+        aggMap.set(k, (aggMap.get(k) ?? 0) + parseNum(r['__amount'] ?? 0));
+      }
+      breakdownLines = [...aggMap.entries()]
+        .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+        .slice(0, 12)
+        .map(([k, v]) => `  ${k}: ${fmtRp(v)}`)
+        .join('\n');
+    }
+    const systemCtx = [
+      'Kamu adalah analis keuangan senior perusahaan Indonesia.',
+      '',
+      `DATA AKUN:\nKode: ${acctCode}\nNama: ${accountName}`,
+      '',
+      `HISTORI NILAI PER PERIODE:\n${periodLines}`,
+      ...(breakdownLines ? ['', `BREAKDOWN KLASIFIKASI TRANSAKSI (periode terkini):\n${breakdownLines}`] : []),
+      '',
+      'Gunakan data di atas sebagai konteks dalam setiap jawaban. DILARANG mengarang fakta di luar data yang disediakan.',
+    ].join('\n');
+    setChat({
+      open: true, globalRi, accountCode: acctCode, accountName,
+      model: OPENROUTER_MODELS[0].id, keyIdx: OPENROUTER_MODELS[0].keyIdx,
+      messages: [], input: '', loading: false, systemCtx,
+    });
+  };
+
+  const sendChatMessage = async () => {
+    if (!chat || !chat.input.trim() || chat.loading) return;
+    const userMsg: ChatMsg = { role: 'user', content: chat.input.trim() };
+    const newMessages = [...chat.messages, userMsg];
+    setChat(prev => prev ? { ...prev, messages: newMessages, input: '', loading: true } : prev);
+    try {
+      const res = await fetch('/api/fluktuasi/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: chat.model, keyIdx: chat.keyIdx, systemContext: chat.systemCtx, messages: newMessages }),
+      });
+      const data = await res.json();
+      const reply: string = res.ok ? (data.reply || '') : `Error: ${data.error || res.status}`;
+      setChat(prev => prev ? { ...prev, loading: false, messages: [...newMessages, { role: 'assistant' as const, content: reply }] } : prev);
+    } catch {
+      setChat(prev => prev ? { ...prev, loading: false, messages: [...newMessages, { role: 'assistant' as const, content: 'Gagal menghubungi server AI.' }] } : prev);
+    }
   };
 
   const handleDownload = async () => {
@@ -2512,23 +2602,6 @@ export default function FluktuasiOIPage() {
                     border: '1px solid #c7d2fe', minWidth: '300px', verticalAlign: 'top' }}>
                   {!isSpecial && (
                     <div className="flex flex-col gap-1">
-                      {/* Notes input for AI context (MoM side only, shared per account) */}
-                      {side === 'mom' && (() => {
-                        const acctCode = String(row.values[rekapSheetData.accountColIdx] ?? '').trim();
-                        return (
-                          <div className="flex items-start gap-1 mb-0.5">
-                            <span className="text-[8px] text-indigo-400 font-semibold mt-1.5 whitespace-nowrap">Catatan AI:</span>
-                            <textarea
-                              rows={1}
-                              value={accountNotes[acctCode] ?? ''}
-                              onChange={e => setAccountNotes(prev => ({ ...prev, [acctCode]: e.target.value }))}
-                              placeholder="Konteks opsional (misal: pengadaan baru, project X selesai)..."
-                              className="flex-1 text-[9px] resize-y rounded border border-indigo-100 px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-300"
-                              style={{ backgroundColor: '#f8f9ff', color: '#374151', fontFamily: 'inherit', minHeight: '22px' }}
-                            />
-                          </div>
-                        );
-                      })()}
                       {/* Text area — editable */}
                       <textarea
                         rows={displayed ? Math.min(14, displayed.split('\n').length + 2) : 3}
@@ -2560,6 +2633,14 @@ export default function FluktuasiOIPage() {
                                 className="px-1.5 py-0.5 text-[9px] rounded bg-purple-100 text-purple-700 hover:bg-purple-200 disabled:opacity-30 whitespace-nowrap font-medium">
                                 AI {side.toUpperCase()}
                               </button>
+                              {side === 'mom' && (
+                                <button
+                                  onClick={() => openChat(globalRi, row, descVal)}
+                                  title="Buka chatbot AI — chat bebas untuk analisis akun ini"
+                                  className="px-1.5 py-0.5 text-[9px] rounded bg-sky-100 text-sky-700 hover:bg-sky-200 whitespace-nowrap font-medium">
+                                  💬 Chat
+                                </button>
+                              )}
                               {hasOverride && (
                                 <button
                                   onClick={() => setAiReasons(prev => {
@@ -2908,6 +2989,125 @@ export default function FluktuasiOIPage() {
 
         </div>
       </div>
+
+      {/* ── AI Chat Modal ─────────────────────────────────────────────── */}
+      {chat?.open && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setChat(p => p ? { ...p, open: false } : p); }}>
+          <div className="bg-white rounded-xl shadow-2xl flex flex-col" style={{ width: '700px', height: '82vh', maxWidth: '96vw' }}>
+            {/* Header */}
+            <div className="px-4 py-3 border-b flex items-center gap-3 flex-shrink-0"
+              style={{ background: 'linear-gradient(to right,#1F3864,#2e4d8a)' }}>
+              <div className="flex-1 min-w-0">
+                <div className="text-white font-semibold text-sm truncate">💬 Chat AI — {chat.accountCode} {chat.accountName}</div>
+                <div className="text-[10px] mt-0.5" style={{ color: '#c7d4f0' }}>Chat bebas · data akun sudah dimuat sebagai konteks</div>
+              </div>
+              <select
+                value={chat.model}
+                onChange={e => {
+                  const found = OPENROUTER_MODELS.find(m => m.id === e.target.value);
+                  setChat(p => p ? { ...p, model: e.target.value, keyIdx: found?.keyIdx ?? 0 } : p);
+                }}
+                className="text-[11px] rounded border border-white/30 bg-white/10 text-white px-2 py-1 focus:outline-none focus:bg-white/20"
+                style={{ maxWidth: '185px' }}>
+                {OPENROUTER_MODELS.map(m => (
+                  <option key={m.id} value={m.id} className="text-gray-800 bg-white">{m.label}</option>
+                ))}
+              </select>
+              <button onClick={() => setChat(p => p ? { ...p, open: false } : p)}
+                className="text-white/70 hover:text-white text-xl leading-none px-1 flex-shrink-0">✕</button>
+            </div>
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+              {chat.messages.length === 0 && !chat.loading && (
+                <div className="text-center text-gray-400 text-xs mt-10">
+                  <div className="text-4xl mb-3">💬</div>
+                  <div className="font-medium text-sm">Tanyakan apa saja tentang akun <span className="text-indigo-600 font-semibold">{chat.accountCode}</span></div>
+                  <div className="mt-1 text-[10px]">AI sudah mengetahui histori nilai, breakdown klasifikasi, dan tren akun ini.</div>
+                  <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                    {['Jelaskan tren historis akun ini', 'Apa klasifikasi dengan nilai terbesar?', 'Buat narasi analisis MoM', 'Buat narasi analisis YoY'].map(hint => (
+                      <button key={hint} onClick={() => setChat(p => p ? { ...p, input: hint } : p)}
+                        className="px-3 py-1 text-[10px] rounded-full border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition">
+                        {hint}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {chat.messages.map((msg, mi) => (
+                <div key={mi} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {msg.role === 'assistant' && (
+                    <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold"
+                      style={{ backgroundColor: '#1F3864', color: '#fff' }}>AI</div>
+                  )}
+                  <div className={`max-w-[82%] rounded-2xl px-3 py-2 text-[11px] leading-relaxed whitespace-pre-wrap ${
+                    msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-gray-100 text-gray-800 rounded-bl-sm'
+                  }`}>
+                    {msg.content}
+                    {msg.role === 'assistant' && (
+                      <div className="flex gap-1 mt-2 pt-2 border-t border-gray-200 flex-wrap">
+                        <button onClick={() => setAiReasons(prev => ({ ...prev, [chat.globalRi]: { ...prev[chat.globalRi], mom: msg.content } }))}
+                          className="px-2 py-0.5 text-[9px] rounded bg-purple-100 text-purple-700 hover:bg-purple-200 font-medium">
+                          → Reason MoM
+                        </button>
+                        <button onClick={() => setAiReasons(prev => ({ ...prev, [chat.globalRi]: { ...prev[chat.globalRi], yoy: msg.content } }))}
+                          className="px-2 py-0.5 text-[9px] rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200 font-medium">
+                          → Reason YoY
+                        </button>
+                        <button onClick={() => navigator.clipboard.writeText(msg.content)}
+                          className="px-2 py-0.5 text-[9px] rounded bg-gray-200 text-gray-600 hover:bg-gray-300">
+                          Copy
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {msg.role === 'user' && (
+                    <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold bg-blue-600 text-white">U</div>
+                  )}
+                </div>
+              ))}
+              {chat.loading && (
+                <div className="flex gap-2 justify-start">
+                  <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold"
+                    style={{ backgroundColor: '#1F3864', color: '#fff' }}>AI</div>
+                  <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-2.5">
+                    <div className="flex gap-1 items-center">
+                      <span className="animate-bounce text-gray-400 text-base" style={{ animationDelay: '0ms' }}>●</span>
+                      <span className="animate-bounce text-gray-400 text-base" style={{ animationDelay: '160ms' }}>●</span>
+                      <span className="animate-bounce text-gray-400 text-base" style={{ animationDelay: '320ms' }}>●</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* Input */}
+            <div className="px-4 py-3 border-t flex-shrink-0 bg-gray-50 rounded-b-xl">
+              <div className="flex gap-2 items-end">
+                <textarea
+                  rows={2}
+                  value={chat.input}
+                  onChange={e => setChat(p => p ? { ...p, input: e.target.value } : p)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); } }}
+                  placeholder="Ketik pertanyaan atau instruksi... (Enter = kirim · Shift+Enter = baris baru)"
+                  className="flex-1 text-sm rounded-lg border border-gray-300 px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{ minHeight: '56px', fontFamily: 'inherit' }}
+                />
+                <button
+                  onClick={sendChatMessage}
+                  disabled={chat.loading || !chat.input.trim()}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40 transition"
+                  style={{ backgroundColor: '#1F3864', color: '#fff', minHeight: '56px' }}>
+                  Kirim
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1.5">
+                Model: <strong>{OPENROUTER_MODELS.find(m => m.id === chat.model)?.label ?? chat.model}</strong>
+                &ensp;·&ensp;Klik "→ Reason MoM/YoY" pada respons AI untuk menyalin ke tabel
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Keyword Modal ─────────────────────────────────────────────────── */}
       {showKeywordModal && (

@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// ─── Analyze uses the default Free Models Router key (keyIdx 0) ──────────────
+// The model is google/gemini-2.0-flash-001, which is free on OpenRouter.
+function pickApiKey(): string {
+  return process.env.OPENROUTER_API_KEY ?? '';
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AmtPeriod {
   label: string;
@@ -50,9 +56,9 @@ function parseNum(val: string | number | null | undefined): number {
 
 // ─── POST /api/fluktuasi/analyze ──────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = pickApiKey();
   if (!apiKey) {
-    return NextResponse.json({ error: 'OPENROUTER_API_KEY belum dikonfigurasi di .env.local' }, { status: 500 });
+    return NextResponse.json({ error: 'Tidak ada OPENROUTER_API_KEY yang dikonfigurasi di .env.local' }, { status: 500 });
   }
 
   const body: AnalyzeRequest = await req.json();
