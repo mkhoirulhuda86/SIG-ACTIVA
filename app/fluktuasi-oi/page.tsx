@@ -788,6 +788,8 @@ export default function FluktuasiOIPage() {
   const [aiErrors,   setAiErrors]   = useState<Record<string, string>>({});
   const [aiBatch,    setAiBatch]    = useState<{ done: number; total: number } | null>(null);
   const aiCancelRef = useRef(false);
+  // Per-account context notes for AI (keyed by account code)
+  const [accountNotes, setAccountNotes] = useState<Record<string, string>>({});
 
   // Period selection for MoM / YoY — null = use auto-detected default
   const [momSel, setMomSel] = useState<{ curr: number; prev: number } | null>(null);
@@ -1518,11 +1520,32 @@ export default function FluktuasiOIPage() {
         label: ac.dateLabel || ac.label,
         value: row.values[ac.colIdx],
       }));
+      // Extract sub-breakdown (klasifikasi → totalAmount) from matching kode-akun sheet
+      const acctCode = String(row.values[rekapSheetData.accountColIdx] ?? '').trim();
+      const matchSheet = sheetDataList.find(s => {
+        const code = s.sheetName.trim().match(/^(\d{5,})/)?.[1] ?? s.sheetName.trim();
+        return code === acctCode || s.sheetName.trim() === acctCode;
+      });
+      let subBreakdown: { klasifikasi: string; totalAmount: number; count: number }[] = [];
+      if (matchSheet) {
+        const aggMap = new Map<string, { total: number; count: number }>();
+        for (const r of matchSheet.rows) {
+          const k = String(r['__klasifikasi'] ?? r['__klasifikasi_raw'] ?? '').trim() || '(Tidak berkategori)';
+          const amt = parseNum(r['__amount'] ?? 0);
+          const ex = aggMap.get(k) ?? { total: 0, count: 0 };
+          aggMap.set(k, { total: ex.total + amt, count: ex.count + 1 });
+        }
+        subBreakdown = [...aggMap.entries()]
+          .map(([klasifikasi, { total, count }]) => ({ klasifikasi, totalAmount: total, count }))
+          .sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount))
+          .slice(0, 12);
+      }
+      const aiNotes = accountNotes[acctCode] ?? '';
       const res = await fetch('/api/fluktuasi/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountCode: String(row.values[rekapSheetData.accountColIdx] ?? ''),
+          accountCode: acctCode,
           accountName,
           type,
           gapMoM: row.gapMoM,
@@ -1533,6 +1556,8 @@ export default function FluktuasiOIPage() {
           prevMoMLabel: prevAmt?.dateLabel    || prevAmt?.label    || '',
           prevYoYLabel: yoyPrevAmt?.dateLabel || yoyPrevAmt?.label || '',
           amountPeriods: periods,
+          subBreakdown: subBreakdown.length > 0 ? subBreakdown : undefined,
+          notes: aiNotes || undefined,
         }),
       });
       const data = await res.json();
@@ -2487,6 +2512,23 @@ export default function FluktuasiOIPage() {
                     border: '1px solid #c7d2fe', minWidth: '300px', verticalAlign: 'top' }}>
                   {!isSpecial && (
                     <div className="flex flex-col gap-1">
+                      {/* Notes input for AI context (MoM side only, shared per account) */}
+                      {side === 'mom' && (() => {
+                        const acctCode = String(row.values[rekapSheetData.accountColIdx] ?? '').trim();
+                        return (
+                          <div className="flex items-start gap-1 mb-0.5">
+                            <span className="text-[8px] text-indigo-400 font-semibold mt-1.5 whitespace-nowrap">Catatan AI:</span>
+                            <textarea
+                              rows={1}
+                              value={accountNotes[acctCode] ?? ''}
+                              onChange={e => setAccountNotes(prev => ({ ...prev, [acctCode]: e.target.value }))}
+                              placeholder="Konteks opsional (misal: pengadaan baru, project X selesai)..."
+                              className="flex-1 text-[9px] resize-y rounded border border-indigo-100 px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                              style={{ backgroundColor: '#f8f9ff', color: '#374151', fontFamily: 'inherit', minHeight: '22px' }}
+                            />
+                          </div>
+                        );
+                      })()}
                       {/* Text area — editable */}
                       <textarea
                         rows={displayed ? Math.min(14, displayed.split('\n').length + 2) : 3}

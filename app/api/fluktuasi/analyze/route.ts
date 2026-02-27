@@ -6,6 +6,12 @@ interface AmtPeriod {
   value: string | number | null | undefined;
 }
 
+interface SubBreakdownItem {
+  klasifikasi: string;
+  totalAmount: number;
+  count?: number;
+}
+
 interface AnalyzeRequest {
   accountCode: string;
   accountName: string;
@@ -18,6 +24,8 @@ interface AnalyzeRequest {
   prevMoMLabel: string;
   prevYoYLabel: string;
   amountPeriods: AmtPeriod[];
+  subBreakdown?: SubBreakdownItem[];   // per-klasifikasi aggregated amounts for current period
+  notes?: string;                       // optional context from user
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -49,7 +57,7 @@ export async function POST(req: NextRequest) {
 
   const body: AnalyzeRequest = await req.json();
   const { accountCode, accountName, type, gapMoM = 0, pctMoM = 0, gapYoY = 0, pctYoY = 0,
-    currLabel, prevMoMLabel, prevYoYLabel, amountPeriods } = body;
+    currLabel, prevMoMLabel, prevYoYLabel, amountPeriods, subBreakdown, notes } = body;
 
   // Build period table for prompt
   const periodLines = amountPeriods
@@ -57,44 +65,47 @@ export async function POST(req: NextRequest) {
       ? fmtIDR(parseNum(p.value)) : '-'}`)
     .join('\n');
 
-  const prompt = `Kamu adalah analis keuangan senior perusahaan Indonesia. Tugas kamu adalah membuat analisis fluktuasi yang lengkap, tajam, dan siap masuk laporan keuangan internal manajemen.
+  // Build sub-breakdown section
+  const subBreakdownLines = subBreakdown && subBreakdown.length > 0
+    ? subBreakdown
+        .map(sb => `  ${sb.klasifikasi}: ${fmtIDR(sb.totalAmount)}${sb.count ? ` (${sb.count} transaksi)` : ''}`)
+        .join('\n')
+    : '';
 
-=== DATA AKUN ===
-Kode Akun : ${accountCode || '-'}
-Nama Akun : ${accountName || '-'}
+  const prompt = `Kamu adalah analis keuangan senior perusahaan Indonesia. Tugas kamu membuat narasi analisis fluktuasi yang JUJUR dan berdasarkan DATA AKTUAL di bawah ini saja.
 
-=== HISTORI NILAI PER PERIODE (Rupiah) ===
+=== AKUN ===
+Kode  : ${accountCode || '-'}
+Nama  : ${accountName || '-'}
+
+=== HISTORI NILAI PER PERIODE ===
 ${periodLines}
 
-=== BESARAN FLUKTUASI ===
-${type !== 'yoy' ? `MoM  : ${gapMoM >= 0 ? '+' : ''}${fmtIDR(gapMoM)} (${pctStr(pctMoM)})  →  ${currLabel} vs ${prevMoMLabel}` : ''}
-${type !== 'mom' ? `YoY  : ${gapYoY >= 0 ? '+' : ''}${fmtIDR(gapYoY)} (${pctStr(pctYoY)})  →  ${currLabel} vs ${prevYoYLabel}` : ''}
+=== FLUKTUASI YANG DIANALISIS ===
+${type !== 'yoy' ? `MoM : ${gapMoM >= 0 ? '+' : ''}${fmtIDR(gapMoM)} (${pctStr(pctMoM)}) — ${currLabel} vs ${prevMoMLabel}` : ''}
+${type !== 'mom' ? `YoY : ${gapYoY >= 0 ? '+' : ''}${fmtIDR(gapYoY)} (${pctStr(pctYoY)}) — ${currLabel} vs ${prevYoYLabel}` : ''}
+${subBreakdownLines ? `
+=== BREAKDOWN KLASIFIKASI TRANSAKSI (periode ${currLabel}) ===
+${subBreakdownLines}
+` : ''}${notes ? `=== CATATAN KONTEKS (dari pengguna) ===
+${notes}
 
-=== INSTRUKSI ===
-Buat analisis lengkap untuk setiap bagian yang diminta di bawah.
-
-Aturan wajib:
-1. Gunakan kalimat deklaratif langsung. DILARANG menggunakan kata: kemungkinan, mungkin, diperkirakan, diduga, tampaknya, sepertinya.
-2. Baca tren histori semua periode di atas — sebutkan pola tren (naik konsisten, turun lalu naik, dsb.) jika relevan.
-3. Setiap poin harus menyebut angka konkret dari data di atas (nilai atau persentase).
-4. Tulis minimal 3 poin penyebab yang berbeda — tidak boleh hanya 1 atau 2.
-5. Jika ada periode dengan lonjakan atau penurunan tajam, sebutkan periodenya secara eksplisit.
-6. Cantumkan nilai dalam Miliar (M) atau Juta (JT).
-7. Jika nilai fluktuasi 0 atau < 1%, cukup tulis: "Tidak ada fluktuasi signifikan."
+` : ''}=== PANDUAN ANALISIS ===
+Tulis narasi analisis berdasarkan data di atas dengan ketentuan:
+1. Jika ada BREAKDOWN KLASIFIKASI → identifikasi klasifikasi mana yang nilainya terbesar dan sebutkan angkanya.
+2. Dari HISTORI PERIODE → identifikasi tren (konsisten naik/turun, ada lonjakan di periode tertentu, seasonal, dll).
+3. Jika ada CATATAN KONTEKS → gunakan sebagai penjelasan penyebab.
+4. DILARANG mengarang penyebab yang tidak ada di data — jika data tidak cukup menjelaskan sebab, cukup deskripsikan tren dan distribusi yang terlihat.
+5. DILARANG menggunakan kata: kemungkinan, mungkin, diperkirakan, diduga, tampaknya.
+6. Cantumkan angka konkret saat menyebut suatu poin.
+7. Jika GAP < 1% atau nilai fluktuasi sangat kecil → langsung tulis: "Tidak ada fluktuasi signifikan."
+8. Tiap bagian cukup 3–5 kalimat — langsung, padat, dan informatif.
 
 === FORMAT OUTPUT (ikuti persis, tanpa teks tambahan di luar format ini) ===
 ${type !== 'yoy' ? `[MOM]
-${gapMoM >= 0 ? 'Kenaikan' : 'Penurunan'} ${accountName} sebesar ${fmtIDR(Math.abs(gapMoM))} (${pctStr(pctMoM)}) pada ${currLabel} dibandingkan ${prevMoMLabel}, dengan rincian sebagai berikut:
-   - [Penyebab utama — sertakan angka spesifik]
-   - [Penyebab kedua — sertakan angka atau tren]
-   - [Penyebab ketiga — kaitkan dengan konteks operasional/keuangan akun ini]
-   - [Penyebab tambahan jika relevan]
+<tulis analisis MoM di sini>
 ` : ''}${type !== 'mom' ? `[YOY]
-${gapYoY >= 0 ? 'Kenaikan' : 'Penurunan'} ${accountName} sebesar ${fmtIDR(Math.abs(gapYoY))} (${pctStr(pctYoY)}) pada ${currLabel} dibandingkan ${prevYoYLabel}, dengan rincian sebagai berikut:
-   - [Penyebab utama — sertakan angka spesifik]
-   - [Penyebab kedua — sertakan angka atau tren]
-   - [Penyebab ketiga — kaitkan dengan konteks operasional/keuangan akun ini]
-   - [Penyebab tambahan jika relevan]
+<tulis analisis YoY di sini>
 ` : ''}`;
 
   try {
