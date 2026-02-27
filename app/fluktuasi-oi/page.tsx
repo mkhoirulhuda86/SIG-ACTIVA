@@ -793,7 +793,7 @@ const OPENROUTER_MODELS = [
   { id: 'google/gemini-2.0-flash-001',                       label: 'Gemini 2.0 Flash',           keyIdx: 0  },
   { id: 'arcee-ai/trinity-large-preview:free',               label: 'Arcee Trinity Large',        keyIdx: 1  },
   { id: 'stepfun/step-3.5-flash:free',                       label: 'StepFun Step 3.5 Flash',     keyIdx: 2  },
-  { id: 'openai/gpt-oss-20b:free',                           label: 'OpenAI GPT-OSS 20B',         keyIdx: 0  },
+  { id: 'openai/gpt-oss-120b:free',                          label: 'OpenAI GPT-OSS 120B',        keyIdx: 1  },
   { id: 'nvidia/nemotron-3-nano-30b-a3b:free',               label: 'NVIDIA Nemotron 3 Nano',     keyIdx: 4  },
   { id: 'arcee-ai/trinity-mini:free',                        label: 'Arcee Trinity Mini',         keyIdx: 5  },
   { id: 'nvidia/nemotron-nano-9b-v2:free',                    label: 'NVIDIA Nemotron Nano 9B',    keyIdx: 6  },
