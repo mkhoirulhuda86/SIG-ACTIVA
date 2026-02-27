@@ -2633,14 +2633,12 @@ export default function FluktuasiOIPage() {
                                 className="px-1.5 py-0.5 text-[9px] rounded bg-purple-100 text-purple-700 hover:bg-purple-200 disabled:opacity-30 whitespace-nowrap font-medium">
                                 AI {side.toUpperCase()}
                               </button>
-                              {side === 'mom' && (
-                                <button
-                                  onClick={() => openChat(globalRi, row, descVal)}
-                                  title="Buka chatbot AI — chat bebas untuk analisis akun ini"
-                                  className="px-1.5 py-0.5 text-[9px] rounded bg-sky-100 text-sky-700 hover:bg-sky-200 whitespace-nowrap font-medium">
-                                  💬 Chat
-                                </button>
-                              )}
+                              <button
+                                onClick={() => openChat(globalRi, row, descVal)}
+                                title="Buka chatbot AI — chat bebas untuk analisis akun ini"
+                                className="px-1.5 py-0.5 text-[9px] rounded bg-sky-100 text-sky-700 hover:bg-sky-200 whitespace-nowrap font-medium">
+                                Chat
+                              </button>
                               {hasOverride && (
                                 <button
                                   onClick={() => setAiReasons(prev => {
@@ -2999,7 +2997,7 @@ export default function FluktuasiOIPage() {
             <div className="px-4 py-3 border-b flex items-center gap-3 flex-shrink-0"
               style={{ background: 'linear-gradient(to right,#1F3864,#2e4d8a)' }}>
               <div className="flex-1 min-w-0">
-                <div className="text-white font-semibold text-sm truncate">💬 Chat AI — {chat.accountCode} {chat.accountName}</div>
+                <div className="text-white font-semibold text-sm truncate">Chat AI — {chat.accountCode} {chat.accountName}</div>
                 <div className="text-[10px] mt-0.5" style={{ color: '#c7d4f0' }}>Chat bebas · data akun sudah dimuat sebagai konteks</div>
               </div>
               <select
@@ -3021,7 +3019,6 @@ export default function FluktuasiOIPage() {
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
               {chat.messages.length === 0 && !chat.loading && (
                 <div className="text-center text-gray-400 text-xs mt-10">
-                  <div className="text-4xl mb-3">💬</div>
                   <div className="font-medium text-sm">Tanyakan apa saja tentang akun <span className="text-indigo-600 font-semibold">{chat.accountCode}</span></div>
                   <div className="mt-1 text-[10px]">AI sudah mengetahui histori nilai, breakdown klasifikasi, dan tren akun ini.</div>
                   <div className="mt-4 flex flex-wrap gap-2 justify-center">
