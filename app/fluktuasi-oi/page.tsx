@@ -126,8 +126,8 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
   }
 
   // ── Extract result/output (text in quotes after "berisi", "maka berisi", etc.)
-  let resultMatch = text.match(/(?:berisi|is|result|output|hasil)\s*["']([^"']+)["']/i);
-  if (!resultMatch) resultMatch = text.match(/(?:berisi|is)\s+["']?([\w\s]+?)["']?$/i);
+  let resultMatch = original.match(/(?:berisi|is|result|output|hasil)\s*["']([^"']+)["']/i);
+  if (!resultMatch) resultMatch = original.match(/(?:berisi|is)\s+["']?([\w\s]+?)["']?$/i);
 
   // ── Detect output type (klasifikasi vs remark)
   let type = 'klasifikasi';
