@@ -790,16 +790,16 @@ type ChatPanel = {
 // keyIdx 0 = OPENROUTER_API_KEY (Free Models Router)
 // keyIdx 1–11 = OPENROUTER_API_KEY_1 … _11 (each locked to one model)
 const OPENROUTER_MODELS = [
-  { id: 'google/gemini-2.0-flash-001',                       label: 'Gemini 2.0 Flash (Free)',    keyIdx: 0  },
-  { id: 'arcee-ai/arcee-nova',                               label: 'Arcee Trinity Large',        keyIdx: 1  },
-  { id: 'nousresearch/hermes-3-llama-3.1-405b-instruct',     label: 'Hermes 3 405B',              keyIdx: 2  },
-  { id: 'stepfun/step-3-5-flash',                            label: 'StepFun 3.5 Flash',          keyIdx: 3  },
-  { id: 'venice-ai/uncensored-hermes-3-llama-3-70b',         label: 'Venice Uncensored',          keyIdx: 4  },
-  { id: 'liquid/lfm-2.5-1.2b-thinking',                     label: 'LiquidAI LFM2.5 Thinking',   keyIdx: 5  },
-  { id: 'nvidia/nemotron-3-nano-30b-a3b',                    label: 'NVIDIA Nemotron Nano 30B',   keyIdx: 6  },
-  { id: 'qwen/qwen3-coder-480b-a35b',                        label: 'Qwen3 Coder 480B',           keyIdx: 7  },
-  { id: 'openai/gpt-oss-120b',                               label: 'GPT-OSS 120B',               keyIdx: 8  },
-  { id: 'qwen/qwen3-4b',                                     label: 'Qwen3 4B',                   keyIdx: 9  },
+  { id: 'google/gemini-2.0-flash-001',                       label: 'Gemini 2.0 Flash',           keyIdx: 0  },
+  { id: 'meta-llama/llama-3.3-70b-instruct',                 label: 'Llama 3.3 70B',              keyIdx: 1  },
+  { id: 'deepseek/deepseek-chat-v3-0324',                    label: 'DeepSeek Chat V3',            keyIdx: 2  },
+  { id: 'deepseek/deepseek-r1-distill-llama-70b',            label: 'DeepSeek R1 Distill 70B',    keyIdx: 3  },
+  { id: 'microsoft/phi-4',                                   label: 'Microsoft Phi-4',             keyIdx: 4  },
+  { id: 'google/gemini-2.5-flash-preview',                   label: 'Gemini 2.5 Flash Preview',   keyIdx: 5  },
+  { id: 'nvidia/llama-3.1-nemotron-ultra-253b-v1',           label: 'NVIDIA Nemotron Ultra 253B', keyIdx: 6  },
+  { id: 'qwen/qwen-2.5-72b-instruct',                        label: 'Qwen 2.5 72B',               keyIdx: 7  },
+  { id: 'openai/gpt-4.1-mini',                               label: 'GPT-4.1 Mini',               keyIdx: 8  },
+  { id: 'cohere/command-r-plus-08-2024',                     label: 'Cohere Command R+',          keyIdx: 9  },
   { id: 'z-ai/glm-4.5-air',                                  label: 'Z.ai GLM 4.5 Air',           keyIdx: 10 },
   { id: 'mistralai/mistral-small-3.1-24b-instruct',          label: 'Mistral Small 3.1 24B',      keyIdx: 11 },
 ];
