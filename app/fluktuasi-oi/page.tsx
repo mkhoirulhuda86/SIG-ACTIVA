@@ -370,6 +370,154 @@ const findColIdx = (headers: string[], keywords: string[]): number => {
   return -1;
 };
 
+/** Detect the main "amount" column in a kode-akun sheet */
+const findAmountColIdx = (
+  headers: string[],
+  raw: any[][],
+  headerRowIdx: number,
+  excludeCols: number[],
+): number => {
+  // Priority 1: known SAP / ID amount column names
+  const amountKeywords = [
+    'Amount in LC', 'Amt in loc.cur', 'LC Amount', 'Amount in Local',
+    'Betrag in HW', 'Betrag HW', 'Net Amount', 'Net amount',
+    'Nilai LC', 'Nilai', 'Amount', 'Jumlah', 'Total',
+  ];
+  const byLabel = findColIdx(headers, amountKeywords);
+  if (byLabel >= 0 && !excludeCols.includes(byLabel)) return byLabel;
+
+  // Priority 2: numeric column with highest avg absolute value (likely amounts > doc-nos)
+  const sampleRows = raw.slice(headerRowIdx + 1, Math.min(raw.length, headerRowIdx + 40));
+  let bestScore = -1;
+  let bestCol   = -1;
+  headers.forEach((_, col) => {
+    if (excludeCols.includes(col)) return;
+    const vals = sampleRows.map((r) => r[col]).filter((v) => v !== '' && v !== null && v !== undefined);
+    if (vals.length === 0) return;
+    const nums = vals.map((v) => parseNum(v));
+    const nonZero = nums.filter((v) => v !== 0).length;
+    if (nonZero < vals.length * 0.3) return;
+    const avgAbs = nums.reduce((s, v) => s + Math.abs(v), 0) / nums.length;
+    // Amounts in SAP are typically > 100; doc numbers are large but don't mix positive/negative
+    const hasNeg = nums.some((v) => v < 0);
+    const score  = nonZero / vals.length * (avgAbs > 100 ? Math.log10(avgAbs) : 0) * (hasNeg ? 1.5 : 1);
+    if (score > bestScore) { bestScore = score; bestCol = col; }
+  });
+  return bestCol;
+};
+
+/** Type used for DB-persisted account-period aggregates */
+type AkunPeriodeRecord = {
+  accountCode: string;
+  periode: string;
+  amount: number;
+  klasifikasi: string;
+  remark: string;
+};
+
+/** Build a synthetic RekapSheetData from a list of account-periode records */
+const buildRekapFromAkunPeriodes = (
+  records: AkunPeriodeRecord[],
+): RekapSheetData => {
+  // 1. All unique sorted periods
+  const allPeriodes = [...new Set(records.map((r) => r.periode))].sort();
+
+  // 2. Aggregate per account, combining amounts + reasons from records
+  const accountMap = new Map<
+    string,
+    { klasifikasi: Set<string>; remark: Set<string>; amounts: Map<string, number> }
+  >();
+  for (const r of records) {
+    if (!accountMap.has(r.accountCode)) {
+      accountMap.set(r.accountCode, {
+        klasifikasi: new Set(),
+        remark:      new Set(),
+        amounts:     new Map(),
+      });
+    }
+    const entry = accountMap.get(r.accountCode)!;
+    entry.amounts.set(r.periode, (entry.amounts.get(r.periode) ?? 0) + r.amount);
+    r.klasifikasi.split(';').map((s) => s.trim()).filter(Boolean).forEach((k) => entry.klasifikasi.add(k));
+    r.remark.split(';').map((s) => s.trim()).filter(Boolean).forEach((k) => entry.remark.add(k));
+  }
+
+  // 3. Headers: ['Kode Akun', ...periods]
+  const headers         = ['Kode Akun', ...allPeriodes];
+  const originalHeaders = headers.slice();
+  const accountColIdx   = 0;
+
+  // 4. AmountCols — one entry per period
+  const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const amountCols: AmountCol[] = allPeriodes.map((p, i) => {
+    const [yr, mo] = p.split('.');
+    const moNum    = parseInt(mo) - 1;
+    const moLabel  = MONTH_LABELS[moNum] ?? mo;
+    return {
+      colIdx:       i + 1, // col 0 = account code
+      label:        p,
+      yearLabel:    yr,
+      dateLabel:    `${moLabel} '${yr.slice(2)}`,
+      isCumulative: false,
+    };
+  });
+
+  // 5. Period indices
+  const momCurrIdx = amountCols.length - 1;
+  const momPrevIdx = amountCols.length >= 2 ? amountCols.length - 2 : 0;
+  const yoyCurrIdx = momCurrIdx;
+
+  // YoY prev: find same month last year; fallback to first period
+  const currPeriode          = allPeriodes[allPeriodes.length - 1] ?? '';
+  const [currYr, currMo]     = currPeriode.split('.');
+  const yoyPrevPeriode       = `${parseInt(currYr) - 1}.${currMo}`;
+  let   yoyPrevIdx           = allPeriodes.indexOf(yoyPrevPeriode);
+  if (yoyPrevIdx < 0) yoyPrevIdx = 0;
+  if (yoyPrevIdx === yoyCurrIdx && amountCols.length > 1) yoyPrevIdx = 0;
+
+  // 6. Build rows
+  const rows: RekapSheetRow[] = [];
+  const sortedAccounts = [...accountMap.keys()].sort();
+  for (const accountCode of sortedAccounts) {
+    const { klasifikasi, remark, amounts } = accountMap.get(accountCode)!;
+    const values: (string | number)[] = [
+      accountCode,
+      ...allPeriodes.map((p) => amounts.get(p) ?? 0),
+    ];
+
+    const curr    = amounts.get(allPeriodes[momCurrIdx] ?? '')  ?? 0;
+    const prev    = amounts.get(allPeriodes[momPrevIdx] ?? '')  ?? 0;
+    const yoyCurr = amounts.get(allPeriodes[yoyCurrIdx] ?? '') ?? 0;
+    const yoyPrev = amounts.get(allPeriodes[yoyPrevIdx] ?? '') ?? 0;
+
+    const gapMoM = curr - prev;
+    const pctMoM = prev !== 0 ? (gapMoM / Math.abs(prev)) * 100 : 0;
+    const gapYoY = yoyCurr - yoyPrev;
+    const pctYoY = yoyPrev !== 0 ? (gapYoY / Math.abs(yoyPrev)) * 100 : 0;
+
+    rows.push({
+      values,
+      type:       'detail',
+      gapMoM,  pctMoM,
+      gapYoY,  pctYoY,
+      reasonMoM: [...klasifikasi].filter(Boolean).join('; '),
+      reasonYoY: [...remark].filter(Boolean).join('; '),
+    });
+  }
+
+  return {
+    sheetName:       'Rekap (Auto)',
+    headers,
+    originalHeaders,
+    amountCols,
+    accountColIdx,
+    momCurrIdx,
+    momPrevIdx,
+    yoyCurrIdx,
+    yoyPrevIdx,
+    rows,
+  };
+};
+
 // Cached formatters — created once, reused on every render
 const FMT_RP  = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 });
 const FMT_PCT = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -644,8 +792,11 @@ export default function FluktuasiOIPage() {
   // Period selection for MoM / YoY — null = use auto-detected default
   const [momSel, setMomSel] = useState<{ curr: number; prev: number } | null>(null);
   const [yoySel, setYoySel] = useState<{ curr: number; prev: number } | null>(null);
+  // Column visibility — null = all visible; Set = only those amountCol indices
+  const [visibleAmtColIdxs, setVisibleAmtColIdxs] = useState<Set<number> | null>(null);
+  const [showColPicker,     setShowColPicker]     = useState(false);
   // Reset period selection when a new file is loaded
-  useEffect(() => { setMomSel(null); setYoySel(null); }, [rekapSheetData]);
+  useEffect(() => { setMomSel(null); setYoySel(null); setVisibleAmtColIdxs(null); setShowColPicker(false); }, [rekapSheetData]);
   
   // ── Keyword Management States ──────────────────────────────────────────────
   const [keywords, setKeywords] = useState<Keyword[]>([]);
@@ -671,6 +822,11 @@ export default function FluktuasiOIPage() {
   const [colHeader, setColHeader] = useState('');
   const [colPattern, setColPattern] = useState('');
 
+  // ── DB Akun Periode States ─────────────────────────────────────────────────
+  const [dbAkunPeriodes,  setDbAkunPeriodes]  = useState<AkunPeriodeRecord[]>([]);
+  const [loadingDbRekap,  setLoadingDbRekap]  = useState(false);
+  const [dbPeriodeStats,  setDbPeriodeStats]  = useState<{ periodes: string[]; accounts: number } | null>(null);
+
   // ── Load data from database on mount ──────────────────────────────────────
   useEffect(() => {
     const loadData = async () => {
@@ -690,6 +846,7 @@ export default function FluktuasiOIPage() {
     };
     loadData();
     loadKeywords();
+    loadDbStats();
   }, []);
 
   // ── Load keywords ──────────────────────────────────────────────────────────
@@ -814,6 +971,63 @@ export default function FluktuasiOIPage() {
     } catch (error) {
       console.error('Error deleting all keywords:', error);
       alert('Gagal menghapus semua keyword');
+    }
+  };
+
+  // ── DB Akun Periode helpers ────────────────────────────────────────────────
+  const loadDbStats = async () => {
+    try {
+      const res = await fetch('/api/fluktuasi/akun-periodes');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        const records: AkunPeriodeRecord[] = data.data;
+        setDbAkunPeriodes(records);
+        const periodes  = [...new Set(records.map((r) => r.periode))].sort();
+        const accounts  = new Set(records.map((r) => r.accountCode)).size;
+        setDbPeriodeStats({ periodes, accounts });
+      }
+    } catch (e) {
+      console.error('Gagal load DB stats:', e);
+    }
+  };
+
+  const loadAndBuildRekapFromDB = async () => {
+    setLoadingDbRekap(true);
+    try {
+      const res = await fetch('/api/fluktuasi/akun-periodes');
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
+      if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
+        alert('Belum ada data tersimpan di database. Upload file terlebih dahulu.');
+        return;
+      }
+      const records: AkunPeriodeRecord[] = data.data;
+      setDbAkunPeriodes(records);
+      const rekap = buildRekapFromAkunPeriodes(records);
+      setRekapSheetData(rekap);
+      setAiReasons({});
+      const periodes = [...new Set(records.map((r) => r.periode))].sort();
+      setDbPeriodeStats({ periodes, accounts: new Set(records.map((r) => r.accountCode)).size });
+    } catch (e: any) {
+      alert('Gagal memuat data dari DB: ' + (e?.message || e));
+    } finally {
+      setLoadingDbRekap(false);
+    }
+  };
+
+  const clearDbData = async () => {
+    if (!confirm('Hapus semua data akun-periode yang tersimpan di DB? Tindakan ini tidak dapat dibatalkan.')) return;
+    try {
+      const res = await fetch('/api/fluktuasi/akun-periodes', { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setDbAkunPeriodes([]);
+        setDbPeriodeStats(null);
+        alert(data.message);
+      }
+    } catch (e) {
+      alert('Gagal menghapus data DB');
     }
   };
 
@@ -1010,6 +1224,12 @@ export default function FluktuasiOIPage() {
           'No Dokumen', 'Nomer Dokumen',
         ]);
 
+        // Detect amount column for period aggregation
+        const amountColIdx = findAmountColIdx(
+          headers, raw, headerRowIdx,
+          [dateColIdx, klasifikasiColIdx, docnoColIdx].filter((i) => i >= 0),
+        );
+
         const rows: Record<string, any>[] = [];
         for (let r = headerRowIdx + 1; r < raw.length; r++) {
           const rawRow = raw[r];
@@ -1029,11 +1249,52 @@ export default function FluktuasiOIPage() {
           obj['__klasifikasi_raw'] = sourceText;
           obj['__remark_raw']      = sourceText;   // same source — keyword type drives the output
           obj['__docno_raw']       = docnoText;
+          obj['__amount']          = amountColIdx >= 0 ? parseNum(rawRow[amountColIdx]) : 0;
           rows.push(obj);
         }
         result.push({ sheetName, headers, originalHeaders, rows, klasifikasiColIdx, docnoColIdx });
       }
       setSheetDataList(result);
+
+      // ── Aggregate amounts per account per period + save to DB ─────────────
+      const akunPeriodesFlat: AkunPeriodeRecord[] = [];
+      for (const sd of result) {
+        const periodeAmtMap    = new Map<string, number>();
+        const periodeKlasiMap  = new Map<string, Set<string>>();
+        const periodeRemarkMap = new Map<string, Set<string>>();
+        for (const row of sd.rows) {
+          const p  = String(row['__periode'] ?? '').trim();
+          const a  = parseNum(row['__amount'] ?? 0);
+          if (!p) continue;
+          periodeAmtMap.set(p, (periodeAmtMap.get(p) ?? 0) + a);
+          if (!periodeKlasiMap.has(p))  periodeKlasiMap.set(p, new Set());
+          if (!periodeRemarkMap.has(p)) periodeRemarkMap.set(p, new Set());
+          const k  = String(row['__klasifikasi'] ?? '').trim();
+          const rv = String(row['__remark']      ?? '').trim();
+          if (k)  periodeKlasiMap.get(p)!.add(k);
+          if (rv) periodeRemarkMap.get(p)!.add(rv);
+        }
+        for (const [periode, amount] of periodeAmtMap.entries()) {
+          akunPeriodesFlat.push({
+            accountCode: sd.sheetName,
+            periode,
+            amount,
+            klasifikasi: [...(periodeKlasiMap.get(periode)  ?? [])].join('; '),
+            remark:      [...(periodeRemarkMap.get(periode) ?? [])].join('; '),
+          });
+        }
+      }
+      // Fire-and-forget: save aggregated data to DB
+      if (akunPeriodesFlat.length > 0) {
+        fetch('/api/fluktuasi/akun-periodes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ records: akunPeriodesFlat, uploadedBy: 'system', fileName: file.name }),
+        })
+          .then((r) => r.json())
+          .then(() => loadDbStats())
+          .catch((e) => console.error('Gagal menyimpan akun periodes:', e));
+      }
 
       // ── Build lookup map: accountCode → { klasifikasi[], remark[] } ─────────
       const acctReasonMap: Record<string, { klasifikasi: Set<string>; remark: Set<string> }> = {};
@@ -1211,6 +1472,13 @@ export default function FluktuasiOIPage() {
           };
           setRekapSheetData(rekapData);
         }
+      }
+
+      // ── Auto-build rekap from kode akun sheets (when no rekap sheet found) ─
+      if (!rekapSheetName && akunPeriodesFlat.length > 0) {
+        const autoRekap = buildRekapFromAkunPeriodes(akunPeriodesFlat);
+        rekapData = autoRekap;
+        setRekapSheetData(autoRekap);
       }
 
       // ── Save to database ───────────────────────────────────────────────────
@@ -1979,6 +2247,70 @@ export default function FluktuasiOIPage() {
             )}
           </div>
 
+          {/* ── Data Tersimpan (Multi-Periode) ────────────────────────── */}
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-5 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800">Data Tersimpan (Multi-Periode)</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Setiap upload otomatis menyimpan agregat per kode akun per periode.
+                  Bangun rekap dari semua periode untuk analisis lintas bulan/tahun.
+                </p>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={loadAndBuildRekapFromDB}
+                  disabled={loadingDbRekap}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition text-sm font-medium disabled:opacity-50"
+                >
+                  {loadingDbRekap
+                    ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />Memuat…</>
+                    : <><FileSpreadsheet size={16} />Bangun Rekap dari Semua Periode</>
+                  }
+                </button>
+                {dbPeriodeStats && (
+                  <button
+                    onClick={clearDbData}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
+                  >
+                    <Trash2 size={16} />Hapus Data DB
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {dbPeriodeStats ? (
+              <div className="px-5 pb-5">
+                <div className="flex flex-wrap gap-3 mb-3">
+                  <div className="bg-teal-50 border border-teal-200 rounded-lg px-4 py-2 text-sm">
+                    <span className="font-semibold text-teal-800">{dbPeriodeStats.accounts}</span>
+                    <span className="text-teal-600 ml-1">kode akun</span>
+                  </div>
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2 text-sm">
+                    <span className="font-semibold text-indigo-800">{dbPeriodeStats.periodes.length}</span>
+                    <span className="text-indigo-600 ml-1">periode tersimpan</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {dbPeriodeStats.periodes.map((p) => {
+                    const [yr, mo] = p.split('.');
+                    const MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+                    const label = `${MONTHS[parseInt(mo)-1] ?? mo} ${yr}`;
+                    return (
+                      <span key={p} className="inline-flex px-2.5 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="px-5 pb-5 text-sm text-gray-400 italic">
+                Belum ada data tersimpan. Upload file untuk mulai mengumpulkan data per periode.
+              </div>
+            )}
+          </div>
+
           {/* ── Legend ───────────────────────────────────────────────────── */}
           {(sheetDataList.length > 0 || rekapSheetData) && (
             <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-600">
@@ -2098,6 +2430,10 @@ export default function FluktuasiOIPage() {
           {/* ── Rekap Sheet Table ─────────────────────────────────────────── */}
           {rekapSheetData && (() => {
             const { accountColIdx, amountCols, momCurrIdx, momPrevIdx, yoyCurrIdx, yoyPrevIdx } = rekapSheetData;
+            // Columns visible in the table (null = all)
+            const visibleAmountCols = visibleAmtColIdxs === null
+              ? amountCols
+              : amountCols.filter((_, i) => visibleAmtColIdxs.has(i));
             const amtColSet  = new Set(amountCols.map(ac => ac.colIdx));
             // Find description columns: non-account, non-amount, before first amount col, AND have data
             const firstAmtIdx = amountCols.length > 0 ? Math.min(...amountCols.map(ac => ac.colIdx)) : Infinity;
@@ -2222,7 +2558,7 @@ export default function FluktuasiOIPage() {
                     </h3>
                     <p className="text-xs mt-0.5" style={{ color: '#c7d4f0' }}>
                       {rekapSheetData.rows.filter((r) => r.type === 'detail').length} akun detail
-                      &ensp;·&ensp;{amountCols.length} kolom periode
+                      &ensp;·&ensp;{visibleAmountCols.length}{visibleAmtColIdxs !== null ? `/${amountCols.length}` : ''} kolom periode
                       &ensp;·&ensp;
                       <span style={{ color: '#fca5a5' }}>6 kolom analisis</span>
                       &ensp;(GAP MoM · MoM% · Reason MoM · GAP YoY · YoY% · Reason YoY)
@@ -2297,6 +2633,65 @@ export default function FluktuasiOIPage() {
                           Reset default
                         </button>
                       )}
+                      {/* Column visibility picker */}
+                      <div className="relative ml-auto">
+                        <button
+                          onClick={() => setShowColPicker(v => !v)}
+                          className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded border font-medium transition ${
+                            visibleAmtColIdxs !== null
+                              ? 'border-teal-500 bg-teal-50 text-teal-700'
+                              : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
+                          }`}>
+                          <span>&#9776;</span>
+                          Kolom{visibleAmtColIdxs !== null ? ` (${visibleAmtColIdxs.size}/${amountCols.length})` : ''}
+                        </button>
+                        {showColPicker && (
+                          <>
+                            <div className="fixed inset-0 z-20" onClick={() => setShowColPicker(false)} />
+                            <div className="absolute right-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-[200px] max-h-72 overflow-y-auto">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[11px] font-semibold text-gray-700">Tampilkan kolom periode</span>
+                              <button
+                                onClick={() => setVisibleAmtColIdxs(null)}
+                                className="text-[10px] text-blue-600 hover:underline ml-2">
+                                Semua
+                              </button>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              {amountCols.map((ac, i) => {
+                                const checked = visibleAmtColIdxs === null || visibleAmtColIdxs.has(i);
+                                const label = `${ac.yearLabel ? ac.yearLabel + ' ' : ''}${ac.dateLabel || ac.label}`.trim();
+                                return (
+                                  <label key={i} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-1 py-0.5 rounded">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => {
+                                        setVisibleAmtColIdxs(prev => {
+                                          const current = prev === null
+                                            ? new Set(amountCols.map((_, idx) => idx))
+                                            : new Set(prev);
+                                          if (current.has(i)) {
+                                            if (current.size <= 1) return prev; // keep at least 1
+                                            current.delete(i);
+                                          } else {
+                                            current.add(i);
+                                          }
+                                          // if all selected, revert to null
+                                          return current.size === amountCols.length ? null : current;
+                                        });
+                                      }}
+                                      className="rounded"
+                                    />
+                                    <span className="text-[11px] text-gray-700">{label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   );
                 })()}
@@ -2327,7 +2722,7 @@ export default function FluktuasiOIPage() {
                             Description
                           </th>
                         ))}
-                        {amountCols.map((ac) => (
+                        {visibleAmountCols.map((ac) => (
                           <th key={ac.colIdx} className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
                             style={{ backgroundColor: amtColBg(ac), border: '1px solid rgba(255,255,255,0.2)' }}>
                             {ac.yearLabel}
@@ -2356,7 +2751,7 @@ export default function FluktuasiOIPage() {
                             {rekapSheetData.originalHeaders?.[ci] || rekapSheetData.headers[ci]}
                           </th>
                         ))}
-                        {amountCols.map((ac) => (
+                        {visibleAmountCols.map((ac) => (
                           <th key={ac.colIdx} className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
                             style={{ backgroundColor: amtColBg(ac), border: '1px solid rgba(255,255,255,0.2)', minWidth: '90px' }}>
                             {ac.dateLabel || ac.label}
@@ -2414,7 +2809,7 @@ export default function FluktuasiOIPage() {
                               </td>
                             ))}
                             {/* All amount columns */}
-                            {amountCols.map((ac) => {
+                            {visibleAmountCols.map((ac) => {
                               const v = row.values[ac.colIdx];
                               const acBg = isSpecial ? s.bg : ri % 2 === 0
                                 ? (ac.isCumulative ? '#fff8ec' : '#f9fafb')

@@ -226,6 +226,26 @@ model FluktuasiImport {
   @@index([createdAt])
 }
 
+model FluktuasiAkunPeriode {
+  id          Int      @id @default(autoincrement())
+  accountCode String   // Kode akun (sheet name, e.g. "410100")
+  periode     String   // Format "YYYY.MM" e.g. "2026.01"
+  amount      Float    // Net total amount untuk account+period ini
+  klasifikasi String   @default("") // Joined dari keyword matching
+  remark      String   @default("")
+  uploadedBy  String   @default("system")
+  fileName    String   @default("")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("fluktuasi_akun_periodes")
+  @@unique([accountCode, periode])
+  @@index([accountCode])
+  @@index([periode])
+  @@index([uploadedBy])
+}
+
 model FluktuasiKeyword {
   id           Int      @id @default(autoincrement())
   keyword      String   // Keyword yang dicari (case-insensitive)
