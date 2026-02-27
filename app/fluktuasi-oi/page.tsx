@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight, Trash2, ChevronDown } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SheetData = {
@@ -660,6 +660,8 @@ export default function FluktuasiOIPage() {
     sourceColumn: '',
   });
   const [keywordFilter, setKeywordFilter] = useState<'all' | 'klasifikasi' | 'remark'>('all');
+  const [showKeywordSection, setShowKeywordSection] = useState(false);
+  const [showUploadSection, setShowUploadSection] = useState(false);
   const [inputMode, setInputMode] = useState<'simple' | 'advanced'>('simple');
   const [naturalInput, setNaturalInput] = useState('');
   const [keywordSearch, setKeywordSearch] = useState('');
@@ -1535,12 +1537,24 @@ export default function FluktuasiOIPage() {
 
           {/* ── Master Keywords Card ───────────────────────────────────────── */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <button
+              onClick={() => setShowKeywordSection(v => !v)}
+              className="w-full p-5 flex flex-wrap items-center justify-between gap-3 hover:bg-gray-50 transition-colors text-left"
+            >
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800">Master Keywords</h2>
+                <p className="text-sm text-gray-500 mt-1">Kelola keyword untuk klasifikasi dan remark - digunakan otomatis saat upload file</p>
+              </div>
+              <ChevronDown
+                size={20}
+                className={`text-gray-400 transition-transform duration-200 ${showKeywordSection ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {showKeywordSection && (
+            <div className="border-t border-gray-200">
             <div className="p-5 border-b border-gray-200">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-800">Master Keywords</h2>
-                  <p className="text-sm text-gray-500 mt-1">Kelola keyword untuk klasifikasi dan remark - digunakan otomatis saat upload file</p>
-                </div>
+                <div />
                 <div className="flex gap-2 flex-wrap">
                   {keywords.length === 0 && (
                     <button
@@ -1904,11 +1918,16 @@ export default function FluktuasiOIPage() {
                 </div>
               );
             })()}
+            </div>
+            )}
           </div>
 
           {/* ── Upload Card ──────────────────────────────────────────────── */}
-          <div className="bg-white rounded-lg p-5 border border-gray-200 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <button
+              onClick={() => setShowUploadSection(v => !v)}
+              className="w-full p-5 flex flex-wrap items-center justify-between gap-3 hover:bg-gray-50 transition-colors text-left"
+            >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
                   <FileSpreadsheet className="text-indigo-600" size={22} />
@@ -1920,31 +1939,42 @@ export default function FluktuasiOIPage() {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={handleDownload}
-                disabled={isProcessing || isDownloading || (!sheetDataList.length && !rekapSheetData)}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-sm text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isDownloading
-                  ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />Menyiapkan…</>
-                  : <><Download size={16} />Download Excel Hasil</>}
-              </button>
-            </div>
+              <ChevronDown
+                size={20}
+                className={`text-gray-400 transition-transform duration-200 ${showUploadSection ? 'rotate-180' : ''}`}
+              />
+            </button>
 
-            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
-              <Upload className="text-gray-400 mb-2" size={28} />
-              <p className="text-sm text-gray-500">
-                <span className="font-semibold text-gray-700">{fileName || 'Klik untuk upload'}</span>{' '}
-                {!fileName && 'atau drag & drop'}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">.xlsx / .xls</p>
-              <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isProcessing} />
-            </label>
+            {showUploadSection && (
+              <div className="px-5 pb-5 border-t border-gray-200 pt-4">
+                <div className="flex justify-end mb-4">
+                  <button
+                    onClick={handleDownload}
+                    disabled={isProcessing || isDownloading || (!sheetDataList.length && !rekapSheetData)}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-sm text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {isDownloading
+                      ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />Menyiapkan…</>
+                      : <><Download size={16} />Download Excel Hasil</>}
+                  </button>
+                </div>
 
-            {isProcessing && (
-              <div className="flex items-center justify-center mt-4 gap-3 text-sm text-gray-600">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600" />
-                Memproses file…
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
+                  <Upload className="text-gray-400 mb-2" size={28} />
+                  <p className="text-sm text-gray-500">
+                    <span className="font-semibold text-gray-700">{fileName || 'Klik untuk upload'}</span>{' '}
+                    {!fileName && 'atau drag & drop'}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">.xlsx / .xls</p>
+                  <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isProcessing} />
+                </label>
+
+                {isProcessing && (
+                  <div className="flex items-center justify-center mt-4 gap-3 text-sm text-gray-600">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600" />
+                    Memproses file…
+                  </div>
+                )}
               </div>
             )}
           </div>
