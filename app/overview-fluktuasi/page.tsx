@@ -59,7 +59,7 @@ function SemiGauge({
   const angle    = Math.PI * pct;
   const fgEndX   = cx + R * Math.cos(Math.PI - angle);
   const fgEndY   = cy - R * Math.sin(Math.PI - angle);
-  const largeArc = pct > 0.5 ? 1 : 0;
+  const largeArc = 0;
 
   // FIX: at 100%, use a near-full arc with large-arc=0 (avoid full-circle collapse)
   const fgPath = pct < 0.01
@@ -223,7 +223,7 @@ function HBarItem({
       <div className="flex-1 relative h-5 rounded overflow-hidden bg-slate-100">
         <div className="h-full rounded transition-all duration-700"
           style={{ width: `${pct}%`, backgroundColor: color, opacity: isNeg ? 0.6 : 0.85 }} />
-        <span className="absolute inset-0 flex items-center px-2 text-[9px] font-bold text-white">
+        <span className="absolute inset-0 flex items-center px-2 text-[9px] font-bold text-slate-700">
           {fmtCompact(value)}
         </span>
       </div>
@@ -351,10 +351,18 @@ export default function OverviewFluktuasiPage() {
 
   // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="flex flex-col items-center gap-4">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
-        <p className="text-slate-500 text-sm">Memuat data fluktuasi…</p>
+    <div className="flex min-h-screen bg-gray-50">
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+        <Sidebar onClose={() => setMobileSidebar(false)} />
+      </div>
+      <div className="flex-1 lg:ml-64 flex flex-col">
+        <Header title="Overview Fluktuasi OI/EXP" subtitle="Dashboard ringkasan data fluktuasi" onMenuClick={() => setMobileSidebar(true)} />
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
+            <p className="text-slate-500 text-sm">Memuat data fluktuasi…</p>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -549,8 +557,7 @@ export default function OverviewFluktuasiPage() {
                         <div className="flex-1 relative h-5 rounded overflow-hidden bg-slate-100">
                           <div className="h-full rounded transition-all duration-700"
                             style={{ width: `${pct}%`, backgroundColor: d.color, opacity: 0.85 }} />
-                          <span className="absolute inset-0 flex items-center px-2 text-[9px] text-white font-medium truncate"
-                            style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{d.label}</span>
+                          <span className="absolute inset-0 flex items-center px-2 text-[9px] text-slate-700 font-medium truncate">{d.label}</span>
                         </div>
                       </div>
                     );
@@ -647,32 +654,32 @@ export default function OverviewFluktuasiPage() {
                 const maxAbsB  = Math.max(...buckets.map(bk => Math.abs(bk.value)), 1);
                 const bColors  = ['#2563eb','#16a34a','#d97706','#dc2626','#7c3aed'];
                 return (
-                  <div style={{ position: 'relative', height: 140 }}>
-                    <svg viewBox="0 0 480 140" style={{ width: '100%', height: '100%' }}>
+                  <div style={{ position: 'relative', height: 260 }}>
+                    <svg viewBox="0 0 480 260" style={{ width: '100%', height: '100%' }}>
                       {buckets.map((bk, i) => {
-                        const bw    = 40;
+                        const bw    = 60;
                         const gap   = (480 - 40 - 5 * bw) / (buckets.length - 1 || 1);
                         const x     = 40 + i * (bw + gap);
-                        const barH  = bk.value !== 0 ? (Math.abs(bk.value) / maxAbsB) * 90 : 2;
+                        const barH  = bk.value !== 0 ? (Math.abs(bk.value) / maxAbsB) * 190 : 2;
                         const isNeg = bk.value < 0;
-                        const y     = 10 + 90 - barH;
+                        const y     = 10 + 190 - barH;
                         return (
                           <g key={i}>
-                            <rect x={x} y={y} width={bw} height={barH} rx={3}
+                            <rect x={x} y={y} width={bw} height={barH} rx={4}
                               fill={bColors[i % bColors.length]} opacity={isNeg ? 0.6 : 0.85} />
-                            <text x={x + bw / 2} y={y - 3} textAnchor="middle" fill="#1e293b" fontSize={7.5} fontWeight="700">
+                            <text x={x + bw / 2} y={y - 5} textAnchor="middle" fill="#1e293b" fontSize={10} fontWeight="700">
                               {fmtCompact(bk.value)}
                             </text>
-                            <text x={x + bw / 2} y={125} textAnchor="middle" fill="#64748b" fontSize={6.5}>
+                            <text x={x + bw / 2} y={218} textAnchor="middle" fill="#64748b" fontSize={9}>
                               {bk.label.split('.')[0].trim()}
                             </text>
-                            <text x={x + bw / 2} y={134} textAnchor="middle" fill="#94a3b8" fontSize={5.5}>
-                              {bk.label.split(/[.\s]/).slice(1).join(' ').substring(0, 14)}
+                            <text x={x + bw / 2} y={232} textAnchor="middle" fill="#94a3b8" fontSize={8}>
+                              {bk.label.split(/[.\s]/).slice(1).join(' ').substring(0, 16)}
                             </text>
                           </g>
                         );
                       })}
-                      <line x1={40} y1={100} x2={480} y2={100} stroke="#e2e8f0" strokeWidth={0.8} />
+                      <line x1={40} y1={200} x2={480} y2={200} stroke="#e2e8f0" strokeWidth={0.8} />
                     </svg>
                   </div>
                 );
