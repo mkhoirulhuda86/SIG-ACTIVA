@@ -12,6 +12,7 @@ const menuItems = [
   { icon: FileText, label: 'Fluktuasi OI/EXP', href: '/fluktuasi-oi', requireAdmin: false },
   { icon: BarChart2, label: 'Overview Fluktuasi', href: '/overview-fluktuasi', requireAdmin: false },
   { icon: BarChart2, label: 'Sub Akun Fluktuasi', href: '/sub-akun-fluktuasi', requireAdmin: false },
+  { icon: BarChart2, label: 'Detail Per Akun',   href: '/detail-akun-fluktuasi', requireAdmin: false },
   { icon: TrendingUp, label: 'Monitoring Prepaid', href: '/monitoring-prepaid', requireAdmin: false },
   { icon: Clock, label: 'Monitoring Accrual', href: '/monitoring-accrual', requireAdmin: false },
   { icon: Users, label: 'User Management', href: '/user-management', requireAdmin: true },
