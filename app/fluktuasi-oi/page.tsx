@@ -821,6 +821,9 @@ export default function FluktuasiOIPage() {
   const [aiErrors,   setAiErrors]   = useState<Record<string, string>>({});
   const [aiBatch,    setAiBatch]    = useState<{ done: number; total: number } | null>(null);
   const aiCancelRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const tableResultRef = useRef<HTMLDivElement>(null);
+  const [uploadError, setUploadError] = useState<string>('');
   const [chat, setChat] = useState<ChatPanel | null>(null);
 
   // Period selection for MoM / YoY — null = use auto-detected default
@@ -1134,10 +1137,14 @@ export default function FluktuasiOIPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setIsProcessing(true);
+    setUploadError('');
     setFileName(file.name);
     setSheetDataList([]);
     setRekapSheetData(null);
     setActiveSheetIdx(0);
+
+    // Reset input so same file can be re-uploaded
+    if (fileInputRef.current) fileInputRef.current.value = '';
 
     try {
       const XLSXLib = await loadXLSX();
@@ -1149,7 +1156,11 @@ export default function FluktuasiOIPage() {
       const rekapSheetName = sheetNames.find((n) => !/^\d+$/.test(n.trim())) ?? null;
 
       if (kodeAkunSheets.length === 0) {
-        alert('Tidak ada sheet kode akun (nama numerik) yang ditemukan.');
+        setUploadError(
+          `Tidak ada sheet kode akun (nama numerik) yang ditemukan. ` +
+          `Sheet yang ada: ${sheetNames.map(n => `"${n}"`).join(', ')}. ` +
+          `Pastikan nama sheet berupa angka kode akun (contoh: 62301, 62302).`
+        );
         return;
       }
 
@@ -1307,6 +1318,16 @@ export default function FluktuasiOIPage() {
         result.push({ sheetName, headers, originalHeaders, rows, klasifikasiColIdx, docnoColIdx });
       }
       setSheetDataList(result);
+
+      if (result.length === 0) {
+        setUploadError(
+          `Sheet kode akun ditemukan (${kodeAkunSheets.join(', ')}) tetapi semua sheet kosong atau hanya memiliki 1 baris. ` +
+          `Pastikan setiap sheet memiliki baris header dan minimal 1 baris data.`
+        );
+      } else {
+        // Auto-scroll ke tabel hasil setelah upload berhasil
+        setTimeout(() => tableResultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+      }
 
       // ── Aggregate amounts per account per period + save to DB ─────────────
       const akunPeriodesFlat: AkunPeriodeRecord[] = [];
@@ -1538,7 +1559,7 @@ export default function FluktuasiOIPage() {
 
     } catch (err: any) {
       console.error(err);
-      alert('Gagal membaca file: ' + (err?.message || err));
+      setUploadError('Gagal membaca file: ' + (err?.message || err));
       setFileName('');
     } finally {
       setIsProcessing(false);
@@ -2368,13 +2389,18 @@ export default function FluktuasiOIPage() {
                     {!fileName && 'atau drag & drop'}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">.xlsx / .xls</p>
-                  <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isProcessing} />
+                  <input ref={fileInputRef} type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isProcessing} />
                 </label>
 
                 {isProcessing && (
                   <div className="flex items-center justify-center mt-4 gap-3 text-sm text-gray-600">
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600" />
                     Memproses file…
+                  </div>
+                )}
+                {uploadError && (
+                  <div className="mt-4 p-3 bg-red-50 border border-red-300 rounded-lg text-sm text-red-700">
+                    <span className="font-semibold">Gagal memproses:</span> {uploadError}
                   </div>
                 )}
               </div>
@@ -2471,7 +2497,7 @@ export default function FluktuasiOIPage() {
 
           {/* ── Kode Akun Tabs + Table ────────────────────────────────────── */}
           {sheetDataList.length > 0 && (
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <div ref={tableResultRef} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
               <div className="flex items-center border-b border-gray-200 bg-gray-50">
                 <button className="flex-shrink-0 px-2 py-2 text-gray-400 hover:text-gray-600 disabled:opacity-30"
                   disabled={activeSheetIdx === 0} onClick={() => switchTab(Math.max(0, activeSheetIdx - 1))}>
