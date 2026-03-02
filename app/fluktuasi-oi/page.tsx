@@ -2079,7 +2079,7 @@ export default function FluktuasiOIPage() {
                           kw.result.toLowerCase().includes(search)
                         );
                       })
-                      .sort((a, b) => b.priority - a.priority);
+                      .sort((a, b) => b.id - a.id);
                     
                     if (keywords.length === 0) {
                       return (
