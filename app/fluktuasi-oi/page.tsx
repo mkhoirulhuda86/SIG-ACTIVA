@@ -2390,14 +2390,12 @@ export default function FluktuasiOIPage() {
                     : <><FileSpreadsheet size={16} />Bangun Rekap dari Semua Periode</>
                   }
                 </button>
-                {dbPeriodeStats && (
-                  <button
-                    onClick={clearDbData}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
-                  >
-                    <Trash2 size={16} />Hapus Data DB
-                  </button>
-                )}
+                <button
+                  onClick={clearDbData}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
+                >
+                  <Trash2 size={16} />Hapus Data DB
+                </button>
               </div>
             </div>
 
