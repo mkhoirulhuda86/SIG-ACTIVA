@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { RotateCcw } from 'lucide-react';
 
@@ -31,6 +31,10 @@ const SUB_GROUPS: SubGroup[] = [
   { code: '71510000', prefix: '7151', label: '71510000', color: '#d97706' },
   { code: '71600000', prefix: '7160', label: '71600000', color: '#7c3aed' },
 ];
+
+// Prefix set for O(1) sub-group membership check
+const SUB_PREFIXES = new Set(SUB_GROUPS.map(g => g.prefix));
+const PREFIX_TO_GROUP = new Map(SUB_GROUPS.map(g => [g.prefix, g]));
 
 // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const MONTHS_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
@@ -203,7 +207,7 @@ export default function SubAkunFluktuasiPage() {
 
   // Only records belonging to our 4 sub groups
   const subAkunRecords = useMemo(() =>
-    records.filter(r => SUB_GROUPS.some(g => r.accountCode.startsWith(g.prefix))),
+    records.filter(r => SUB_PREFIXES.has(r.accountCode.slice(0, 4))),
   [records]);
 
   // All klasifikasi within sub-akun scope
@@ -227,12 +231,23 @@ export default function SubAkunFluktuasiPage() {
 
   const totalFiltered = useMemo(() => filtered.reduce((s, r) => s + r.amount, 0), [filtered]);
 
+  // Single-pass per-prefix aggregation used by donutData, subAkunTotals and filter panel
+  const filteredByPrefix = useMemo(() => {
+    const m = new Map<string, number>();
+    SUB_GROUPS.forEach(g => m.set(g.prefix, 0));
+    filtered.forEach(r => {
+      const prefix = r.accountCode.slice(0, 4);
+      if (m.has(prefix)) m.set(prefix, m.get(prefix)! + r.amount);
+    });
+    return m;
+  }, [filtered]);
+
   // Donut data: per sub group
   const donutData = useMemo(() => SUB_GROUPS.map(g => ({
     label: g.label,
-    value: filtered.filter(r => r.accountCode.startsWith(g.prefix)).reduce((s, r) => s + r.amount, 0),
+    value: filteredByPrefix.get(g.prefix) ?? 0,
     color: g.color,
-  })).filter(d => d.value !== 0), [filtered]);
+  })).filter(d => d.value !== 0), [filteredByPrefix]);
   const donutTotal = useMemo(() => donutData.reduce((s, d) => s + Math.abs(d.value), 0), [donutData]);
 
   // Trend per periode
@@ -248,9 +263,9 @@ export default function SubAkunFluktuasiPage() {
   const subAkunTotals = useMemo(() =>
     SUB_GROUPS.map(g => ({
       group: g,
-      total: filtered.filter(r => r.accountCode.startsWith(g.prefix)).reduce((s, r) => s + r.amount, 0),
+      total: filteredByPrefix.get(g.prefix) ?? 0,
     })).sort((a, b) => Math.abs(b.total) - Math.abs(a.total)),
-  [filtered]);
+  [filteredByPrefix]);
 
   // Klasifikasi totals
   const klasifikasiTotals = useMemo(() => {
@@ -275,14 +290,17 @@ export default function SubAkunFluktuasiPage() {
     }>();
     filtered.forEach(r => {
       const key = `${r.accountCode}|${r.klasifikasi}`;
-      const sg  = SUB_GROUPS.find(g => r.accountCode.startsWith(g.prefix));
+      const sg  = PREFIX_TO_GROUP.get(r.accountCode.slice(0, 4));
       const ex  = m.get(key) ?? { subGroup: sg, accountCode: r.accountCode, klasifikasi: r.klasifikasi || '(Tanpa Klasifikasi)', total: 0, periodes: 0 };
       m.set(key, { ...ex, total: ex.total + r.amount, periodes: ex.periodes + 1 });
     });
     return [...m.values()].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
   }, [filtered]);
 
-  const listingTotalPages = Math.ceil(listingRows.length / LIST_PAGE_SIZE);
+  const listingTotalPages = useMemo(
+    () => Math.ceil(listingRows.length / LIST_PAGE_SIZE),
+    [listingRows],
+  );
   const listingPage = useMemo(
     () => listingRows.slice(listPage * LIST_PAGE_SIZE, (listPage + 1) * LIST_PAGE_SIZE),
     [listingRows, listPage],
@@ -294,18 +312,24 @@ export default function SubAkunFluktuasiPage() {
     return all.length > 0 ? periodeToLabel(all[all.length - 1]) : '-';
   }, [records]);
 
-  const resetFilters = () => {
+  // Precomputed lookup maps for filter panel — avoids O(n×m) inline calls in JSX
+  const klasifikasiMap = useMemo(
+    () => new Map(klasifikasiTotals.map(d => [d.label, d])),
+    [klasifikasiTotals],
+  );
+
+  const resetFilters = useCallback(() => {
     setSelectedYear('all');
     setFilterSubAkun(new Set());
     setFilterKlasifikasi(new Set());
     setListPage(0);
-  };
-  const toggleSubAkun = (code: string) => setFilterSubAkun(prev => {
+  }, []);
+  const toggleSubAkun = useCallback((code: string) => setFilterSubAkun(prev => {
     const n = new Set(prev); n.has(code) ? n.delete(code) : n.add(code); return n;
-  });
-  const toggleKlasifikasi = (k: string) => setFilterKlasifikasi(prev => {
+  }), []);
+  const toggleKlasifikasi = useCallback((k: string) => setFilterKlasifikasi(prev => {
     const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n;
-  });
+  }), []);
 
   // â”€â”€ Shell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const shell = (content: React.ReactNode) => (
@@ -358,7 +382,7 @@ export default function SubAkunFluktuasiPage() {
       </div>
 
       {/* â”€â”€ 3-col top panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="grid gap-3 px-4 pt-2 pb-3" style={{ gridTemplateColumns: '280px 1fr 260px' }}>
+      <div className="grid gap-3 px-4 pt-2 pb-3 grid-cols-1 lg:grid-cols-[280px_1fr_260px]">
 
         {/* LEFT â€“ Donut + legend */}
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3 flex flex-col">
@@ -432,7 +456,7 @@ export default function SubAkunFluktuasiPage() {
 
           {/* Two summary tables side by side */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2">
 
               {/* Sub Akun table */}
               <div className="border-r border-gray-100">
@@ -525,7 +549,7 @@ export default function SubAkunFluktuasiPage() {
                 <span className="text-[8.5px] font-semibold text-slate-500 uppercase">Amount</span>
               </div>
               {SUB_GROUPS.map(g => {
-                const amt       = filtered.filter(r => r.accountCode.startsWith(g.prefix)).reduce((s, r) => s + r.amount, 0);
+                const amt       = filteredByPrefix.get(g.prefix) ?? 0;
                 const isChecked = filterSubAkun.size === 0 || filterSubAkun.has(g.code);
                 return (
                   <label key={g.code}
@@ -552,8 +576,9 @@ export default function SubAkunFluktuasiPage() {
               </div>
               <div className="overflow-y-auto" style={{ maxHeight: 220 }}>
                 {allKlasifikasi.map(k => {
-                  const color     = klasifikasiTotals.find(d => d.label === k)?.color ?? '#94a3b8';
-                  const amt       = klasifikasiTotals.find(d => d.label === k)?.value ?? 0;
+                  const entry     = klasifikasiMap.get(k);
+                  const color     = entry?.color ?? '#94a3b8';
+                  const amt       = entry?.value ?? 0;
                   const isChecked = filterKlasifikasi.size === 0 || filterKlasifikasi.has(k);
                   return (
                     <label key={k}
@@ -577,7 +602,7 @@ export default function SubAkunFluktuasiPage() {
 
       {/* â”€â”€ Listing table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="mx-4 mb-4 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-        <div className="border-b border-gray-200 px-4 py-2.5 flex items-center justify-between">
+        <div className="border-b border-gray-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
               LISTING OUTSTANDING SUB AKUN FLUKTUASI
