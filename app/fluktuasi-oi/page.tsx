@@ -873,8 +873,8 @@ export default function FluktuasiOIPage() {
           const result = await res.json();
           if (result.success && result.data) {
             setFileName(result.data.fileName);
-            setSheetDataList(result.data.sheetDataList);
-            setRekapSheetData(result.data.rekapSheetData);
+            setSheetDataList(Array.isArray(result.data.sheetDataList) ? result.data.sheetDataList : []);
+            setRekapSheetData(result.data.rekapSheetData ?? null);
           }
         }
       } catch (error) {
@@ -1110,15 +1110,18 @@ export default function FluktuasiOIPage() {
     setShowKeywordModal(true);
   };
 
-  // ── Save data to database ──────────────────────────────────────────────────
+  // ── Save to database ──────────────────────────────────────────────────
   const saveToDatabase = async (fname: string, sheets: SheetData[], rekap: RekapSheetData | null) => {
     try {
+      // Strip row data before saving — full rows can exceed Vercel's 4.5 MB body limit.
+      // Detail rows are only available in the current upload session.
+      const sheetsMetaOnly = sheets.map(({ rows: _rows, ...meta }) => ({ ...meta, rows: [] }));
       const res = await fetch('/api/fluktuasi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fileName: fname,
-          sheetDataList: sheets,
+          sheetDataList: sheetsMetaOnly,
           rekapSheetData: rekap,
           uploadedBy: 'system',
         }),
@@ -2496,6 +2499,14 @@ export default function FluktuasiOIPage() {
           )}
 
           {/* ── Kode Akun Tabs + Table ────────────────────────────────────── */}
+          {sheetDataList.length === 0 && dbPeriodeStats && !isProcessing && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+              <span className="font-semibold">Data detail tidak tersedia.</span>{' '}
+              Data ringkasan sudah tersimpan ({dbPeriodeStats.accounts} akun, {dbPeriodeStats.periodes.length} periode),
+              tapi detail baris per akun tidak dapat dimuat dari database.
+              Silakan upload ulang file Excel untuk melihat tabel detail.
+            </div>
+          )}
           {sheetDataList.length > 0 && (
             <div ref={tableResultRef} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
               <div className="flex items-center border-b border-gray-200 bg-gray-50">
