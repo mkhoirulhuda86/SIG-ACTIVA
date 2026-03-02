@@ -340,7 +340,7 @@ export default function SubAkunFluktuasiPage() {
       <div className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <Sidebar onClose={() => setMobileSidebar(false)} />
       </div>
-      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen">
+      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen overflow-hidden">
         <Header
           title="Dashboard Sub Akun Fluktuasi"
           subtitle={`per ${latestPeriode}`}
