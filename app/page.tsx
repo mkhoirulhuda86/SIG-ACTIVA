@@ -1,15 +1,17 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { TrendingUp, CheckCircle, DollarSign, FileText, Package, CreditCard, Clock } from 'lucide-react';
-import Sidebar from './components/Sidebar';
-import Header from './components/Header';
+import { TrendingUp, TrendingDown, CheckCircle, DollarSign, FileText, Package, CreditCard, Clock, BarChart2, Minus } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import MetricCard from './components/MetricCard';
 import RekonsiliasiCard from './components/RekonsiliasiCard';
 import SimpleBarChart from './components/SimpleBarChart';
 import DonutChart from './components/DonutChart';
 import StatusCard from './components/StatusCard';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
+
+const Sidebar = dynamic(() => import('./components/Sidebar'), { ssr: false });
+const Header  = dynamic(() => import('./components/Header'),  { ssr: false });
 
 interface DashboardSummary {
   material: {
@@ -31,6 +33,14 @@ interface DashboardSummary {
     topByKlasifikasi: Array<{ label: string; value: number }>;
     total: number;
   };
+  fluktuasi: {
+    total: number;
+    netAmount: number;
+    momChange: number;
+    momPct: number;
+    topByKlasifikasi: Array<{ label: string; value: number }>;
+    last6Periodes: Array<{ periode: string; value: number }>;
+  };
 }
 
 export default function DashboardPage() {
@@ -42,7 +52,6 @@ export default function DashboardPage() {
   });
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -101,7 +110,7 @@ export default function DashboardPage() {
   }, []);
 
   const formatCurrency = useCallback((amount: number) => {
-    return `Rp ${amount.toLocaleString('id-ID')}`;
+    return `Rp ${Math.round(amount).toLocaleString('id-ID')}`;
   }, []);
 
   // Memoized chart data
@@ -165,6 +174,30 @@ export default function DashboardPage() {
     }));
   }, [summary]);
 
+  const fluktuasiByKlasifikasiData = useMemo(() => {
+    if (!summary) return [];
+    return summary.fluktuasi.topByKlasifikasi.map(v => ({
+      label: v.label,
+      value: v.value,
+    }));
+  }, [summary]);
+
+  const MONTHS_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const periodeToLabel = (p: string): string => {
+    const [yr, mo] = p.split('.');
+    const m = parseInt(mo) - 1;
+    return `${MONTHS_ID[m] ?? mo} ${yr}`;
+  };
+
+  const fmtCompact = (n: number): string => {
+    const a = Math.abs(n);
+    const sign = n < 0 ? '-' : '';
+    if (a >= 1_000_000_000) return sign + (a / 1_000_000_000).toFixed(1).replace('.',',') + ' M';
+    if (a >= 1_000_000)     return sign + Math.round(a / 1_000_000).toLocaleString('id-ID') + ' JT';
+    if (a >= 1_000)         return sign + Math.round(a / 1_000).toLocaleString('id-ID') + ' RB';
+    return sign + Math.round(a).toLocaleString('id-ID');
+  };
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       {/* Mobile Sidebar Overlay */}
@@ -192,12 +225,12 @@ export default function DashboardPage() {
         />
 
         {/* Content Area */}
-        <div className="p-3 sm:p-4 md:p-6 lg:p-8 bg-gray-50">
+        <div className="p-4 sm:p-6 md:p-8 bg-gray-50">
           {/* Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
             <div className="animate-fadeIn delay-100">
               <MetricCard
-                title="Saldo"
+                title="Saldo Accrual"
                 value={formatCurrency(stats.totalAccrual)}
                 icon={<TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />}
                 color="blue"
@@ -213,7 +246,7 @@ export default function DashboardPage() {
             </div>
             <div className="animate-fadeIn delay-300">
               <MetricCard
-                title="Total Saldo"
+                title="Total Saldo Accrual"
                 value={formatCurrency(stats.totalSaldo)}
                 icon={<DollarSign className="w-5 h-5 sm:w-6 sm:h-6" />}
                 color="red"
@@ -354,6 +387,103 @@ export default function DashboardPage() {
                   color="#059669"
                 />
               </div>
+
+              {/* Fluktuasi OI/EXP Section */}
+              {summary.fluktuasi.total > 0 && (
+                <>
+                  {/* Fluktuasi Metric Cards */}
+                  <div className="mb-3 sm:mb-4">
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                      <BarChart2 className="w-5 h-5 text-blue-600" />
+                      Ringkasan Fluktuasi OI/EXP
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                      <p className="text-xs sm:text-sm text-gray-500 mb-1">Total Records</p>
+                      <p className="text-xl sm:text-2xl font-bold text-gray-800">{summary.fluktuasi.total.toLocaleString('id-ID')}</p>
+                      <p className="text-xs text-gray-400 mt-1">akun-periode tersimpan</p>
+                    </div>
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                      <p className="text-xs sm:text-sm text-gray-500 mb-1">Net Amount</p>
+                      <p className="text-xl sm:text-2xl font-bold text-gray-800">{fmtCompact(summary.fluktuasi.netAmount)}</p>
+                      <p className="text-xs text-gray-400 mt-1">total semua periode</p>
+                    </div>
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                      <p className="text-xs sm:text-sm text-gray-500 mb-1">Perubahan MoM</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        {summary.fluktuasi.momChange === 0 ? (
+                          <Minus className="w-5 h-5 text-gray-400" />
+                        ) : summary.fluktuasi.momChange > 0 ? (
+                          <TrendingUp className="w-5 h-5 text-red-500" />
+                        ) : (
+                          <TrendingDown className="w-5 h-5 text-green-600" />
+                        )}
+                        <p className={`text-xl sm:text-2xl font-bold ${
+                          summary.fluktuasi.momChange === 0 ? 'text-gray-500'
+                          : summary.fluktuasi.momChange > 0 ? 'text-red-600'
+                          : 'text-green-600'
+                        }`}>
+                          {summary.fluktuasi.momChange > 0 ? '+' : ''}{fmtCompact(summary.fluktuasi.momChange)}
+                        </p>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {summary.fluktuasi.momPct !== 0
+                          ? `${summary.fluktuasi.momPct > 0 ? '+' : ''}${summary.fluktuasi.momPct.toFixed(1)}% vs bulan lalu`
+                          : 'vs bulan lalu'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Fluktuasi Charts */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
+                    {/* Top 5 Klasifikasi Bar */}
+                    <SimpleBarChart
+                      data={fluktuasiByKlasifikasiData}
+                      title="Top 5 Fluktuasi (Berdasarkan Klasifikasi)"
+                      color="#7c3aed"
+                    />
+
+                    {/* Last 6 periods trend */}
+                    <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
+                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-4">Trend 6 Periode Terakhir</h3>
+                      {summary.fluktuasi.last6Periodes.length > 0 ? (
+                        <div className="space-y-3">
+                          {(() => {
+                            const maxAbs = Math.max(...summary.fluktuasi.last6Periodes.map(p => Math.abs(p.value)), 1);
+                            return summary.fluktuasi.last6Periodes.map((p, i) => {
+                              const pct = Math.abs(p.value) / maxAbs * 100;
+                              const isLast = i === summary.fluktuasi.last6Periodes.length - 1;
+                              return (
+                                <div key={p.periode} className="space-y-1">
+                                  <div className="flex justify-between text-xs">
+                                    <span className={`font-medium ${isLast ? 'text-blue-600' : 'text-gray-600'}`}>
+                                      {periodeToLabel(p.periode)}
+                                    </span>
+                                    <span className={`font-semibold ${p.value < 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                      {p.value > 0 ? '+' : ''}{fmtCompact(p.value)}
+                                    </span>
+                                  </div>
+                                  <div className="h-5 bg-gray-100 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-all duration-500 ${
+                                        isLast ? 'bg-blue-500' : p.value < 0 ? 'bg-green-400' : 'bg-red-400'
+                                      }`}
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-400 text-center py-4">Belum ada data periode</p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Status Summary */}
               <div className="grid grid-cols-1 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">

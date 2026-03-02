@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET(req: NextRequest) {
   try {
     // Parallel fetching for better performance
-    const [materialData, prepaidData, accrualData] = await Promise.all([
+    const [materialData, prepaidData, accrualData, fluktuasiData] = await Promise.all([
       // Material Data Summary - Only fetch needed fields
       prisma.materialData.findMany({
         select: {
@@ -54,6 +54,16 @@ export async function GET(req: NextRequest) {
               },
             },
           },
+        },
+      }),
+
+      // Fluktuasi Summary
+      prisma.fluktuasiAkunPeriode.findMany({
+        select: {
+          accountCode: true,
+          periode: true,
+          amount: true,
+          klasifikasi: true,
         },
       }),
     ]);
@@ -211,6 +221,38 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
 
+    // ── Fluktuasi calculations ──────────────────────────────────────────────
+    const fluktuasiTotal = fluktuasiData.reduce((s: number, r: any) => s + r.amount, 0);
+
+    // Top 5 by klasifikasi (absolute amount)
+    const fluktuasiByKlasifikasi = fluktuasiData.reduce((acc: Record<string, number>, r: any) => {
+      const k = r.klasifikasi || 'Tidak ada klasifikasi';
+      acc[k] = (acc[k] ?? 0) + r.amount;
+      return acc;
+    }, {});
+    const topFluktuasiByKlasifikasi = Object.entries(fluktuasiByKlasifikasi)
+      .map(([label, value]) => ({ label, value: value as number }))
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+      .slice(0, 5);
+
+    // Last 6 periods sorted
+    const fluktuasiByPeriode = fluktuasiData.reduce((acc: Record<string, number>, r: any) => {
+      acc[r.periode] = (acc[r.periode] ?? 0) + r.amount;
+      return acc;
+    }, {});
+    const last6Periodes = Object.entries(fluktuasiByPeriode)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-6)
+      .map(([periode, value]) => ({ periode, value: value as number }));
+
+    // MoM change (last two periods)
+    const momChange = last6Periodes.length >= 2
+      ? last6Periodes[last6Periodes.length - 1].value - last6Periodes[last6Periodes.length - 2].value
+      : 0;
+    const momPct = last6Periodes.length >= 2 && last6Periodes[last6Periodes.length - 2].value !== 0
+      ? (momChange / Math.abs(last6Periodes[last6Periodes.length - 2].value)) * 100
+      : 0;
+
     return NextResponse.json({
       material: {
         summary: materialSummary,
@@ -238,6 +280,14 @@ export async function GET(req: NextRequest) {
         topVendors: topAccrualVendors,
         topByKlasifikasi: topAccrualByKlasifikasi,
         total: accrualData.length,
+      },
+      fluktuasi: {
+        total: fluktuasiData.length,
+        netAmount: fluktuasiTotal,
+        momChange,
+        momPct,
+        topByKlasifikasi: topFluktuasiByKlasifikasi,
+        last6Periodes,
       },
     });
   } catch (error) {
