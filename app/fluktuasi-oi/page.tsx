@@ -873,8 +873,45 @@ export default function FluktuasiOIPage() {
           const result = await res.json();
           if (result.success && result.data) {
             setFileName(result.data.fileName);
-            setSheetDataList(Array.isArray(result.data.sheetDataList) ? result.data.sheetDataList : []);
-            setRekapSheetData(result.data.rekapSheetData ?? null);
+            const rawSheets: SheetData[] = Array.isArray(result.data.sheetDataList)
+              ? result.data.sheetDataList
+              : [];
+            const rekap: RekapSheetData | null = result.data.rekapSheetData ?? null;
+            setRekapSheetData(rekap);
+
+            // If all sheets have rows stripped (saved without rows to stay under body limit)
+            // and rekap data IS available, reconstruct a synthetic combined sheet from rekap.
+            const allStripped = rawSheets.length > 0 && rawSheets.every((s) => s.rows.length === 0);
+            if (allStripped && rekap && rekap.rows.length > 0) {
+              const detailRows = rekap.rows.filter((r) => r.type === 'detail');
+              const syntheticRows: Record<string, any>[] = detailRows.map((r) => {
+                const row: Record<string, any> = {};
+                rekap.headers.forEach((h, i) => { row[h] = r.values[i] ?? ''; });
+                // Attach klasifikasi & remark from rekap computed fields
+                row['__Klasifikasi__'] = r.reasonMoM ?? '';
+                row['__Remark__']      = r.reasonYoY ?? '';
+                return row;
+              });
+              const syntheticHeaders = [
+                ...rekap.headers,
+                '__Klasifikasi__',
+                '__Remark__',
+              ];
+              setSheetDataList([{
+                sheetName: 'Semua Akun (Rekap)',
+                headers: syntheticHeaders,
+                originalHeaders: [
+                  ...rekap.originalHeaders,
+                  'Klasifikasi',
+                  'Remark',
+                ],
+                rows: syntheticRows,
+                klasifikasiColIdx: rekap.headers.length,     // points to __Klasifikasi__
+                docnoColIdx:       undefined,
+              }]);
+            } else {
+              setSheetDataList(rawSheets);
+            }
           }
         }
       } catch (error) {
@@ -2500,8 +2537,8 @@ export default function FluktuasiOIPage() {
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
               <span className="font-semibold">Data detail tidak tersedia.</span>{' '}
               Data ringkasan sudah tersimpan ({dbPeriodeStats.accounts} akun, {dbPeriodeStats.periodes.length} periode),
-              tapi detail baris per akun tidak dapat dimuat dari database.
-              Silakan upload ulang file Excel untuk melihat tabel detail.
+              tapi data rekap dan detail baris tidak dapat dimuat dari database.
+              Silakan upload ulang file Excel.
             </div>
           )}
           {hasSheetRows && (
@@ -2532,6 +2569,13 @@ export default function FluktuasiOIPage() {
 
               {activeSheet && (
                 <>
+                  {activeSheet.sheetName === 'Semua Akun (Rekap)' && (
+                    <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-700 flex items-center gap-2">
+                      <span className="font-semibold">ℹ️ Tampilan rekonstruksi.</span>
+                      Data per-sheet asli tidak tersimpan di database (untuk efisiensi ukuran).
+                      Tabel ini direkonstruksi dari data rekap — upload ulang untuk melihat tampilan per-sheet asli.
+                    </div>
+                  )}
                   <div className="px-4 py-2 border-b border-gray-100 text-xs text-gray-500 flex flex-wrap items-center gap-3">
                     <span>Kode Akun: <span className="font-semibold text-gray-800">{activeSheet.sheetName}</span></span>
                     <span><span className="font-semibold text-gray-800">{kaRows.length}</span> baris</span>
