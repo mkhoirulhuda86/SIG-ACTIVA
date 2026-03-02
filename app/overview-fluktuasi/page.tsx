@@ -653,33 +653,38 @@ export default function OverviewFluktuasiPage() {
                 }
                 const maxAbsB  = Math.max(...buckets.map(bk => Math.abs(bk.value)), 1);
                 const bColors  = ['#2563eb','#16a34a','#d97706','#dc2626','#7c3aed'];
+                const numBuckets = buckets.length || 1;
+                const VW      = 500;
+                const slot    = VW / numBuckets;
+                const bw      = slot * 0.60;
+                const BAR_MAX = 175;
+                const BASE_Y  = 205;
                 return (
-                  <div style={{ position: 'relative', height: 260 }}>
-                    <svg viewBox="0 0 480 260" style={{ width: '100%', height: '100%' }}>
+                  <div style={{ position: 'relative', height: 265, overflow: 'visible' }}>
+                    <svg viewBox={`0 0 ${VW} 265`} style={{ width: '100%', height: '100%', overflow: 'visible' }}>
                       {buckets.map((bk, i) => {
-                        const bw    = 60;
-                        const gap   = (480 - 40 - 5 * bw) / (buckets.length - 1 || 1);
-                        const x     = 40 + i * (bw + gap);
-                        const barH  = bk.value !== 0 ? (Math.abs(bk.value) / maxAbsB) * 190 : 2;
+                        const cx    = slot * i + slot / 2;
+                        const x     = cx - bw / 2;
+                        const barH  = bk.value !== 0 ? (Math.abs(bk.value) / maxAbsB) * BAR_MAX : 2;
                         const isNeg = bk.value < 0;
-                        const y     = 10 + 190 - barH;
+                        const y     = BASE_Y - barH;
                         return (
                           <g key={i}>
                             <rect x={x} y={y} width={bw} height={barH} rx={4}
                               fill={bColors[i % bColors.length]} opacity={isNeg ? 0.6 : 0.85} />
-                            <text x={x + bw / 2} y={y - 5} textAnchor="middle" fill="#1e293b" fontSize={10} fontWeight="700">
+                            <text x={cx} y={y - 6} textAnchor="middle" fill="#1e293b" fontSize={11} fontWeight="700">
                               {fmtCompact(bk.value)}
                             </text>
-                            <text x={x + bw / 2} y={218} textAnchor="middle" fill="#64748b" fontSize={9}>
+                            <text x={cx} y={222} textAnchor="middle" fill="#64748b" fontSize={9.5}>
                               {bk.label.split('.')[0].trim()}
                             </text>
-                            <text x={x + bw / 2} y={232} textAnchor="middle" fill="#94a3b8" fontSize={8}>
-                              {bk.label.split(/[.\s]/).slice(1).join(' ').substring(0, 16)}
+                            <text x={cx} y={237} textAnchor="middle" fill="#94a3b8" fontSize={8.5}>
+                              {bk.label.split(/[.\s]/).slice(1).join(' ').substring(0, 18)}
                             </text>
                           </g>
                         );
                       })}
-                      <line x1={40} y1={200} x2={480} y2={200} stroke="#e2e8f0" strokeWidth={0.8} />
+                      <line x1={0} y1={BASE_Y} x2={VW} y2={BASE_Y} stroke="#e2e8f0" strokeWidth={0.8} />
                     </svg>
                   </div>
                 );
