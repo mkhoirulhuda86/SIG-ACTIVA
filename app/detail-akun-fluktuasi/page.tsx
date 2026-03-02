@@ -164,7 +164,7 @@ function TrendChart({ data }: { data: { label: string; value: number }[] }) {
             {showDot && <circle cx={toX(i)} cy={toY(d.value)} r={2.5} fill="#2563eb" stroke="white" strokeWidth={1} />}
             {showLabel && (
               <text x={toX(i)} y={H - 2} textAnchor="middle" fill="#94a3b8" fontSize={7}>
-                {d.label.substring(0, 7)}
+                {d.label}
               </text>
             )}
           </g>

@@ -162,7 +162,7 @@ function TrendChart({ data }: { data: { label: string; value: number }[] }) {
             {showDot && <circle cx={toX(i)} cy={toY(d.value)} r={2.5} fill="#2563eb" stroke="white" strokeWidth={1} />}
             {showLabel && (
               <text x={toX(i)} y={H - 2} textAnchor="middle" fill="#94a3b8" fontSize={7}>
-                {d.label.substring(0, 7)}
+                {d.label}
               </text>
             )}
           </g>
@@ -487,9 +487,9 @@ export default function SubAkunFluktuasiPage() {
                       <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}
                         style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td className="px-3 py-1.5 text-slate-600">
-                          <div className="flex items-center gap-1.5">
-                            <span className="flex-shrink-0 rounded-sm w-2 h-2" style={{ backgroundColor: d.color }} />
-                            <span className="truncate max-w-[130px]" title={d.label}>{d.label}</span>
+                          <div className="flex items-start gap-1.5">
+                            <span className="flex-shrink-0 rounded-sm w-2 h-2 mt-0.5" style={{ backgroundColor: d.color }} />
+                            <span className="leading-snug" title={d.label}>{d.label}</span>
                           </div>
                         </td>
                         <td className="px-3 py-1.5 text-right font-mono font-bold"
@@ -562,8 +562,8 @@ export default function SubAkunFluktuasiPage() {
                         onChange={() => { toggleKlasifikasi(k); setListPage(0); }}
                         className="w-3 h-3" style={{ accentColor: '#2563eb' }} />
                       <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
-                      <span className="flex-1 truncate text-[9.5px] text-slate-700" title={k}>
-                        {k.length > 20 ? k.slice(0, 20) + 'â€¦' : k}
+                      <span className="flex-1 text-[9.5px] text-slate-700 leading-snug" title={k}>
+                        {k}
                       </span>
                       <span className="text-[8.5px] font-mono text-slate-500 flex-shrink-0">{fmtCompact(amt)}</span>
                     </label>
@@ -638,8 +638,7 @@ export default function SubAkunFluktuasiPage() {
                       </span>
                     </td>
                     <td className="px-3 py-1.5 font-mono font-semibold text-blue-600">{row.accountCode}</td>
-                    <td className="px-3 py-1.5 text-slate-600 max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap"
-                      title={row.klasifikasi}>{row.klasifikasi}</td>
+                    <td className="px-3 py-1.5 text-slate-600" title={row.klasifikasi}>{row.klasifikasi}</td>
                     <td className="px-3 py-1.5 text-right font-mono font-bold"
                       style={{ color: isPos ? '#16a34a' : '#dc2626' }}>
                       {fmtFull(row.total)}

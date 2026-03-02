@@ -87,8 +87,8 @@ function SemiGauge({
           {(pct * 100).toFixed(0)}%
         </text>
       </svg>
-      <p className="text-center text-[9px] leading-tight max-w-[110px] mt-0.5 text-slate-500">
-        {label.length > 22 ? label.slice(0, 22) + '…' : label}
+      <p className="text-center text-[9px] leading-tight max-w-[110px] mt-0.5 text-slate-500 line-clamp-2">
+        {label}
       </p>
     </div>
   );
@@ -198,7 +198,7 @@ function TrendChart({ data }: { data: { label: string; value: number }[] }) {
             {showDot && <circle cx={toX(i)} cy={toY(d.value)} r={2.5} fill="#2563eb" stroke="white" strokeWidth={1} />}
             {showLabel && (
               <text x={toX(i)} y={H - 2} textAnchor="middle" fill="#94a3b8" fontSize={7}>
-                {d.label.substring(0, 7)}
+                {d.label}
               </text>
             )}
           </g>
