@@ -925,11 +925,13 @@ export default function FluktuasiOIPage() {
   };
 
   // ── Check Duplicate Keyword ────────────────────────────────────────────────
-  const checkDuplicateKeyword = (keyword: string, type: string, excludeId?: number): boolean => {
+  const checkDuplicateKeyword = (keyword: string, type: string, accountCodes: string, excludeId?: number): boolean => {
     const keywordLower = keyword.toLowerCase().trim();
+    const acctNorm = (accountCodes ?? '').trim().toLowerCase();
     return keywords.some(kw => 
       kw.keyword.toLowerCase().trim() === keywordLower && 
       kw.type === type && 
+      (kw.accountCodes ?? '').trim().toLowerCase() === acctNorm &&
       (!excludeId || kw.id !== excludeId)
     );
   };
@@ -942,7 +944,8 @@ export default function FluktuasiOIPage() {
       // Frontend validation for duplicate
       const isDuplicate = checkDuplicateKeyword(
         formToUse.keyword, 
-        formToUse.type, 
+        formToUse.type,
+        formToUse.accountCodes ?? '',
         editingKeyword?.id
       );
       
@@ -3192,7 +3195,7 @@ export default function FluktuasiOIPage() {
                   {naturalInput && (() => {
                     const parsed = parseNaturalKeyword(naturalInput);
                     if (parsed) {
-                      const isDuplicate = checkDuplicateKeyword(parsed.keyword, parsed.type);
+                      const isDuplicate = checkDuplicateKeyword(parsed.keyword, parsed.type, parsed.accountCodes ?? '');
                       if (isDuplicate) {
                         return (
                           <div className="mt-3 p-3 bg-red-50 border border-red-300 rounded-lg">
@@ -3379,14 +3382,14 @@ export default function FluktuasiOIPage() {
                             className={`w-full py-2.5 border rounded-lg focus:ring-2 transition font-mono text-sm ${
                               kwMode !== 'normal' ? 'pl-[4.5rem] pr-4' : 'px-4'
                             } ${
-                              keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id)
+                              keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, keywordForm.accountCodes, editingKeyword?.id)
                                 ? 'border-red-300 focus:ring-red-500 focus:border-red-500 bg-red-50'
                                 : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
                             }`}
                           />
                         </div>
-                        {keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id) && (
-                          <p className="text-xs text-red-600 mt-1.5 font-medium">Keyword ini sudah ada untuk type {keywordForm.type}</p>
+                        {keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, keywordForm.accountCodes, editingKeyword?.id) && (
+                          <p className="text-xs text-red-600 mt-1.5 font-medium">Keyword ini sudah ada untuk type {keywordForm.type} dan akun yang sama</p>
                         )}
                         {kwMode === 'regex' && (
                           <div className="mt-2 p-2.5 bg-indigo-50 border border-indigo-200 rounded-lg">
@@ -3436,12 +3439,12 @@ export default function FluktuasiOIPage() {
                       <option value="klasifikasi">Klasifikasi</option>
                       <option value="remark">Remark</option>
                     </select>
-                    {keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id) && (
+                    {keywordForm.keyword && checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, keywordForm.accountCodes, editingKeyword?.id) && (
                       <p className="text-xs text-red-600 mt-1.5 font-medium">
-                        Kombinasi keyword "{keywordForm.keyword}" dengan type "{keywordForm.type}" sudah ada
+                        Kombinasi keyword "{keywordForm.keyword}" dengan type "{keywordForm.type}" untuk akun yang sama sudah ada
                       </p>
                     )}
-                    {(!keywordForm.keyword || !checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id)) && (
+                    {(!keywordForm.keyword || !checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, keywordForm.accountCodes, editingKeyword?.id)) && (
                       <p className="text-xs text-gray-500 mt-1.5">
                         {keywordForm.type === 'klasifikasi' 
                           ? 'Digunakan untuk kolom klasifikasi (header text / description)'
@@ -3589,7 +3592,7 @@ export default function FluktuasiOIPage() {
                     // Simple mode validation
                     const parsed = parseNaturalKeyword(naturalInput);
                     if (!parsed) return true;
-                    return checkDuplicateKeyword(parsed.keyword, parsed.type);
+                    return checkDuplicateKeyword(parsed.keyword, parsed.type, parsed.accountCodes ?? '');
                   } else {
                     // Advanced mode validation
                     if (!keywordForm.keyword) return true;
@@ -3598,7 +3601,7 @@ export default function FluktuasiOIPage() {
                     // Regex, NOT, col modes: result is optional
                     const isSpecialMode = keywordForm.keyword.toLowerCase().startsWith('regex:') || keywordForm.keyword.toLowerCase().startsWith('not:') || keywordForm.keyword.toLowerCase().startsWith('col:');
                     if (!isSpecialMode && !keywordForm.result) return true;
-                    return checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, editingKeyword?.id);
+                    return checkDuplicateKeyword(keywordForm.keyword, keywordForm.type, keywordForm.accountCodes, editingKeyword?.id);
                   }
                 })()}
                 className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
