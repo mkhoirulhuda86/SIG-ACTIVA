@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { RotateCcw, Search } from 'lucide-react';
 
@@ -211,6 +211,12 @@ export default function DetailAkunFluktuasiPage() {
     return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([code]) => code);
   }, [records]);
 
+  // Stable color map: code → color (avoids O(n) indexOf on every render)
+  const codeColorMap = useMemo(
+    () => new Map(allAkunCodes.map((c, i) => [c, PALETTE[i % PALETTE.length]])),
+    [allAkunCodes],
+  );
+
   // Klasifikasi list
   const allKlasifikasi = useMemo(() => {
     const s = new Set(records.map(r => r.klasifikasi || '(Tanpa Klasifikasi)'));
@@ -248,11 +254,11 @@ export default function DetailAkunFluktuasiPage() {
     const result = top14.map(([code, value]) => ({
       label: code,
       value,
-      color: colorForCode(code, allAkunCodes),
+      color: codeColorMap.get(code) ?? '#94a3b8',
     }));
     if (others.length > 0) result.push({ label: `+${others.length} lainnya`, value: othersTotal, color: '#cbd5e1' });
     return result.filter(d => d.value !== 0);
-  }, [accountTotalsMap, allAkunCodes]);
+  }, [accountTotalsMap, codeColorMap]);
 
   const donutTotal = useMemo(() => topAccounts.reduce((s, d) => s + Math.abs(d.value), 0), [topAccounts]);
 
@@ -270,8 +276,8 @@ export default function DetailAkunFluktuasiPage() {
     return [...accountTotalsMap.entries()]
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
       .slice(0, 10)
-      .map(([code, total]) => ({ code, total, color: colorForCode(code, allAkunCodes) }));
-  }, [accountTotalsMap, allAkunCodes]);
+      .map(([code, total]) => ({ code, total, color: codeColorMap.get(code) ?? '#94a3b8' }));
+  }, [accountTotalsMap, codeColorMap]);
 
   // Klasifikasi totals
   const klasifikasiTotalsMap = useMemo(() => {
@@ -285,6 +291,12 @@ export default function DetailAkunFluktuasiPage() {
       .map(([label, value], i) => ({ label, value, color: PALETTE[i % PALETTE.length] }));
   }, [filtered]);
 
+  // O(1) lookup for filter panel
+  const klasifikasiLookup = useMemo(
+    () => new Map(klasifikasiTotalsMap.map(d => [d.label, d])),
+    [klasifikasiTotalsMap],
+  );
+
   // Listing rows: per accountCode x klasifikasi
   const listingRows = useMemo(() => {
     const m = new Map<string, { accountCode: string; klasifikasi: string; total: number; periodes: number }>();
@@ -296,7 +308,10 @@ export default function DetailAkunFluktuasiPage() {
     return [...m.values()].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
   }, [filtered]);
 
-  const listingTotalPages = Math.ceil(listingRows.length / LIST_PAGE_SIZE);
+  const listingTotalPages = useMemo(
+    () => Math.ceil(listingRows.length / LIST_PAGE_SIZE),
+    [listingRows],
+  );
   const listingPage = useMemo(
     () => listingRows.slice(listPage * LIST_PAGE_SIZE, (listPage + 1) * LIST_PAGE_SIZE),
     [listingRows, listPage],
@@ -307,19 +322,19 @@ export default function DetailAkunFluktuasiPage() {
     return all.length > 0 ? periodeToLabel(all[all.length - 1]) : '-';
   }, [records]);
 
-  const resetFilters = () => {
+  const resetFilters = useCallback(() => {
     setSelectedYear('all');
     setSearchAkun('');
     setFilterAkun(new Set());
     setFilterKlasifikasi(new Set());
     setListPage(0);
-  };
-  const toggleAkun = (code: string) => setFilterAkun(prev => {
+  }, []);
+  const toggleAkun = useCallback((code: string) => setFilterAkun(prev => {
     const n = new Set(prev); n.has(code) ? n.delete(code) : n.add(code); return n;
-  });
-  const toggleKlasifikasi = (k: string) => setFilterKlasifikasi(prev => {
+  }), []);
+  const toggleKlasifikasi = useCallback((k: string) => setFilterKlasifikasi(prev => {
     const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n;
-  });
+  }), []);
 
   // ── Shell ────────────────────────────────────────────────────────────────
   const shell = (content: React.ReactNode) => (
@@ -384,7 +399,7 @@ export default function DetailAkunFluktuasiPage() {
       </div>
 
       {/* 3-col top panel */}
-      <div className="grid gap-3 px-4 pt-1 pb-3" style={{ gridTemplateColumns: '280px 1fr 270px' }}>
+      <div className="grid gap-3 px-4 pt-1 pb-3 grid-cols-1 lg:grid-cols-[280px_1fr_270px]">
 
         {/* LEFT – Donut */}
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3 flex flex-col">
@@ -399,8 +414,7 @@ export default function DetailAkunFluktuasiPage() {
                 return (
                   <div key={i} className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 rounded px-1"
                     onClick={() => {
-                      const match = allAkunCodes.find(c => c === d.label);
-                      if (match) { toggleAkun(match); setListPage(0); }
+                      if (!d.label.startsWith('+')) { toggleAkun(d.label); setListPage(0); }
                     }}>
                     <span className="flex-shrink-0 rounded-sm" style={{ width: 10, height: 10, backgroundColor: d.color }} />
                     <span className="flex-1 text-[10px] font-mono text-slate-600 truncate">{d.label}</span>
@@ -467,7 +481,7 @@ export default function DetailAkunFluktuasiPage() {
 
           {/* Side-by-side tables */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2">
 
               {/* Top Accounts table */}
               <div className="border-r border-gray-100">
@@ -586,9 +600,9 @@ export default function DetailAkunFluktuasiPage() {
                   <p className="text-center py-3 text-[9px] text-slate-400 italic">Tidak ditemukan</p>
                 )}
                 {filteredAkunOptions.map(code => {
-                  const amt       = accountTotalsMap.get(code) ?? records.filter(r => r.accountCode === code).reduce((s, r) => s + r.amount, 0);
+                  const amt       = accountTotalsMap.get(code) ?? 0;
                   const isChecked = filterAkun.size === 0 || filterAkun.has(code);
-                  const color     = colorForCode(code, allAkunCodes);
+                  const color     = codeColorMap.get(code) ?? '#94a3b8';
                   return (
                     <label key={code}
                       className="flex items-center gap-2 px-2 py-1 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-blue-50 transition">
@@ -615,8 +629,9 @@ export default function DetailAkunFluktuasiPage() {
               </div>
               <div className="overflow-y-auto" style={{ maxHeight: 150 }}>
                 {allKlasifikasi.map(k => {
-                  const color     = klasifikasiTotalsMap.find(d => d.label === k)?.color ?? '#94a3b8';
-                  const amt       = klasifikasiTotalsMap.find(d => d.label === k)?.value ?? 0;
+                  const entry     = klasifikasiLookup.get(k);
+                  const color     = entry?.color ?? '#94a3b8';
+                  const amt       = entry?.value ?? 0;
                   const isChecked = filterKlasifikasi.size === 0 || filterKlasifikasi.has(k);
                   return (
                     <label key={k}
@@ -640,7 +655,7 @@ export default function DetailAkunFluktuasiPage() {
 
       {/* Listing table */}
       <div className="mx-4 mb-4 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-        <div className="border-b border-gray-200 px-4 py-2.5 flex items-center justify-between">
+        <div className="border-b border-gray-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
               LISTING OUTSTANDING PER KODE AKUN
@@ -688,7 +703,7 @@ export default function DetailAkunFluktuasiPage() {
               {listingPage.map((row, ri) => {
                 const globalRi = listPage * LIST_PAGE_SIZE + ri;
                 const isPos    = row.total >= 0;
-                const color    = colorForCode(row.accountCode, allAkunCodes);
+                  const color    = codeColorMap.get(row.accountCode) ?? '#94a3b8';
                 const sg       = subGroupForCode(row.accountCode);
                 return (
                   <tr key={ri}
