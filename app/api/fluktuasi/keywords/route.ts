@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check for duplicate keyword (case-insensitive) with same type
+    // Check for duplicate keyword (case-insensitive) with same type AND same accountCodes
     const existingKeyword = await prisma.fluktuasiKeyword.findFirst({
       where: {
         keyword: {
@@ -66,12 +66,14 @@ export async function POST(req: NextRequest) {
           mode: 'insensitive',
         },
         type,
+        accountCodes: (body.accountCodes ?? '').trim(),
       },
     });
 
     if (existingKeyword) {
+      const acctLabel = (body.accountCodes ?? '').trim() || 'semua akun';
       return NextResponse.json(
-        { success: false, error: `Keyword "${keyword}" dengan type "${type}" sudah ada. Silakan gunakan keyword yang berbeda.` },
+        { success: false, error: `Keyword "${keyword}" dengan type "${type}" untuk akun "${acctLabel}" sudah ada. Silakan gunakan keyword yang berbeda.` },
         { status: 400 }
       );
     }
@@ -133,6 +135,10 @@ export async function PUT(req: NextRequest) {
 
     // Check for duplicate keyword when updating (exclude current record)
     if (keyword !== undefined && type !== undefined) {
+      const newAccountCodes = body.accountCodes !== undefined
+        ? (body.accountCodes ?? '').trim()
+        : (await prisma.fluktuasiKeyword.findUnique({ where: { id: parseInt(id, 10) } }))?.accountCodes ?? '';
+
       const existingKeyword = await prisma.fluktuasiKeyword.findFirst({
         where: {
           keyword: {
@@ -140,6 +146,7 @@ export async function PUT(req: NextRequest) {
             mode: 'insensitive',
           },
           type,
+          accountCodes: newAccountCodes,
           id: {
             not: parseInt(id, 10),
           },
@@ -147,8 +154,9 @@ export async function PUT(req: NextRequest) {
       });
 
       if (existingKeyword) {
+        const acctLabel = newAccountCodes || 'semua akun';
         return NextResponse.json(
-          { success: false, error: `Keyword "${keyword}" dengan type "${type}" sudah ada. Silakan gunakan keyword yang berbeda.` },
+          { success: false, error: `Keyword "${keyword}" dengan type "${type}" untuk akun "${acctLabel}" sudah ada. Silakan gunakan keyword yang berbeda.` },
           { status: 400 }
         );
       }
