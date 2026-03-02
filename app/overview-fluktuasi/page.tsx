@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { RotateCcw, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
@@ -322,32 +322,71 @@ export default function OverviewFluktuasiPage() {
     return [...m.values()].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
   }, [filtered]);
 
-  const listingTotalPages = Math.ceil(listingRows.length / LIST_PAGE_SIZE);
+  const listingTotalPages = useMemo(
+    () => Math.ceil(listingRows.length / LIST_PAGE_SIZE),
+    [listingRows],
+  );
   const listingPage = useMemo(
     () => listingRows.slice(listPage * LIST_PAGE_SIZE, (listPage + 1) * LIST_PAGE_SIZE),
     [listingRows, listPage],
   );
 
   const totalFiltered = useMemo(() => filtered.reduce((s, r) => s + r.amount, 0), [filtered]);
-  const maxAbsKlasi   = byKlasifikasi.length > 0 ? Math.abs(byKlasifikasi[0].value) : 1;
-  const maxAbsAccount = top10Accounts.length > 0 ? Math.abs(top10Accounts[0].value) : 1;
-  const donutTotal    = byKlasifikasi.reduce((s, d) => s + Math.abs(d.value), 0);
+  const maxAbsKlasi   = useMemo(() => byKlasifikasi.length > 0 ? Math.abs(byKlasifikasi[0].value) : 1, [byKlasifikasi]);
+  const maxAbsAccount = useMemo(() => top10Accounts.length > 0 ? Math.abs(top10Accounts[0].value) : 1, [top10Accounts]);
+  const donutTotal    = useMemo(() => byKlasifikasi.reduce((s, d) => s + Math.abs(d.value), 0), [byKlasifikasi]);
 
-  const lastTwo = byPeriode.slice(-2);
-  const momGap  = lastTwo.length === 2 ? lastTwo[1].value - lastTwo[0].value : null;
-  const momPct  = lastTwo.length === 2 && lastTwo[0].value !== 0
-    ? (momGap! / Math.abs(lastTwo[0].value)) * 100
-    : null;
+  const { lastTwo, momGap, momPct } = useMemo(() => {
+    const lastTwo = byPeriode.slice(-2);
+    const momGap  = lastTwo.length === 2 ? lastTwo[1].value - lastTwo[0].value : null;
+    const momPct  = lastTwo.length === 2 && lastTwo[0].value !== 0
+      ? (momGap! / Math.abs(lastTwo[0].value)) * 100
+      : null;
+    return { lastTwo, momGap, momPct };
+  }, [byPeriode]);
 
-  const toggleKlasifikasi = (k: string) => setFilterKlasifikasi(prev => {
+  // Precomputed account amounts for filter panel (avoids O(n×m) inline loop)
+  const accountAmountsByYear = useMemo(() => {
+    const m = new Map<string, number>();
+    records.forEach(r => {
+      if (selectedYear !== 'all' && !r.periode.startsWith(selectedYear + '.')) return;
+      m.set(r.accountCode, (m.get(r.accountCode) ?? 0) + r.amount);
+    });
+    return m;
+  }, [records, selectedYear]);
+
+  // Aging buckets precomputed (also fixes O(n) pSlice.includes → O(1) Set lookup)
+  const agingData = useMemo(() => {
+    const sortedPeriodes = [...new Map(filtered.map(r => [r.periode, 0])).keys()].sort();
+    const n = sortedPeriodes.length;
+    const buckets: { label: string; value: number }[] = [];
+    if (n > 0) {
+      const bSize = Math.ceil(n / 5);
+      for (let b = 0; b < 5; b++) {
+        const start  = b * bSize;
+        const end    = Math.min(start + bSize, n);
+        const pSlice = sortedPeriodes.slice(start, end);
+        const pSet   = new Set(pSlice);
+        const sum    = filtered.filter(r => pSet.has(r.periode)).reduce((s, r) => s + r.amount, 0);
+        const lbl    = pSlice.length > 0
+          ? `${b + 1}. ${periodeToLabel(pSlice[0])}${pSlice.length > 1 ? '–' + periodeToLabel(pSlice[pSlice.length - 1]) : ''}`
+          : `Bucket ${b + 1}`;
+        buckets.push({ label: lbl, value: sum });
+      }
+    }
+    const maxAbsB = Math.max(...buckets.map(bk => Math.abs(bk.value)), 1);
+    return { buckets, maxAbsB };
+  }, [filtered]);
+
+  const toggleKlasifikasi = useCallback((k: string) => setFilterKlasifikasi(prev => {
     const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n;
-  });
-  const toggleAccount = (a: string) => setFilterAccount(prev => {
+  }), []);
+  const toggleAccount = useCallback((a: string) => setFilterAccount(prev => {
     const n = new Set(prev); n.has(a) ? n.delete(a) : n.add(a); return n;
-  });
-  const resetFilters = () => {
+  }), []);
+  const resetFilters = useCallback(() => {
     setSelectedYear('all'); setFilterKlasifikasi(new Set()); setFilterAccount(new Set()); setListPage(0);
-  };
+  }, []);
 
   // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) return (
@@ -442,7 +481,7 @@ export default function OverviewFluktuasiPage() {
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
 
           {/* Row 1 */}
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'minmax(240px,280px) 1fr minmax(200px,220px)' }}>
+          <div className="grid gap-3 grid-cols-1 lg:grid-cols-[minmax(240px,280px)_1fr_minmax(200px,220px)]">
 
             {/* Left column */}
             <div className="flex flex-col gap-3">
@@ -610,9 +649,7 @@ export default function OverviewFluktuasiPage() {
                 <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Kode Akun</p>
                 <div className="border border-gray-200 rounded-md bg-gray-50 max-h-44 overflow-y-auto p-1.5">
                   {allAccounts.map(a => {
-                    const amt       = records
-                      .filter(r => r.accountCode === a && (selectedYear === 'all' || r.periode.startsWith(selectedYear + '.')))
-                      .reduce((s, r) => s + r.amount, 0);
+                    const amt       = accountAmountsByYear.get(a) ?? 0;
                     const isChecked = filterAccount.size === 0 || filterAccount.has(a);
                     return (
                       <label key={a} className="flex items-center gap-1.5 px-1 py-0.5 rounded cursor-pointer hover:bg-blue-50 transition">
@@ -629,29 +666,13 @@ export default function OverviewFluktuasiPage() {
           </div>
 
           {/* Row 2 */}
-          <div className="grid gap-3" style={{ gridTemplateColumns: '1fr minmax(300px,380px)' }}>
+          <div className="grid gap-3 grid-cols-1 md:grid-cols-[1fr_minmax(300px,380px)]">
 
             {/* Aging chart */}
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">AGING FLUKTUASI</p>
               {(() => {
-                const sortedPeriodes = [...new Map(filtered.map(r => [r.periode, 0])).keys()].sort();
-                const n = sortedPeriodes.length;
-                const buckets: { label: string; value: number }[] = [];
-                if (n > 0) {
-                  const bSize = Math.ceil(n / 5);
-                  for (let b = 0; b < 5; b++) {
-                    const start  = b * bSize;
-                    const end    = Math.min(start + bSize, n);
-                    const pSlice = sortedPeriodes.slice(start, end);
-                    const sum    = filtered.filter(r => pSlice.includes(r.periode)).reduce((s, r) => s + r.amount, 0);
-                    const lbl    = pSlice.length > 0
-                      ? `${b + 1}. ${periodeToLabel(pSlice[0])}${pSlice.length > 1 ? '–' + periodeToLabel(pSlice[pSlice.length - 1]) : ''}`
-                      : `Bucket ${b + 1}`;
-                    buckets.push({ label: lbl, value: sum });
-                  }
-                }
-                const maxAbsB  = Math.max(...buckets.map(bk => Math.abs(bk.value)), 1);
+                const { buckets, maxAbsB } = agingData;
                 const bColors  = ['#2563eb','#16a34a','#d97706','#dc2626','#7c3aed'];
                 const numBuckets = buckets.length || 1;
                 const VW      = 500;
@@ -708,7 +729,7 @@ export default function OverviewFluktuasiPage() {
 
           {/* Listing table */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <div className="border-b border-gray-200 px-4 py-2.5 flex items-center justify-between">
+            <div className="border-b border-gray-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">LISTING OUTSTANDING</p>
                 <p className="text-[9px] text-slate-400">
