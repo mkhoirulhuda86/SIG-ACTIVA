@@ -1062,13 +1062,17 @@ export default function FluktuasiOIPage() {
   const clearDbData = async () => {
     if (!confirm('Hapus semua data akun-periode yang tersimpan di DB? Tindakan ini tidak dapat dibatalkan.')) return;
     try {
-      const res = await fetch('/api/fluktuasi/akun-periodes', { method: 'DELETE' });
-      const data = await res.json();
+      const [res1, res2] = await Promise.all([
+        fetch('/api/fluktuasi/akun-periodes', { method: 'DELETE' }),
+        fetch('/api/fluktuasi?uploadedBy=system&keepLast=0', { method: 'DELETE' }),
+      ]);
+      const data = await res1.json();
       if (data.success) {
         setDbAkunPeriodes([]);
         setDbPeriodeStats(null);
         setSheetDataList([]);
         setRekapSheetData(null);
+        setFileName('');
         alert(data.message);
       }
     } catch (e) {
