@@ -1044,11 +1044,14 @@ export default function FluktuasiOIPage() {
       }
       const records: AkunPeriodeRecord[] = data.data;
       setDbAkunPeriodes(records);
-      const rekap = buildRekapFromAkunPeriodes(records);
-      setRekapSheetData(rekap);
-      setAiReasons({});
       const periodes = [...new Set(records.map((r) => r.periode))].sort();
       setDbPeriodeStats({ periodes, accounts: new Set(records.map((r) => r.accountCode)).size });
+      // Hanya bangun & tampilkan rekap dari DB jika belum ada data dari file upload
+      if (sheetDataList.length === 0) {
+        const rekap = buildRekapFromAkunPeriodes(records);
+        setRekapSheetData(rekap);
+        setAiReasons({});
+      }
     } catch (e: any) {
       alert('Gagal memuat data dari DB: ' + (e?.message || e));
     } finally {
@@ -1064,6 +1067,8 @@ export default function FluktuasiOIPage() {
       if (data.success) {
         setDbAkunPeriodes([]);
         setDbPeriodeStats(null);
+        setSheetDataList([]);
+        setRekapSheetData(null);
         alert(data.message);
       }
     } catch (e) {
