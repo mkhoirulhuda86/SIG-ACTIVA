@@ -36,7 +36,7 @@ function MetricCard({
       <div className="flex items-center justify-between h-full">
         <div className="flex-1 min-w-0 pr-3">
           <p className="text-xs sm:text-sm text-gray-500 mb-1 truncate">{title}</p>
-          <h3 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 break-words">{value}</h3>
+          <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gray-800 leading-tight break-all">{value}</h3>
         </div>
         <div className={`p-2 sm:p-3 rounded-lg flex-shrink-0 ${getColorClasses(color)}`}>
           {icon}

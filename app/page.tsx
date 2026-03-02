@@ -110,7 +110,7 @@ export default function DashboardPage() {
   }, []);
 
   const formatCurrency = useCallback((amount: number) => {
-    return `Rp ${Math.round(amount).toLocaleString('id-ID')}`;
+    return `Rp ${Math.round(amount).toLocaleString('id-ID')}`;
   }, []);
 
   // Memoized chart data

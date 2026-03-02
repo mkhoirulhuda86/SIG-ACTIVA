@@ -893,7 +893,7 @@ export default function FluktuasiOIPage() {
   });
 
   // ── Load keywords ──────────────────────────────────────────────────────────
-  const loadKeywords = async () => {
+  const loadKeywords = useCallback(async () => {
     try {
       const res = await fetch('/api/fluktuasi/keywords');
       if (res.ok) {
@@ -905,7 +905,7 @@ export default function FluktuasiOIPage() {
     } catch (error) {
       console.error('Error loading keywords:', error);
     }
-  };
+  }, []);
 
   // ── Load example keywords ──────────────────────────────────────────────────
   const handleLoadExamples = async () => {
@@ -928,7 +928,7 @@ export default function FluktuasiOIPage() {
   };
 
   // ── Check Duplicate Keyword ────────────────────────────────────────────────
-  const checkDuplicateKeyword = (keyword: string, type: string, accountCodes: string, excludeId?: number): boolean => {
+  const checkDuplicateKeyword = useCallback((keyword: string, type: string, accountCodes: string, excludeId?: number): boolean => {
     const keywordLower = keyword.toLowerCase().trim();
     const acctNorm = (accountCodes ?? '').trim().toLowerCase();
     return keywords.some(kw => 
@@ -937,7 +937,7 @@ export default function FluktuasiOIPage() {
       (kw.accountCodes ?? '').trim().toLowerCase() === acctNorm &&
       (!excludeId || kw.id !== excludeId)
     );
-  };
+  }, [keywords]);
 
   // ── Save/Update Keyword ────────────────────────────────────────────────────
   const handleSaveKeyword = async (formOverride?: any) => {
@@ -1021,7 +1021,7 @@ export default function FluktuasiOIPage() {
   };
 
   // ── DB Akun Periode helpers ────────────────────────────────────────────────
-  const loadDbStats = async () => {
+  const loadDbStats = useCallback(async () => {
     try {
       const res = await fetch('/api/fluktuasi/akun-periodes');
       if (!res.ok) return;
@@ -1036,7 +1036,7 @@ export default function FluktuasiOIPage() {
     } catch (e) {
       console.error('Gagal load DB stats:', e);
     }
-  };
+  }, []);
 
   const loadAndBuildRekapFromDB = async () => {
     setLoadingDbRekap(true);
@@ -1803,6 +1803,8 @@ export default function FluktuasiOIPage() {
 
   // Paginated kode-akun rows
   const kaRows = useMemo(() => activeSheet?.rows ?? [], [activeSheet]);
+  // True only when row data is actually present (rows are stripped when saved to DB)
+  const hasSheetRows = useMemo(() => sheetDataList.some(sd => sd.rows.length > 0), [sheetDataList]);
   const kaTotalPages = Math.ceil(kaRows.length / KA_PAGE_SIZE);
   const kaPageRows   = useMemo(() => kaRows.slice(kaPage * KA_PAGE_SIZE, (kaPage + 1) * KA_PAGE_SIZE), [kaRows, kaPage]);
 
@@ -1941,6 +1943,24 @@ export default function FluktuasiOIPage() {
   // Reset pages when switching tabs
   const switchTab = useCallback((idx: number) => { setActiveSheetIdx(idx); setKaPage(0); }, []);
 
+  // ── Filtered & sorted keyword list (shared by table body + pagination) ───
+  const filteredKeywords = useMemo(() =>
+    keywords
+      .filter(kw => keywordFilter === 'all' || kw.type === keywordFilter)
+      .filter(kw => {
+        if (!keywordSearch) return true;
+        const search = keywordSearch.toLowerCase();
+        return kw.keyword.toLowerCase().includes(search) || kw.result.toLowerCase().includes(search);
+      })
+      .sort((a, b) => b.id - a.id),
+  [keywords, keywordFilter, keywordSearch]);
+
+  // ── Parse natural language preview (avoid re-running on every unrelated render) ──
+  const parsedNaturalInput = useMemo(
+    () => parseNaturalKeyword(naturalInput),
+    [naturalInput],
+  );
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       {isMobileSidebarOpen && (
@@ -2021,7 +2041,7 @@ export default function FluktuasiOIPage() {
 
               {keywords.length > 0 && (
                 <>
-                  <div className="flex gap-2 mt-4">
+                  <div className="flex flex-wrap gap-2 mt-4">
                     <button
                       onClick={() => { setKeywordFilter('all'); setKeywordPage(0); }}
                       className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
@@ -2105,18 +2125,6 @@ export default function FluktuasiOIPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {(() => {
-                    const filteredKeywords = keywords
-                      .filter(kw => keywordFilter === 'all' || kw.type === keywordFilter)
-                      .filter(kw => {
-                        if (!keywordSearch) return true;
-                        const search = keywordSearch.toLowerCase();
-                        return (
-                          kw.keyword.toLowerCase().includes(search) ||
-                          kw.result.toLowerCase().includes(search)
-                        );
-                      })
-                      .sort((a, b) => b.id - a.id);
-                    
                     if (keywords.length === 0) {
                       return (
                         <tr>
@@ -2240,17 +2248,6 @@ export default function FluktuasiOIPage() {
             
             {/* Pagination Controls */}
             {(() => {
-              const filteredKeywords = keywords
-                .filter(kw => keywordFilter === 'all' || kw.type === keywordFilter)
-                .filter(kw => {
-                  if (!keywordSearch) return true;
-                  const search = keywordSearch.toLowerCase();
-                  return (
-                    kw.keyword.toLowerCase().includes(search) ||
-                    kw.result.toLowerCase().includes(search)
-                  );
-                });
-              
               const totalPages = Math.ceil(filteredKeywords.length / KEYWORD_PAGE_SIZE);
               
               if (totalPages <= 1) return null;
@@ -2270,9 +2267,9 @@ export default function FluktuasiOIPage() {
               
               return (
                 <div className="px-5 py-4 border-t border-gray-200 bg-gray-50">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-gray-600">
-                      Menampilkan {keywordPage * KEYWORD_PAGE_SIZE + 1} - {Math.min((keywordPage + 1) * KEYWORD_PAGE_SIZE, filteredKeywords.length)} dari {filteredKeywords.length} keyword
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs sm:text-sm text-gray-600">
+                      Menampilkan {keywordPage * KEYWORD_PAGE_SIZE + 1}–{Math.min((keywordPage + 1) * KEYWORD_PAGE_SIZE, filteredKeywords.length)} dari {filteredKeywords.length} keyword
                     </p>
                     <div className="flex items-center gap-1">
                       {/* First Page */}
@@ -2499,7 +2496,7 @@ export default function FluktuasiOIPage() {
           )}
 
           {/* ── Kode Akun Tabs + Table ────────────────────────────────────── */}
-          {sheetDataList.length === 0 && dbPeriodeStats && !isProcessing && (
+          {!hasSheetRows && dbPeriodeStats && !isProcessing && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
               <span className="font-semibold">Data detail tidak tersedia.</span>{' '}
               Data ringkasan sudah tersimpan ({dbPeriodeStats.accounts} akun, {dbPeriodeStats.periodes.length} periode),
@@ -2507,7 +2504,7 @@ export default function FluktuasiOIPage() {
               Silakan upload ulang file Excel untuk melihat tabel detail.
             </div>
           )}
-          {sheetDataList.length > 0 && (
+          {hasSheetRows && (
             <div ref={tableResultRef} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
               <div className="flex items-center border-b border-gray-200 bg-gray-50">
                 <button className="flex-shrink-0 px-2 py-2 text-gray-400 hover:text-gray-600 disabled:opacity-30"
@@ -2725,7 +2722,7 @@ export default function FluktuasiOIPage() {
             return (
               <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                 {/* Header bar */}
-                <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between"
+                <div className="px-4 py-3 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2"
                   style={{ background: 'linear-gradient(to right,#1F3864,#2e4d8a)' }}>
                   <div>
                     <h3 className="text-sm sm:text-base font-bold text-white">
@@ -3174,7 +3171,7 @@ export default function FluktuasiOIPage() {
               
               {/* Input Mode Toggle */}
               {!editingKeyword && (
-                <div className="flex gap-2 mt-4">
+                <div className="flex flex-wrap gap-2 mt-4">
                   <button
                     onClick={() => setInputMode('simple')}
                     className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition ${
@@ -3230,7 +3227,7 @@ export default function FluktuasiOIPage() {
                   
                   {/* Preview parsed result */}
                   {naturalInput && (() => {
-                    const parsed = parseNaturalKeyword(naturalInput);
+                    const parsed = parsedNaturalInput;
                     if (parsed) {
                       const isDuplicate = checkDuplicateKeyword(parsed.keyword, parsed.type, parsed.accountCodes ?? '');
                       if (isDuplicate) {
@@ -3627,7 +3624,7 @@ export default function FluktuasiOIPage() {
                 disabled={(() => {
                   if (inputMode === 'simple' && !editingKeyword) {
                     // Simple mode validation
-                    const parsed = parseNaturalKeyword(naturalInput);
+                    const parsed = parsedNaturalInput;
                     if (!parsed) return true;
                     return checkDuplicateKeyword(parsed.keyword, parsed.type, parsed.accountCodes ?? '');
                   } else {
