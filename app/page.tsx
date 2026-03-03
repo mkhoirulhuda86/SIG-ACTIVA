@@ -102,7 +102,8 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(
     _cache ? _cache.data : null
   );
-  const [loading, setLoading] = useState(!_cache);
+  const [loading, setLoading]       = useState(!_cache);   // full skeleton
+  const [refreshing, setRefreshing] = useState(false);      // top loading bar
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   const fetchDashboardSummary = async (bustCache = false) => {
@@ -112,8 +113,11 @@ export default function DashboardPage() {
       return;
     }
     try {
-      // Only show skeleton when we have no data at all yet
-      if (!_cache) setLoading(true);
+      if (!_cache) {
+        setLoading(true);      // no data yet — show full skeleton
+      } else {
+        setRefreshing(true);   // stale data visible — show top bar only
+      }
       const res = await fetch('/api/dashboard/summary');
       if (res.ok) {
         const data: DashboardSummary = await res.json();
@@ -124,6 +128,7 @@ export default function DashboardPage() {
       console.error('Error fetching dashboard summary:', e);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -313,6 +318,12 @@ export default function DashboardPage() {
 
       {/* Main Content */}
       <div className="flex-1 bg-background lg:ml-64">
+        {/* Top loading bar — shown during background refetch */}
+        {refreshing && (
+          <div className="fixed top-0 left-0 right-0 z-[100] h-1 overflow-hidden">
+            <div className="h-full bg-primary animate-[loadingBar_1.2s_ease-in-out_infinite]" />
+          </div>
+        )}
         <Header
           title="Dashboard"
           onMenuClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}

@@ -236,6 +236,11 @@ input[type="password"] {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+@keyframes loadingBar {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(0%); }
+  100% { transform: translateX(100%); }
+}
 
 /* Animation Classes */
 .animate-fadeIn { animation: fadeIn 0.5s ease-out forwards; }
