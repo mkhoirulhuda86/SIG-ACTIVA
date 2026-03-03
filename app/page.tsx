@@ -322,7 +322,7 @@ export default function DashboardPage() {
             <div className="animate-fadeIn delay-300">
               <MetricCard
                 title="Total Saldo Accrual"
-                value={formatCurrency(stats.totalSaldo)}
+                value={formatCurrency(Math.abs(stats.totalSaldo))}
                 icon={<DollarSign className="w-5 h-5 sm:w-6 sm:h-6" />}
                 color="red"
               />

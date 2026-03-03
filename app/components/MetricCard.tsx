@@ -48,16 +48,25 @@ function MetricCard({ title, value, icon, color }: MetricCardProps) {
 
   /* ── GSAP counter — animates when `value` changes ──────────── */
   useEffect(() => {
-    // Extract a numeric portion (may not be a plain number)
-    const numeric = parseFloat(value.replace(/[^\d.-]/g, ''));
+    // Extract the leading numeric portion, handling Indonesian comma-decimal
+    // e.g. "Rp 340,7 M"  → firstNum = "340,7" → numeric = 340.7
+    //      "Rp -451 M"   → firstNum = "-451"  → numeric = -451
+    const trimmed = value.replace(/^[^\d\-]*/, '');          // strip leading non-digit/dash
+    const firstNum = trimmed.match(/^-?[\d]+([,.][\d]+)?/); // match first number (incl. comma-decimal)
+    const numStr   = firstNum ? firstNum[0].replace(',', '.') : '';
+    const numeric  = parseFloat(numStr);
     const isNumeric = !isNaN(numeric);
-    const prefix = value.match(/^[^\d-]*/)?.[0] ?? '';
-    const suffix = value.replace(/^[^\d-]*[\d,.]+/, '');
+    const prefix = value.match(/^[^\d\-]*/)?.[0] ?? '';
+    const suffix = value.replace(/^[^\d\-]*-?[\d,.]+/, '');
 
     if (!isNumeric) {
       setDisplayed(value);
       return;
     }
+
+    // Determine decimal places from the original formatted value
+    const decimalMatch = numStr.match(/\.(\d+)$/);
+    const decimals = decimalMatch ? decimalMatch[1].length : 0;
 
     // Reset
     setDisplayed(prefix + '0' + suffix);
@@ -69,13 +78,11 @@ function MetricCard({ title, value, icon, color }: MetricCardProps) {
       delay: 0.35,
       ease: 'power2.out',
       onUpdate: () => {
-        const formatted = proxy.v >= 1_000_000_000
-          ? (proxy.v / 1_000_000_000).toFixed(2) + 'B'
-          : proxy.v >= 1_000_000
-          ? (proxy.v / 1_000_000).toFixed(2) + 'M'
-          : proxy.v >= 1_000
-          ? (proxy.v / 1_000).toFixed(1) + 'K'
-          : proxy.v.toLocaleString('id-ID');
+        // Keep the original suffix (e.g. " M", " JT") — do NOT re-format with B/M/K
+        const formatted = proxy.v.toLocaleString('id-ID', {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+        });
         setDisplayed(prefix + formatted + suffix);
       },
     });
