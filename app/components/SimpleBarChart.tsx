@@ -1,7 +1,10 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { gsap } from 'gsap';
+import { animate, stagger } from 'animejs';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
 interface ChartData {
   label: string;
@@ -18,61 +21,88 @@ interface SimpleBarChartProps {
   height?: number;
 }
 
-function SimpleBarChart({ data, title, maxValue, color = '#dc2626', height = 200 }: SimpleBarChartProps) {
+function SimpleBarChart({ data, title, maxValue }: SimpleBarChartProps) {
   const max = maxValue || Math.max(...data.map(d => d.value), 1);
-  
-  const getBarColor = (index: number) => {
-    const colors = ['#dc2626', '#059669', '#2563eb', '#7c3aed', '#ea580c'];
-    return colors[index % colors.length];
-  };
 
-  const getTrendIcon = (trend?: 'up' | 'down' | 'stable') => {
-    switch (trend) {
-      case 'up':
-        return <TrendingUp size={14} className="text-green-600" />;
-      case 'down':
-        return <TrendingDown size={14} className="text-red-600" />;
-      case 'stable':
-        return <Minus size={14} className="text-gray-600" />;
-      default:
-        return null;
-    }
-  };
+  const cardRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const barRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const COLORS = ['#dc2626', '#059669', '#2563eb', '#7c3aed', '#ea580c'];
+  const getColor = (i: number) => COLORS[i % COLORS.length];
+
+  /* ── GSAP: animate bar widths from 0 → actual ─────────────── */
+  useEffect(() => {
+    barRefs.current.forEach((bar, i) => {
+      if (!bar || !data[i]) return;
+      const target = `${(data[i].value / max) * 100}%`;
+      gsap.fromTo(bar, { width: '0%' }, { width: target, duration: 0.85, delay: 0.1 + i * 0.1, ease: 'power3.out' });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, max]);
+
+  /* ── anime.js: stagger row entrance ──────────────────────── */
+  useEffect(() => {
+    if (!listRef.current) return;
+    const rows = listRef.current.querySelectorAll('.bar-row');
+    animate(rows, { opacity: [0, 1], translateY: [16, 0], duration: 400, delay: stagger(80), ease: 'outExpo' });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  /* ── GSAP: card hover lift ────────────────────────────────── */
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const enter = () => gsap.to(el, { y: -5, scale: 1.01, duration: 0.25, ease: 'power2.out' });
+    const leave = () => gsap.to(el, { y:  0, scale: 1,    duration: 0.25, ease: 'power2.out' });
+    el.addEventListener('mouseenter', enter);
+    el.addEventListener('mouseleave', leave);
+    return () => { el.removeEventListener('mouseenter', enter); el.removeEventListener('mouseleave', leave); };
+  }, []);
+
+  const getTrendIcon = (trend?: 'up' | 'down' | 'stable') => (
+    trend === 'up'     ? <TrendingUp  size={14} className="text-green-600" /> :
+    trend === 'down'   ? <TrendingDown size={14} className="text-red-600" />   :
+    trend === 'stable' ? <Minus        size={14} className="text-muted-foreground" /> : null
+  );
 
   return (
-    <div className="bg-white rounded-xl p-6 border border-gray-200 hover-lift transition-smooth">
-      <h3 className="text-lg font-semibold text-gray-800 mb-6">{title}</h3>
-      
-      <div className="space-y-4">
-        {data.map((item, index) => (
-          <div key={index} className="animate-fadeIn" style={{ animationDelay: `${index * 100}ms` }}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700">{item.label}</span>
-                {item.trend && getTrendIcon(item.trend)}
+    <Card ref={cardRef} className="overflow-hidden transition-shadow cursor-default">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base sm:text-lg">{title}</CardTitle>
+      </CardHeader>
+      <CardContent ref={listRef}>
+        <div className="space-y-4">
+          {data.map((item, index) => (
+            <div key={index} className="bar-row space-y-1.5 opacity-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">{item.label}</span>
+                  {item.trend && getTrendIcon(item.trend)}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground">{item.value.toLocaleString('id-ID')}</span>
+                  {item.percentage !== undefined && (
+                    <span className="text-xs text-muted-foreground">({item.percentage}%)</span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-gray-900">
-                  {item.value.toLocaleString('id-ID')}
-                </span>
-                {item.percentage !== undefined && (
-                  <span className="text-xs text-gray-500">({item.percentage}%)</span>
-                )}
-              </div>
-            </div>
-            <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
               <div
-                className="h-2.5 rounded-full transition-all duration-700 ease-out"
-                style={{
-                  width: `${(item.value / max) * 100}%`,
-                  backgroundColor: getBarColor(index),
-                }}
-              />
+                className="w-full bg-muted rounded-full h-3 overflow-hidden"
+                onMouseEnter={() => { const b = barRefs.current[index]; if (b) gsap.to(b, { filter: 'brightness(1.15)', duration: 0.18 }); }}
+                onMouseLeave={() => { const b = barRefs.current[index]; if (b) gsap.to(b, { filter: 'brightness(1)',    duration: 0.18 }); }}
+              >
+                <div
+                  ref={el => { barRefs.current[index] = el; }}
+                  className="h-3 rounded-full"
+                  style={{ backgroundColor: getColor(index), width: '0%' }}
+                />
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-    </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
