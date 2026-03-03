@@ -4,48 +4,62 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest) {
   try {
-    // Get the latest material importDate first
-    const latestMaterial = await prisma.materialData.findFirst({
-      select: { importDate: true },
-      orderBy: { importDate: 'desc' },
+    // Material: pipe findFirst→findMany inside Promise.all so it runs fully parallel
+    const materialPromise = prisma.materialData
+      .findFirst({ select: { importDate: true }, orderBy: { importDate: 'desc' } })
+      .then(latest =>
+        latest
+          ? prisma.materialData.findMany({
+              select: {
+                location: true,
+                materialId: true,
+                stokAwalSelisih: true,
+                produksiSelisih: true,
+                rilisSelisih: true,
+                stokAkhirSelisih: true,
+              },
+              where: { importDate: latest.importDate },
+            })
+          : Promise.resolve([]),
+      );
+
+    // Fluktuasi: use DB aggregations instead of loading every row
+    const fluktuasiPeriodePromise = prisma.fluktuasiAkunPeriode.groupBy({
+      by: ['periode'],
+      _sum: { amount: true },
+      orderBy: { periode: 'asc' },
+    });
+    const fluktuasiAggPromise = prisma.fluktuasiAkunPeriode.aggregate({
+      _count: { id: true },
+      _sum:   { amount: true },
+    });
+    // Klasifikasi still needs per-row data (multi-value split by ';')
+    const fluktuasiKlasifPromise = prisma.fluktuasiAkunPeriode.findMany({
+      select: { amount: true, klasifikasi: true },
     });
 
-    // Parallel fetching for better performance
-    const [materialData, prepaidData, accrualData, fluktuasiData] = await Promise.all([
-      // Material Data Summary - Only latest import date (mirrors laporan-material page)
-      latestMaterial
-        ? prisma.materialData.findMany({
-            select: {
-              location: true,
-              grandTotal: true,
-              materialId: true,
-              stokAwalSelisih: true,
-              produksiSelisih: true,
-              rilisSelisih: true,
-              stokAkhirSelisih: true,
-            },
-            where: { importDate: latestMaterial.importDate },
-          })
-        : Promise.resolve([]),
-      
-      // Prepaid Summary - Only fetch needed fields
+    // All queries fully parallel
+    const [
+      materialData,
+      prepaidData,
+      accrualData,
+      fluktuasiPeriodeGroups,
+      fluktuasiAgg,
+      fluktuasiKlasif,
+    ] = await Promise.all([
+      materialPromise,
+      // Prepaid - only needed fields
       prisma.prepaid.findMany({
         select: {
-          vendor: true,
           namaAkun: true,
           alokasi: true,
           klasifikasi: true,
           totalAmount: true,
           remaining: true,
-          periodes: {
-            select: {
-              isAmortized: true,
-            },
-          },
+          periodes: { select: { isAmortized: true } },
         },
       }),
-      
-      // Accrual Summary - Only fetch needed fields
+      // Accrual - only needed fields
       prisma.accrual.findMany({
         select: {
           vendor: true,
@@ -58,25 +72,14 @@ export async function GET(req: NextRequest) {
               bulan: true,
               tahun: true,
               amountAccrual: true,
-              realisasis: {
-                select: {
-                  amount: true,
-                },
-              },
+              realisasis: { select: { amount: true } },
             },
           },
         },
       }),
-
-      // Fluktuasi Summary
-      prisma.fluktuasiAkunPeriode.findMany({
-        select: {
-          accountCode: true,
-          periode: true,
-          amount: true,
-          klasifikasi: true,
-        },
-      }),
+      fluktuasiPeriodePromise,
+      fluktuasiAggPromise,
+      fluktuasiKlasifPromise,
     ]);
 
     // Group by location with selisih calculation
@@ -269,15 +272,14 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
 
-    // ── Fluktuasi calculations ──────────────────────────────────────────────
-    const fluktuasiTotal = fluktuasiData.reduce((s: number, r: any) => s + r.amount, 0);
+    // ── Fluktuasi calculations (using DB aggregations) ────────────────────
+    const fluktuasiTotal = fluktuasiAgg._sum.amount ?? 0;
+    const fluktuasiCount = fluktuasiAgg._count.id   ?? 0;
 
-    // Top 5 by klasifikasi (absolute amount)
-    // Split multi-value klasifikasi by ';' and distribute amount proportionally
-    // (mirrors byKlasifikasi logic in overview-fluktuasi page)
+    // Top 5 by klasifikasi — still needs per-row split on ';'
     const fluktuasiByKlasifikasi: Record<string, number> = {};
-    fluktuasiData.forEach((r: any) => {
-      const raw = r.klasifikasi || '(Tanpa Klasifikasi)';
+    fluktuasiKlasif.forEach((r) => {
+      const raw   = r.klasifikasi || '(Tanpa Klasifikasi)';
       const parts = raw.split(';').map((p: string) => p.trim()).filter(Boolean);
       const share = r.amount / parts.length;
       parts.forEach((k: string) => {
@@ -289,15 +291,10 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
       .slice(0, 5);
 
-    // Last 6 periods sorted
-    const fluktuasiByPeriode = fluktuasiData.reduce((acc: Record<string, number>, r: any) => {
-      acc[r.periode] = (acc[r.periode] ?? 0) + r.amount;
-      return acc;
-    }, {});
-    const last6Periodes = Object.entries(fluktuasiByPeriode)
-      .sort((a, b) => a[0].localeCompare(b[0]))
+    // Last 6 periods — already sorted + summed by DB
+    const last6Periodes = fluktuasiPeriodeGroups
       .slice(-6)
-      .map(([periode, value]) => ({ periode, value: value as number }));
+      .map(g => ({ periode: g.periode, value: g._sum.amount ?? 0 }));
 
     // MoM change (last two periods)
     const momChange = last6Periodes.length >= 2
@@ -307,7 +304,7 @@ export async function GET(req: NextRequest) {
       ? (momChange / Math.abs(last6Periodes[last6Periodes.length - 2].value)) * 100
       : 0;
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       material: {
         summary: materialSummary,
         byType: materialTypeData,
@@ -336,7 +333,7 @@ export async function GET(req: NextRequest) {
         total: accrualData.length,
       },
       fluktuasi: {
-        total: fluktuasiData.length,
+        total: fluktuasiCount,
         netAmount: fluktuasiTotal,
         momChange,
         momPct,
@@ -344,6 +341,9 @@ export async function GET(req: NextRequest) {
         last6Periodes,
       },
     });
+    // Cache for 90 s on CDN/proxy; serve stale for up to 3 min while revalidating
+    res.headers.set('Cache-Control', 'public, s-maxage=90, stale-while-revalidate=180');
+    return res;
   } catch (error) {
     console.error('Dashboard summary error:', error);
     return NextResponse.json(

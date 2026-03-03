@@ -22,20 +22,21 @@ interface SimpleBarChartProps {
 }
 
 function SimpleBarChart({ data, title, maxValue }: SimpleBarChartProps) {
-  const max = maxValue || Math.max(...data.map(d => d.value), 1);
+  const max = maxValue || Math.max(...data.map(d => Math.abs(d.value)), 1);
 
   const cardRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const barRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const COLORS = ['#dc2626', '#059669', '#2563eb', '#7c3aed', '#ea580c'];
-  const getColor = (i: number) => COLORS[i % COLORS.length];
+  const getColor = (i: number, value: number) =>
+    value < 0 ? '#f87171' : COLORS[i % COLORS.length];
 
   /* ── GSAP: animate bar widths from 0 → actual ─────────────── */
   useEffect(() => {
     barRefs.current.forEach((bar, i) => {
       if (!bar || !data[i]) return;
-      const target = `${(data[i].value / max) * 100}%`;
+      const target = `${(Math.abs(data[i].value) / max) * 100}%`;
       gsap.fromTo(bar, { width: '0%' }, { width: target, duration: 0.85, delay: 0.1 + i * 0.1, ease: 'power3.out' });
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,7 +82,7 @@ function SimpleBarChart({ data, title, maxValue }: SimpleBarChartProps) {
                   {item.trend && getTrendIcon(item.trend)}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-foreground">{item.value.toLocaleString('id-ID')}</span>
+                  <span className="text-sm font-semibold text-foreground">{Math.round(item.value).toLocaleString('id-ID')}</span>
                   {item.percentage !== undefined && (
                     <span className="text-xs text-muted-foreground">({item.percentage}%)</span>
                   )}
@@ -95,7 +96,7 @@ function SimpleBarChart({ data, title, maxValue }: SimpleBarChartProps) {
                 <div
                   ref={el => { barRefs.current[index] = el; }}
                   className="h-3 rounded-full"
-                  style={{ backgroundColor: getColor(index), width: '0%' }}
+                  style={{ backgroundColor: getColor(index, item.value), width: '0%' }}
                 />
               </div>
             </div>

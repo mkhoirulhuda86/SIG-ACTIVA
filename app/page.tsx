@@ -75,6 +75,10 @@ interface DashboardSummary {
   };
 }
 
+/* ── Module-level cache (survives re-renders, cleared on realtime push) ── */
+let _cache: { data: DashboardSummary; ts: number } | null = null;
+const CACHE_TTL = 90_000; // 90 seconds
+
 export default function DashboardPage() {
   const contentRef   = useRef<HTMLDivElement>(null);
   const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -95,15 +99,27 @@ export default function DashboardPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<DashboardSummary | null>(
+    _cache ? _cache.data : null
+  );
+  const [loading, setLoading] = useState(!_cache);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  const fetchDashboardSummary = async () => {
+  const fetchDashboardSummary = async (bustCache = false) => {
+    if (!bustCache && _cache && Date.now() - _cache.ts < CACHE_TTL) {
+      setSummary(_cache.data);
+      setLoading(false);
+      return;
+    }
     try {
-      setLoading(true);
+      // Only show skeleton when we have no data at all yet
+      if (!_cache) setLoading(true);
       const res = await fetch('/api/dashboard/summary');
-      if (res.ok) setSummary(await res.json());
+      if (res.ok) {
+        const data: DashboardSummary = await res.json();
+        _cache = { data, ts: Date.now() };
+        setSummary(data);
+      }
     } catch (e) {
       console.error('Error fetching dashboard summary:', e);
     } finally {
@@ -113,10 +129,10 @@ export default function DashboardPage() {
 
   useEffect(() => { fetchDashboardSummary(); }, []);
 
-  // Realtime: debounced re-fetch (300 ms) to avoid rapid consecutive calls
+  // Realtime: bust cache + debounced re-fetch
   useRealtimeUpdates(['accrual', 'prepaid', 'material', 'fluktuasi'], () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(fetchDashboardSummary, 300);
+    debounceRef.current = setTimeout(() => fetchDashboardSummary(true), 300);
   });
 
   const materialChartData = useMemo(() => {
@@ -325,28 +341,65 @@ export default function DashboardPage() {
           {/* ─── Loading skeleton ──────────────────────────────── */}
           {loading && (
             <div className="space-y-4">
+              {/* Material bars skeleton */}
               <Card>
-                <CardHeader><Skeleton className="h-5 w-48" /></CardHeader>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <Skeleton className="h-5 w-48" />
+                    <Skeleton className="h-5 w-28 rounded-full" />
+                  </div>
+                </CardHeader>
                 <CardContent className="space-y-4">
                   {[...Array(5)].map((_, i) => (
                     <div key={i} className="space-y-1.5">
-                      <Skeleton className="h-3 w-1/3" />
+                      <div className="flex justify-between">
+                        <Skeleton className="h-3 w-1/4" />
+                        <Skeleton className="h-3 w-20" />
+                      </div>
                       <Skeleton className="h-8 w-full rounded-full" />
+                      <div className="flex justify-between">
+                        <Skeleton className="h-3 w-28" />
+                        <Skeleton className="h-3 w-20" />
+                      </div>
                     </div>
                   ))}
                 </CardContent>
               </Card>
+              {/* Donut charts skeleton */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card className="flex items-center justify-center py-16">
-                  <div className="text-center space-y-3">
-                    <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-                    <p className="text-sm text-muted-foreground">Memuat data visualisasi...</p>
-                  </div>
-                </Card>
-                <Card>
-                  <CardHeader><Skeleton className="h-5 w-36" /></CardHeader>
-                  <CardContent><Skeleton className="h-48 w-48 rounded-full mx-auto" /></CardContent>
-                </Card>
+                {[0, 1].map(i => (
+                  <Card key={i}>
+                    <CardHeader className="pb-2"><Skeleton className="h-5 w-36" /></CardHeader>
+                    <CardContent className="flex gap-6 items-center">
+                      <Skeleton className="h-36 w-36 rounded-full shrink-0 mx-auto lg:mx-0" />
+                      <div className="flex-1 space-y-2 hidden lg:block">
+                        {[...Array(3)].map((_, j) => (
+                          <div key={j} className="flex items-center gap-2">
+                            <Skeleton className="h-3 w-3 rounded-full" />
+                            <Skeleton className="h-3 flex-1" />
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              {/* Bar charts skeleton */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {[0, 1].map(i => (
+                  <Card key={i}>
+                    <CardHeader className="pb-2"><Skeleton className="h-5 w-48" /></CardHeader>
+                    <CardContent className="space-y-3">
+                      {[...Array(5)].map((_, j) => (
+                        <div key={j} className="flex items-center gap-3">
+                          <Skeleton className="h-3 w-20 shrink-0" />
+                          <Skeleton className="h-5 flex-1 rounded-full" />
+                          <Skeleton className="h-3 w-14 shrink-0" />
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             </div>
           )}
