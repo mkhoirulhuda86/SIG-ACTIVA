@@ -1984,6 +1984,14 @@ export default function FluktuasiOIPage() {
   // Reset pages when switching tabs
   const switchTab = useCallback((idx: number) => { setActiveSheetIdx(idx); setKaPage(0); }, []);
 
+  // Auto-scroll active tab into view when activeSheetIdx changes
+  const tabBarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!tabBarRef.current) return;
+    const btn = tabBarRef.current.children[activeSheetIdx] as HTMLElement | undefined;
+    btn?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  }, [activeSheetIdx]);
+
   // ── Filtered & sorted keyword list (shared by table body + pagination) ───
   const filteredKeywords = useMemo(() =>
     keywords
@@ -2552,7 +2560,7 @@ export default function FluktuasiOIPage() {
                   disabled={activeSheetIdx === 0} onClick={() => switchTab(Math.max(0, activeSheetIdx - 1))}>
                   <ChevronLeft size={16} />
                 </button>
-                <div className="flex overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                <div ref={tabBarRef} className="flex overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                   {sheetDataList.map((sd, idx) => (
                     <button key={sd.sheetName} onClick={() => switchTab(idx)}
                       className={`flex-shrink-0 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
