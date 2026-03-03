@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { TrendingUp, TrendingDown, CheckCircle, DollarSign, FileText, Package, CreditCard, Clock, BarChart2, Minus } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { gsap } from 'gsap';
@@ -19,6 +19,31 @@ import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 
 const Sidebar = dynamic(() => import('./components/Sidebar'), { ssr: false });
 const Header  = dynamic(() => import('./components/Header'),  { ssr: false });
+
+/* ── Pure helpers (outside component — no re-creation on render) ── */
+const MONTHS_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+function periodeToLabel(p: string): string {
+  const [yr, mo] = p.split('.');
+  const m = parseInt(mo) - 1;
+  return `${MONTHS_ID[m] ?? mo} ${yr}`;
+}
+function formatCurrency(amount: number): string {
+  const a = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+  if (a >= 1_000_000_000_000) return `Rp ${sign}${(a / 1_000_000_000_000).toFixed(1).replace('.', ',')} T`;
+  if (a >= 1_000_000_000)     return `Rp ${sign}${(a / 1_000_000_000).toFixed(1).replace('.', ',')} M`;
+  if (a >= 1_000_000)         return `Rp ${sign}${Math.round(a / 1_000_000).toLocaleString('id-ID')} JT`;
+  if (a >= 1_000)             return `Rp ${sign}${Math.round(a / 1_000).toLocaleString('id-ID')} RB`;
+  return `Rp ${sign}${Math.round(a).toLocaleString('id-ID')}`;
+}
+function fmtCompact(n: number): string {
+  const a = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (a >= 1_000_000_000) return sign + (a / 1_000_000_000).toFixed(1).replace('.',',') + ' M';
+  if (a >= 1_000_000)     return sign + Math.round(a / 1_000_000).toLocaleString('id-ID') + ' JT';
+  if (a >= 1_000)         return sign + Math.round(a / 1_000).toLocaleString('id-ID') + ' RB';
+  return sign + Math.round(a).toLocaleString('id-ID');
+}
 
 interface DashboardSummary {
   material: {
@@ -51,14 +76,8 @@ interface DashboardSummary {
 }
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState({
-    totalAccrual: 0,
-    totalRealisasi: 0,
-    totalSaldo: 0,
-    jumlahAccrual: 0,
-  });
-
   const contentRef   = useRef<HTMLDivElement>(null);
+  const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const materialRef  = useRef<HTMLDivElement>(null);
   const fluktuasiRef = useRef<HTMLDivElement>(null);
   const trendRef     = useRef<HTMLDivElement>(null);
@@ -80,109 +99,25 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  useEffect(() => {
-    fetchDashboardStats();
-    fetchDashboardSummary();
-  }, []);
-
-  // Realtime: re-fetch whenever accrual, prepaid, material, or fluktuasi data changes
-  useRealtimeUpdates(['accrual', 'prepaid', 'material', 'fluktuasi'], (event) => {
-    if (event === 'accrual') {
-      fetchDashboardStats();
-    }
-    fetchDashboardSummary();
-  });
-
-  const fetchDashboardStats = useCallback(async () => {
-    try {
-      const response = await fetch('/api/accrual');
-      if (response.ok) {
-        const accruals = await response.json();
-
-        const bulanMap: Record<string, number> = {
-          'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
-          'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11,
-        };
-
-        const calcAccrual = (item: any): number => {
-          if (!item.periodes || item.periodes.length === 0) return 0;
-          if (item.pembagianType === 'manual') {
-            return item.periodes.reduce((s: number, p: any) => s + Math.abs(p.amountAccrual || 0), 0);
-          }
-          const today = new Date();
-          const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-          let total = 0;
-          let rollover = 0;
-          for (const p of item.periodes) {
-            const [bulanName, tahunStr] = (p.bulan as string).split(' ');
-            const periodeBulan = bulanMap[bulanName] ?? 0;
-            const periodeTahun = parseInt(tahunStr);
-            const periodeDate = new Date(periodeTahun, periodeBulan, 1);
-            const realisasiPeriode = p.totalRealisasi ?? 0;
-            const totalAvailable = realisasiPeriode + rollover;
-            const capAccrual = Math.abs(p.amountAccrual || 0);
-            const effectiveRealisasi = Math.min(totalAvailable, capAccrual);
-            const newRollover = Math.max(0, totalAvailable - capAccrual);
-            const isPastDue = todayDate >= periodeDate;
-            const hasEffective = effectiveRealisasi > 0;
-            if (isPastDue || hasEffective) total += capAccrual;
-            rollover = newRollover;
-          }
-          return total;
-        };
-
-        const calcRawRealisasi = (item: any): number => {
-          if (!item.periodes || item.periodes.length === 0) return 0;
-          return item.periodes.reduce((s: number, p: any) => s + (p.totalRealisasi ?? 0), 0);
-        };
-
-        let totalAccrualSum = 0;
-        let totalRealisasiSum = 0;
-        let totalSaldoSum = 0;
-        accruals.forEach((item: any) => {
-          const saldoAwal = item.saldoAwal != null ? Number(item.saldoAwal) : Math.abs(item.totalAmount || 0);
-          const totalAccrualItem = calcAccrual(item);
-          const rawRealisasiItem = calcRawRealisasi(item);
-          totalAccrualSum += totalAccrualItem;
-          totalRealisasiSum += rawRealisasiItem;
-          totalSaldoSum += saldoAwal + totalAccrualItem - rawRealisasiItem;
-        });
-        setStats({
-          totalAccrual: totalAccrualSum,
-          totalRealisasi: totalRealisasiSum,
-          totalSaldo: totalSaldoSum,
-          jumlahAccrual: accruals.length,
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching dashboard stats:', error);
-    }
-  }, []);
-
-  const fetchDashboardSummary = useCallback(async () => {
+  const fetchDashboardSummary = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/dashboard/summary');
-      if (response.ok) {
-        const data = await response.json();
-        setSummary(data);
-      }
-    } catch (error) {
-      console.error('Error fetching dashboard summary:', error);
+      const res = await fetch('/api/dashboard/summary');
+      if (res.ok) setSummary(await res.json());
+    } catch (e) {
+      console.error('Error fetching dashboard summary:', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
-  const formatCurrency = useCallback((amount: number) => {
-    const a = Math.abs(amount);
-    const sign = amount < 0 ? '-' : '';
-    if (a >= 1_000_000_000_000) return `Rp ${sign}${(a / 1_000_000_000_000).toFixed(1).replace('.', ',')} T`;
-    if (a >= 1_000_000_000)     return `Rp ${sign}${(a / 1_000_000_000).toFixed(1).replace('.', ',')} M`;
-    if (a >= 1_000_000)         return `Rp ${sign}${Math.round(a / 1_000_000).toLocaleString('id-ID')} JT`;
-    if (a >= 1_000)             return `Rp ${sign}${Math.round(a / 1_000).toLocaleString('id-ID')} RB`;
-    return `Rp ${sign}${Math.round(a).toLocaleString('id-ID')}`;
-  }, []);
+  useEffect(() => { fetchDashboardSummary(); }, []);
+
+  // Realtime: debounced re-fetch (300 ms) to avoid rapid consecutive calls
+  useRealtimeUpdates(['accrual', 'prepaid', 'material', 'fluktuasi'], () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(fetchDashboardSummary, 300);
+  });
 
   const materialChartData = useMemo(() => {
     if (!summary) return [];
@@ -212,12 +147,6 @@ export default function DashboardPage() {
     ];
   }, [summary]);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const topAccrualVendorsData = useMemo(() => {
-    if (!summary) return [];
-    return summary.accrual.topVendors.map(v => ({ label: v.label, value: v.value }));
-  }, [summary]);
-
   const topAccrualByKlasifikasiData = useMemo(() => {
     if (!summary) return [];
     return summary.accrual.topByKlasifikasi.map(v => ({ label: v.label, value: v.value }));
@@ -228,32 +157,10 @@ export default function DashboardPage() {
     return summary.prepaid.topByKlasifikasi.map(v => ({ label: v.label, value: v.value }));
   }, [summary]);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const topPrepaidByAmountData = useMemo(() => {
-    if (!summary) return [];
-    return summary.prepaid.topPrepaidByAmount.map(v => ({ label: v.label, value: v.value }));
-  }, [summary]);
-
   const fluktuasiByKlasifikasiData = useMemo(() => {
     if (!summary) return [];
     return summary.fluktuasi.topByKlasifikasi.map(v => ({ label: v.label, value: v.value }));
   }, [summary]);
-
-  const MONTHS_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  const periodeToLabel = (p: string): string => {
-    const [yr, mo] = p.split('.');
-    const m = parseInt(mo) - 1;
-    return `${MONTHS_ID[m] ?? mo} ${yr}`;
-  };
-
-  const fmtCompact = (n: number): string => {
-    const a = Math.abs(n);
-    const sign = n < 0 ? '-' : '';
-    if (a >= 1_000_000_000) return sign + (a / 1_000_000_000).toFixed(1).replace('.',',') + ' M';
-    if (a >= 1_000_000)     return sign + Math.round(a / 1_000_000).toLocaleString('id-ID') + ' JT';
-    if (a >= 1_000)         return sign + Math.round(a / 1_000).toLocaleString('id-ID') + ' RB';
-    return sign + Math.round(a).toLocaleString('id-ID');
-  };
 
   /* ── GSAP: animate material progress bars on data load + hover ── */
   useEffect(() => {
@@ -400,10 +307,10 @@ export default function DashboardPage() {
 
           {/* ─── Metric Cards ─────────────────────────────────── */}
           <div className="dashboard-section grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <MetricCard title="Total Accrual"       value={formatCurrency(stats.totalAccrual)}          icon={<TrendingUp  className="w-5 h-5" />} color="blue"   />
-            <MetricCard title="Total Realisasi"     value={formatCurrency(stats.totalRealisasi)}        icon={<CheckCircle className="w-5 h-5" />} color="green"  />
-            <MetricCard title="Total Saldo Accrual" value={formatCurrency(Math.abs(stats.totalSaldo))} icon={<DollarSign  className="w-5 h-5" />} color="red"    />
-            <MetricCard title="Jumlah Accrual"      value={stats.jumlahAccrual.toString()}             icon={<FileText    className="w-5 h-5" />} color="purple" />
+            <MetricCard title="Total Accrual"       value={formatCurrency(summary?.accrual?.financial?.total     ?? 0)} icon={<TrendingUp  className="w-5 h-5" />} color="blue"   />
+            <MetricCard title="Total Realisasi"     value={formatCurrency(summary?.accrual?.financial?.realized  ?? 0)} icon={<CheckCircle className="w-5 h-5" />} color="green"  />
+            <MetricCard title="Total Saldo Accrual" value={formatCurrency(Math.abs(summary?.accrual?.financial?.remaining ?? 0))} icon={<DollarSign  className="w-5 h-5" />} color="red"    />
+            <MetricCard title="Jumlah Accrual"      value={(summary?.accrual?.total ?? 0).toString()}             icon={<FileText    className="w-5 h-5" />} color="purple" />
           </div>
 
           {/* ─── Additional Overview Cards ─────────────────────── */}
@@ -662,8 +569,8 @@ export default function DashboardPage() {
             <RekonsiliasiCard
               title="Rekonsiliasi Accrual vs Realisasi"
               description="Monitoring selisih antara accrual yang dicatat dengan realisasi pembayaran"
-              status={stats.totalAccrual > 0 ? (stats.totalRealisasi / stats.totalAccrual >= 0.8 ? 'normal' : 'warning') : 'normal'}
-              percentage={stats.totalAccrual > 0 ? Math.round((stats.totalRealisasi / stats.totalAccrual) * 100) : 0}
+              status={summary?.accrual?.financial?.total ? (( summary.accrual.financial.realized / summary.accrual.financial.total) >= 0.8 ? 'normal' : 'warning') : 'normal'}
+              percentage={summary?.accrual?.financial?.total ? Math.round((summary.accrual.financial.realized / summary.accrual.financial.total) * 100) : 0}
             />
             <RekonsiliasiCard
               title="Status Prepaid"
