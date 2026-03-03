@@ -4,8 +4,13 @@ import { toast } from 'sonner';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight, Trash2, ChevronDown } from 'lucide-react';
+import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight, Trash2, ChevronDown, Loader2, Sparkles } from 'lucide-react';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
+import { gsap } from 'gsap';
+import { animate as animeJs, stagger as animeStagger } from 'animejs';
+import { Progress } from '@/app/components/ui/progress';
+import { Skeleton } from '@/app/components/ui/skeleton';
+import { Badge } from '@/app/components/ui/badge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SheetData = {
@@ -896,6 +901,13 @@ export default function FluktuasiOIPage() {
   const [dbAkunPeriodes,  setDbAkunPeriodes]  = useState<AkunPeriodeRecord[]>([]);
   const [loadingDbRekap,  setLoadingDbRekap]  = useState(false);
   const [dbPeriodeStats,  setDbPeriodeStats]  = useState<{ periodes: string[]; accounts: number } | null>(null);
+
+  // ── Animation refs ────────────────────────────────────────────────────────
+  const pageContentRef   = useRef<HTMLDivElement>(null);
+  const keywordBodyRef   = useRef<HTMLTableSectionElement>(null);
+  const rekapBodyRef     = useRef<HTMLTableSectionElement>(null);
+  const modalRef         = useRef<HTMLDivElement>(null);
+  const dbStatsRef       = useRef<HTMLDivElement>(null);
 
   // ── Per-account row hydration (lazy DB fetch) ──────────────────────────────
   const fetchingAccountsRef = useRef<Set<string>>(new Set());
@@ -2070,6 +2082,83 @@ export default function FluktuasiOIPage() {
     btn?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
   }, [activeSheetIdx]);
 
+  // ── GSAP page entrance animation ─────────────────────────────────────────
+  useEffect(() => {
+    if (!pageContentRef.current) return;
+    const cards = pageContentRef.current.querySelectorAll('[data-animate-card]');
+    if (cards.length === 0) return;
+    gsap.set(cards, { opacity: 0, y: 40 });
+    gsap.to(cards, {
+      opacity: 1,
+      y: 0,
+      duration: 0.65,
+      ease: 'power3.out',
+      stagger: 0.1,
+      delay: 0.05,
+    });
+  }, []);
+
+  // ── Anime.js keyword rows stagger (fires whenever page/filter changes) ────
+  useEffect(() => {
+    if (!keywordBodyRef.current) return;
+    const rows = keywordBodyRef.current.querySelectorAll('tr.js-kw-row');
+    if (rows.length === 0) return;
+    animeJs(rows, {
+      opacity: [0, 1],
+      translateX: [-18, 0],
+      duration: 380,
+      delay: animeStagger(35),
+      ease: 'easeOutExpo',
+    });
+  }, [keywordBodyRef.current?.children.length]);
+
+  // ── Anime.js rekap rows stagger (fires on page/data change) ──────────────
+  useEffect(() => {
+    if (!rekapBodyRef.current) return;
+    const rows = rekapBodyRef.current.querySelectorAll('tr.js-rekap-row');
+    if (rows.length === 0) return;
+    animeJs(rows, {
+      opacity: [0, 1],
+      translateY: [10, 0],
+      duration: 280,
+      delay: animeStagger(15),
+      ease: 'easeOutCubic',
+    });
+  }, [rekapBodyRef.current?.children.length]);
+
+  // ── GSAP modal entrance ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!showKeywordModal || !modalRef.current) return;
+    gsap.fromTo(
+      modalRef.current,
+      { opacity: 0, scale: 0.93, y: 18 },
+      { opacity: 1, scale: 1, y: 0, duration: 0.32, ease: 'power3.out' }
+    );
+  }, [showKeywordModal]);
+
+  // ── Anime.js DB stats badges ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!dbStatsRef.current || !dbPeriodeStats) return;
+    const badges = dbStatsRef.current.querySelectorAll('.js-periode-badge');
+    if (badges.length === 0) return;
+    animeJs(badges, {
+      opacity: [0, 1],
+      scale: [0.6, 1],
+      duration: 350,
+      delay: animeStagger(28, { start: 80 }),
+      ease: 'easeOutBack',
+    });
+  }, [dbPeriodeStats]);
+
+  // ── Animate upload processing overlay ────────────────────────────────────
+  useEffect(() => {
+    const el = document.getElementById('upload-processing-bar');
+    if (!el) return;
+    if (isProcessing) {
+      gsap.fromTo(el, { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: 0.4, ease: 'power2.out', transformOrigin: 'left' });
+    }
+  }, [isProcessing]);
+
   // ── Filtered & sorted keyword list (shared by table body + pagination) ───
   const filteredKeywords = useMemo(() =>
     keywords
@@ -2106,10 +2195,10 @@ export default function FluktuasiOIPage() {
           onMenuClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
         />
 
-        <div className="p-3 sm:p-4 md:p-6 lg:p-8 space-y-4 sm:space-y-6">
+        <div ref={pageContentRef} className="p-3 sm:p-4 md:p-6 lg:p-8 space-y-4 sm:space-y-6">
 
           {/* ── Master Keywords Card ───────────────────────────────────────── */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+          <div data-animate-card className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <button
               onClick={() => setShowKeywordSection(v => !v)}
               className="w-full p-5 flex flex-wrap items-center justify-between gap-3 hover:bg-gray-50 transition-colors text-left"
@@ -2250,7 +2339,7 @@ export default function FluktuasiOIPage() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody ref={keywordBodyRef as React.Ref<HTMLTableSectionElement>} className="divide-y divide-gray-200">
                   {(() => {
                     if (keywords.length === 0) {
                       return (
@@ -2296,7 +2385,7 @@ export default function FluktuasiOIPage() {
                         return without.slice(0, ci) + ' → ' + without.slice(ci + 1);
                       })();
                       return (
-                        <tr key={kw.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors`}>
+                        <tr key={kw.id} className={`js-kw-row ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors`}>
                           <td className="px-4 py-3 text-sm font-medium text-gray-900">
                             <div className="flex items-center gap-2 flex-wrap">
                               {isRegex && (
@@ -2473,7 +2562,7 @@ export default function FluktuasiOIPage() {
           </div>
 
           {/* ── Upload Card ──────────────────────────────────────────────── */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+          <div data-animate-card className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <button
               onClick={() => setShowUploadSection(v => !v)}
               className="w-full p-5 flex flex-wrap items-center justify-between gap-3 hover:bg-gray-50 transition-colors text-left"
@@ -2509,7 +2598,11 @@ export default function FluktuasiOIPage() {
                   </button>
                 </div>
 
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
+                <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-300 ${
+                  isProcessing
+                    ? 'border-indigo-400 bg-indigo-50 scale-[0.99]'
+                    : 'border-gray-300 hover:border-indigo-400 hover:bg-indigo-50 hover:scale-[1.01]'
+                }`}>
                   <Upload className="text-gray-400 mb-2" size={28} />
                   <p className="text-sm text-gray-500">
                     <span className="font-semibold text-gray-700">{fileName || 'Klik untuk upload'}</span>{' '}
@@ -2520,9 +2613,19 @@ export default function FluktuasiOIPage() {
                 </label>
 
                 {isProcessing && (
-                  <div className="flex items-center justify-center mt-4 gap-3 text-sm text-gray-600">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600" />
-                    Memproses file…
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-center justify-center gap-3 text-sm text-indigo-700 font-medium">
+                      <Loader2 size={18} className="animate-spin text-indigo-600" />
+                      Memproses file…
+                    </div>
+                    <div id="upload-processing-bar" className="w-full">
+                      <Progress value={30} className="h-1.5 animate-pulse bg-indigo-100" />
+                    </div>
+                    <div className="flex gap-2">
+                      <Skeleton className="h-3 w-1/3 rounded" />
+                      <Skeleton className="h-3 w-1/4 rounded" />
+                      <Skeleton className="h-3 w-1/5 rounded" />
+                    </div>
                   </div>
                 )}
                 {uploadError && (
@@ -2535,7 +2638,7 @@ export default function FluktuasiOIPage() {
           </div>
 
           {/* ── Data Tersimpan (Multi-Periode) ────────────────────────── */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+          <div data-animate-card className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-5 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-gray-800">Data Tersimpan (Multi-Periode)</h2>
@@ -2564,16 +2667,28 @@ export default function FluktuasiOIPage() {
               </div>
             </div>
 
-            {dbPeriodeStats ? (
-              <div className="px-5 pb-5">
+            {loadingDbRekap ? (
+              <div className="px-5 pb-5 space-y-3">
+                <div className="flex gap-3">
+                  <Skeleton className="h-9 w-28 rounded-lg" />
+                  <Skeleton className="h-9 w-36 rounded-lg" />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-7 w-16 rounded-full" />)}
+                </div>
+              </div>
+            ) : dbPeriodeStats ? (
+              <div ref={dbStatsRef} className="px-5 pb-5">
                 <div className="flex flex-wrap gap-3 mb-3">
-                  <div className="bg-teal-50 border border-teal-200 rounded-lg px-4 py-2 text-sm">
+                  <div className="bg-teal-50 border border-teal-200 rounded-lg px-4 py-2 text-sm flex items-center gap-2">
+                    <Sparkles size={14} className="text-teal-500" />
                     <span className="font-semibold text-teal-800">{dbPeriodeStats.accounts}</span>
-                    <span className="text-teal-600 ml-1">kode akun</span>
+                    <span className="text-teal-600">kode akun</span>
                   </div>
-                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2 text-sm">
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2 text-sm flex items-center gap-2">
+                    <Sparkles size={14} className="text-indigo-500" />
                     <span className="font-semibold text-indigo-800">{dbPeriodeStats.periodes.length}</span>
-                    <span className="text-indigo-600 ml-1">periode tersimpan</span>
+                    <span className="text-indigo-600">periode tersimpan</span>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -2582,7 +2697,7 @@ export default function FluktuasiOIPage() {
                     const MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
                     const label = `${MONTHS[parseInt(mo)-1] ?? mo} ${yr}`;
                     return (
-                      <span key={p} className="inline-flex px-2.5 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
+                      <span key={p} className="js-periode-badge inline-flex px-2.5 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium border border-teal-200 hover:bg-teal-200 transition-colors cursor-default">
                         {label}
                       </span>
                     );
@@ -2598,7 +2713,7 @@ export default function FluktuasiOIPage() {
 
           {/* ── Legend ───────────────────────────────────────────────────── */}
           {(sheetDataList.length > 0 || rekapSheetData) && (
-            <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-600">
+            <div data-animate-card className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-600">
               <span className="flex items-center gap-1.5">
                 <span className="inline-block w-3.5 h-3.5 rounded" style={{ backgroundColor: '#4472C4' }} />
                 Kolom asli Excel
@@ -2632,7 +2747,7 @@ export default function FluktuasiOIPage() {
             </div>
           )}
           {hasSheetRows && (
-            <div ref={tableResultRef} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <div data-animate-card ref={tableResultRef} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
               <div className="flex items-center border-b border-gray-200 bg-gray-50">
                 <button className="flex-shrink-0 px-2 py-2 text-gray-400 hover:text-gray-600 disabled:opacity-30"
                   disabled={activeSheetIdx === 0} onClick={() => switchTab(Math.max(0, activeSheetIdx - 1))}>
@@ -2847,7 +2962,7 @@ export default function FluktuasiOIPage() {
             };
 
             return (
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+              <div data-animate-card className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                 {/* Header bar */}
                 <div className="px-4 py-3 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2"
                   style={{ background: 'linear-gradient(to right,#1F3864,#2e4d8a)' }}>
@@ -2865,16 +2980,26 @@ export default function FluktuasiOIPage() {
                   </div>
                   {/* Generate All AI Button */}
                   {aiBatch ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-white/80 animate-pulse">
-                        {aiBatch.done}/{aiBatch.total} akun...
+                    <div className="flex flex-col gap-1.5 min-w-[160px]">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-white/80 font-medium flex items-center gap-1">
+                          <Loader2 size={11} className="animate-spin" />
+                          {aiBatch.done}/{aiBatch.total} akun
+                        </span>
+                        <button
+                          onClick={() => { aiCancelRef.current = true; setAiBatch(null); }}
+                          className="text-[10px] px-2 py-0.5 rounded font-medium transition"
+                          style={{ backgroundColor: 'rgba(239,68,68,0.75)', color: '#fff' }}>
+                          Stop
+                        </button>
+                      </div>
+                      <Progress
+                        value={Math.round((aiBatch.done / aiBatch.total) * 100)}
+                        className="h-1.5 bg-white/20"
+                      />
+                      <span className="text-[10px] text-white/60">
+                        {Math.round((aiBatch.done / aiBatch.total) * 100)}%
                       </span>
-                      <button
-                        onClick={() => { aiCancelRef.current = true; setAiBatch(null); }}
-                        className="px-2 py-1 text-xs rounded font-medium"
-                        style={{ backgroundColor: 'rgba(239,68,68,0.8)', color: '#fff' }}>
-                        Stop
-                      </button>
                     </div>
                   ) : (
                     <button
@@ -3074,7 +3199,7 @@ export default function FluktuasiOIPage() {
                         </th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody ref={rekapBodyRef as React.Ref<HTMLTableSectionElement>}>
                       {rekapPageRows.map((row, ri) => {
                         const globalRi  = rekapPage * REKAP_PAGE_SIZE + ri;
                         const s         = rekapRowStyle(row.type, globalRi);
@@ -3094,7 +3219,7 @@ export default function FluktuasiOIPage() {
                           isSpecial ? '#fff' : v < 0 ? '#b91c1c' : v > 0 ? '#15803d' : '#374151';
                         const rowHasData = hasData(row);
                         return (
-                          <tr key={ri}>
+                          <tr key={ri} className="js-rekap-row">
                             {/* Account */}
                             <td className="px-3 py-1.5 whitespace-nowrap font-mono text-[10px]"
                               style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}`, minWidth: '80px' }}>
@@ -3287,7 +3412,7 @@ export default function FluktuasiOIPage() {
       {/* ── Keyword Modal ─────────────────────────────────────────────────── */}
       {showKeywordModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+          <div ref={modalRef} className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
               <h3 className="text-xl font-semibold text-gray-800">
                 {editingKeyword ? 'Edit Keyword' : 'Tambah Keyword Baru'}
