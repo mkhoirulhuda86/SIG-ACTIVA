@@ -92,14 +92,64 @@ export default function DashboardPage() {
       const response = await fetch('/api/accrual');
       if (response.ok) {
         const accruals = await response.json();
-        // Saldo = saldo awal + total accrual - realisasi; total accrual = sum(amountAccrual) per periode
+
+        const bulanMap: Record<string, number> = {
+          'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
+          'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11,
+        };
+
+        // Mirror calculateAccrualAmount from monitoring-accrual page:
+        // For non-manual: only count periodes that are past-due OR have effective realisasi
+        const calcAccrual = (item: any): number => {
+          if (!item.periodes || item.periodes.length === 0) return 0;
+          if (item.pembagianType === 'manual') {
+            return item.periodes.reduce((s: number, p: any) => s + Math.abs(p.amountAccrual || 0), 0);
+          }
+          const today = new Date();
+          const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+          let total = 0;
+          let rollover = 0;
+          for (const p of item.periodes) {
+            const [bulanName, tahunStr] = (p.bulan as string).split(' ');
+            const periodeBulan = bulanMap[bulanName] ?? 0;
+            const periodeTahun = parseInt(tahunStr);
+            const periodeDate = new Date(periodeTahun, periodeBulan, 1);
+            const realisasiPeriode = p.totalRealisasi ?? 0;
+            const totalAvailable = realisasiPeriode + rollover;
+            const capAccrual = Math.abs(p.amountAccrual || 0);
+            const effectiveRealisasi = Math.min(totalAvailable, capAccrual);
+            const newRollover = Math.max(0, totalAvailable - capAccrual);
+            const isPastDue = todayDate >= periodeDate;
+            const hasEffective = effectiveRealisasi > 0;
+            if (isPastDue || hasEffective) total += capAccrual;
+            rollover = newRollover;
+          }
+          return total;
+        };
+
+        // Mirror calculateItemRealisasi: effective realisasi with rollover (capped per periode)
+        const calcRealisasi = (item: any): number => {
+          if (!item.periodes || item.periodes.length === 0) return 0;
+          let rollover = 0;
+          let total = 0;
+          for (const p of item.periodes) {
+            const realisasiPeriode = p.totalRealisasi ?? 0;
+            const totalAvailable = realisasiPeriode + rollover;
+            const cap = Math.abs(p.amountAccrual || 0);
+            const effective = Math.min(totalAvailable, cap);
+            total += effective;
+            rollover = Math.max(0, totalAvailable - cap);
+          }
+          return total;
+        };
+
         let totalAccrualSum = 0;
         let totalRealisasiSum = 0;
         let totalSaldoSum = 0;
         accruals.forEach((item: any) => {
           const saldoAwal = item.saldoAwal != null ? Number(item.saldoAwal) : Math.abs(item.totalAmount || 0);
-          const totalAccrualItem = item.periodes?.reduce((s: number, p: any) => s + Math.abs(p.amountAccrual || 0), 0) || 0;
-          const totalRealisasiItem = item.periodes?.reduce((s: number, p: any) => s + (p.totalRealisasi || 0), 0) || 0;
+          const totalAccrualItem = calcAccrual(item);
+          const totalRealisasiItem = calcRealisasi(item);
           totalAccrualSum += totalAccrualItem;
           totalRealisasiSum += totalRealisasiItem;
           totalSaldoSum += saldoAwal + totalAccrualItem - totalRealisasiItem;

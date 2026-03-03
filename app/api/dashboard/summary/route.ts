@@ -44,8 +44,11 @@ export async function GET(req: NextRequest) {
           klasifikasi: true,
           totalAmount: true,
           saldoAwal: true,
+          pembagianType: true,
           periodes: {
             select: {
+              bulan: true,
+              tahun: true,
               amountAccrual: true,
               realisasis: {
                 select: {
@@ -159,11 +162,55 @@ export async function GET(req: NextRequest) {
       .slice(0, 5);
 
     // Calculate accrual totals and status: saldo = saldo awal + total accrual - realisasi
+    const bulanMap: Record<string, number> = {
+      'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
+      'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11,
+    };
+
+    // Mirror calculateAccrualAmount: for non-manual only count past-due OR effective-realisasi periods
+    const calcAccrualAmount = (accrual: any): number => {
+      if (!accrual.periodes || accrual.periodes.length === 0) return 0;
+      if (accrual.pembagianType === 'manual') {
+        return accrual.periodes.reduce((s: number, p: any) => s + Math.abs(p.amountAccrual || 0), 0);
+      }
+      const today = new Date();
+      const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      let total = 0;
+      let rollover = 0;
+      for (const p of accrual.periodes) {
+        const [bulanName, tahunStr] = (p.bulan as string).split(' ');
+        const periodeBulan = bulanMap[bulanName] ?? 0;
+        const periodeTahun = parseInt(tahunStr);
+        const periodeDate = new Date(periodeTahun, periodeBulan, 1);
+        const realisasiRaw = p.realisasis?.reduce((s: number, r: any) => s + Math.abs(r.amount), 0) || 0;
+        const totalAvailable = realisasiRaw + rollover;
+        const cap = Math.abs(p.amountAccrual || 0);
+        const effective = Math.min(totalAvailable, cap);
+        rollover = Math.max(0, totalAvailable - cap);
+        if (todayDate >= periodeDate || effective > 0) total += cap;
+      }
+      return total;
+    };
+
+    // Mirror calculateItemRealisasi: effective realisasi with rollover (capped per periode)
+    const calcEffectiveRealisasi = (accrual: any): number => {
+      if (!accrual.periodes || accrual.periodes.length === 0) return 0;
+      let rollover = 0;
+      let total = 0;
+      for (const p of accrual.periodes) {
+        const realisasiRaw = p.realisasis?.reduce((s: number, r: any) => s + Math.abs(r.amount), 0) || 0;
+        const totalAvailable = realisasiRaw + rollover;
+        const cap = Math.abs(p.amountAccrual || 0);
+        const effective = Math.min(totalAvailable, cap);
+        total += effective;
+        rollover = Math.max(0, totalAvailable - cap);
+      }
+      return total;
+    };
+
     const accrualWithCalculations = accrualData.map((accrual: any) => {
-      const totalAccrualItem = accrual.periodes?.reduce((sum: number, p: any) => sum + Math.abs(p.amountAccrual || 0), 0) || 0;
-      const totalRealized = accrual.periodes.reduce((sum: number, periode: any) => {
-        return sum + periode.realisasis.reduce((rSum: number, realisasi: any) => rSum + Math.abs(realisasi.amount), 0);
-      }, 0);
+      const totalAccrualItem = calcAccrualAmount(accrual);
+      const totalRealized = calcEffectiveRealisasi(accrual);
       const saldoAwal = accrual.saldoAwal != null ? Number(accrual.saldoAwal) : Math.abs(accrual.totalAmount || 0);
       const remaining = saldoAwal + totalAccrualItem - totalRealized;
       return {
@@ -179,8 +226,8 @@ export async function GET(req: NextRequest) {
       pending: accrualWithCalculations.filter((a: any) => a.remaining > (a.saldoAwal ?? a.totalAmount ?? 0) * 0.5).length,
     };
 
-    const totalAccrual = accrualData.reduce((sum: number, item: any) => {
-      return sum + (item.periodes?.reduce((s: number, p: any) => s + Math.abs(p.amountAccrual || 0), 0) || 0);
+    const totalAccrual = accrualWithCalculations.reduce((sum: number, item: any) => {
+      return sum + calcAccrualAmount(item);
     }, 0);
     const totalRealized = accrualWithCalculations.reduce((sum: number, item: any) => sum + item.totalRealized, 0);
     const totalAccrualRemaining = accrualWithCalculations.reduce((sum: number, item: any) => sum + item.remaining, 0);
