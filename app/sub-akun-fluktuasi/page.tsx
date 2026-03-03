@@ -306,21 +306,26 @@ export default function SubAkunFluktuasiPage() {
       .map(([label, value], i) => ({ label, value, color: KLASI_PALETTE[i % KLASI_PALETTE.length] }));
   }, [filtered, filterKlasifikasi]);
 
-  // Listing rows — grouped by sub-akun code (not individual accountCode)
+  // Listing rows — grouped by sub-akun code only, collect all unique klasifikasi parts
   const listingRows = useMemo(() => {
     const m = new Map<string, {
       subGroup: SubGroup;
       klasifikasi: string;
+      klasifikasiParts: Set<string>;
       total: number;
       periodes: number;
     }>();
     filtered.forEach(r => {
-      const sg  = resolveGroup(r.accountCode);
-      const key = `${sg.code}|${r.klasifikasi}`;
-      const ex  = m.get(key) ?? { subGroup: sg, klasifikasi: r.klasifikasi || '(Tanpa Klasifikasi)', total: 0, periodes: 0 };
+      const sg   = resolveGroup(r.accountCode);
+      const key  = sg.code;
+      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
+      const ex   = m.get(key) ?? { subGroup: sg, klasifikasi: '', klasifikasiParts: new Set<string>(), total: 0, periodes: 0 };
+      parts.forEach(p => ex.klasifikasiParts.add(p));
       m.set(key, { ...ex, total: ex.total + r.amount, periodes: ex.periodes + 1 });
     });
-    return [...m.values()].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
+    return [...m.values()]
+      .map(row => ({ ...row, klasifikasi: [...row.klasifikasiParts].join('; ') }))
+      .sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
   }, [filtered, resolveGroup]);
 
   const listingTotalPages = useMemo(
