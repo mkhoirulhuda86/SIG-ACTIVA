@@ -1,24 +1,125 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Lock, User, Eye, EyeOff, Mail } from 'lucide-react';
-import Link from 'next/link';
+import { Lock, Mail, Eye, EyeOff, CheckCircle, XCircle, Clock, ArrowRight, Loader2 } from 'lucide-react';
+import { gsap } from 'gsap';
+import { animate, stagger, random } from 'animejs';
+import { Input } from '@/app/components/ui/input';
+import { Label } from '@/app/components/ui/label';
+import { Card, CardContent } from '@/app/components/ui/card';
+import { Badge } from '@/app/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 export default function LoginPage() {
-  const router = useRouter();
+  const router       = useRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [email,          setEmail]          = useState('');
+  const [password,       setPassword]       = useState('');
+  const [showPassword,   setShowPassword]   = useState(false);
+  const [error,          setError]          = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [accountStatus, setAccountStatus] = useState<{
+  const [isLoading,      setIsLoading]      = useState(false);
+  const [accountStatus,  setAccountStatus]  = useState<{
     emailVerified: boolean;
     isApproved: boolean;
   } | null>(null);
 
+  /* ── Refs ────────────────────────────────────────────────── */
+  const bgRef    = useRef<HTMLDivElement>(null);
+  const cardRef  = useRef<HTMLDivElement>(null);
+  const logoRef  = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const formRef  = useRef<HTMLFormElement>(null);
+  const btnRef   = useRef<HTMLButtonElement>(null);
+
+  /* ── Entrance animations ─────────────────────────────────── */
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+      tl.from(bgRef.current, { opacity: 0, duration: 0.5 });
+      tl.fromTo(
+        logoRef.current,
+        { scale: 0, rotate: -20, opacity: 0 },
+        { scale: 1, rotate: 0, opacity: 1, duration: 0.65, ease: 'back.out(2)' },
+        '-=0.2'
+      );
+      tl.fromTo(
+        cardRef.current,
+        { y: 48, opacity: 0, scale: 0.95 },
+        { y: 0, opacity: 1, scale: 1, duration: 0.6 },
+        '-=0.35'
+      );
+    });
+
+    // Typewriter on title
+    const titleEl = titleRef.current;
+    if (titleEl) {
+      const text = 'Masuk';
+      titleEl.innerHTML = text
+        .split('')
+        .map(l => `<span style="display:inline-block;opacity:0">${l}</span>`)
+        .join('');
+      animate('#login-title span', {
+        opacity: [0, 1],
+        translateY: [10, 0],
+        duration: 400,
+        delay: stagger(60, { start: 550 }),
+        ease: 'outExpo',
+      });
+    }
+
+    // Animated particles
+    const container = bgRef.current;
+    if (container) {
+      for (let i = 0; i < 14; i++) {
+        const el = document.createElement('div');
+        const size = Math.random() * 10 + 5;
+        el.style.cssText = `position:absolute;border-radius:50%;pointer-events:none;
+          width:${size}px;height:${size}px;
+          background:${Math.random() > 0.5 ? 'hsl(0 84% 80% / 0.25)' : 'hsl(221 83% 75% / 0.2)'};
+          left:${Math.random() * 100}%;top:${Math.random() * 100}%;`;
+        container.appendChild(el);
+        animate(el, {
+          translateX: () => random(-80, 80),
+          translateY: () => random(-80, 80),
+          opacity: [{ to: 0 }, { to: 0.7 }, { to: 0 }],
+          scale: [{ to: 0 }, { to: 1 }, { to: 0 }],
+          duration: () => random(4000, 8000),
+          delay: () => random(0, 3000),
+          loop: true,
+          ease: 'inOutSine',
+        });
+      }
+    }
+
+    // Form fields stagger
+    setTimeout(() => {
+      if (!formRef.current) return;
+      animate(formRef.current.querySelectorAll('.form-field'), {
+        opacity: [0, 1],
+        translateY: [16, 0],
+        duration: 450,
+        delay: stagger(80, { start: 400 }),
+        ease: 'outExpo',
+      });
+    }, 100);
+
+    return () => ctx.revert();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ── Shake on error ─────────────────────────────────────── */
+  const shakeCard = () => {
+    if (!cardRef.current) return;
+    animate(cardRef.current, {
+      translateX: [0, -8, 8, -6, 6, 0],
+      duration: 400,
+      ease: 'inOutSine',
+    });
+  };
+
+  /* ── URL param messages ─────────────────────────────────── */
   useEffect(() => {
     if (searchParams.get('registered') === 'true') {
       if (searchParams.get('needVerification') === 'true') {
@@ -31,238 +132,199 @@ export default function LoginPage() {
     }
   }, [searchParams]);
 
+  /* ── Login handler ─────────────────────────────────────── */
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setSuccessMessage(''); // Clear success message saat login
-    setAccountStatus(null); // Reset account status
+    setError(''); setSuccessMessage(''); setAccountStatus(null);
     setIsLoading(true);
+    if (btnRef.current) gsap.to(btnRef.current, { scale: 0.97, duration: 0.15 });
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const res  = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
+      const data = await res.json();
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        // Set session
-        localStorage.setItem('isAuthenticated', 'true');
-        localStorage.setItem('username', data.user.username);
-        localStorage.setItem('userId', data.user.id);
-        localStorage.setItem('userName', data.user.name);
-        localStorage.setItem('userRole', data.user.role);
-
-         // Redirect ke dashboard utama
-         router.push('/');
+      if (res.ok && data.success) {
+        gsap.to(cardRef.current, {
+          scale: 1.02, opacity: 0, y: -20, duration: 0.4, ease: 'power3.in',
+          onComplete: () => {
+            localStorage.setItem('isAuthenticated', 'true');
+            localStorage.setItem('username', data.user.username);
+            localStorage.setItem('userId', data.user.id);
+            localStorage.setItem('userName', data.user.name);
+            localStorage.setItem('userRole', data.user.role);
+            router.push('/');
+          },
+        });
       } else {
-        // Jika login gagal karena verifikasi/approval, cek status akun
-        if (response.status === 403) {
+        if (res.status === 403) {
           try {
-            const checkResponse = await fetch('/api/users/check', {
+            const check = await fetch('/api/users/check', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ email }),
             });
-            
-            if (checkResponse.ok) {
-              const checkData = await checkResponse.json();
-              setAccountStatus({
-                emailVerified: checkData.user.emailVerified,
-                isApproved: checkData.user.isApproved,
-              });
+            if (check.ok) {
+              const cd = await check.json();
+              setAccountStatus({ emailVerified: cd.user.emailVerified, isApproved: cd.user.isApproved });
             }
-          } catch (checkError) {
-            console.error('Failed to check account status:', checkError);
-          }
+          } catch { /* silent */ }
         }
-        
         setError(data.error || 'Email atau password salah');
+        shakeCard();
         setIsLoading(false);
+        if (btnRef.current) gsap.to(btnRef.current, { scale: 1, duration: 0.15 });
       }
-    } catch (err) {
-      console.error('Login error:', err);
+    } catch {
       setError('Terjadi kesalahan. Silakan coba lagi.');
+      shakeCard();
       setIsLoading(false);
+      if (btnRef.current) gsap.to(btnRef.current, { scale: 1, duration: 0.15 });
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-gray-100 flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        {/* Logo & Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-32 h-32 mb-4">
-            <img src="/logo aplikasi.png" alt="SIG ACTIVA Logo" className="w-32 h-32 object-contain" />
+    <div className="min-h-screen flex items-center justify-center px-4 py-8 overflow-hidden">
+      {/* Background */}
+      <div ref={bgRef} className="fixed inset-0 -z-10 gradient-mesh overflow-hidden" />
+      {/* Rings */}
+      <div className="fixed inset-0 -z-10 pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full border border-primary/5 animate-spin-slow" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full border border-primary/8 animate-spin-slow [animation-direction:reverse] [animation-duration:12s]" />
+      </div>
+
+      <div className="w-full max-w-sm">
+        {/* Logo */}
+        <div ref={logoRef} className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-24 h-24 mb-4 drop-shadow-xl">
+            <img src="/logo aplikasi.png" alt="SIG ACTIVA" className="w-24 h-24 object-contain" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            SIG ACTIVA
-          </h1>
-          <p className="text-gray-600">
-            Sistem Informasi Akuntansi PT Semen Indonesia Grup
+          <h1 className="text-2xl font-extrabold text-foreground tracking-tight">SIG ACTIVA</h1>
+          <p className="text-xs text-muted-foreground mt-1 max-w-[220px] mx-auto leading-snug">
+            Sistem Informasi Akuntansi<br />PT Semen Indonesia Grup
           </p>
         </div>
 
-        {/* Login Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-800 mb-6">
-            Masuk
-          </h2>
+        {/* Card */}
+        <Card ref={cardRef as any} className="shadow-2xl border-0 bg-white/80 backdrop-blur-xl">
+          <CardContent className="p-6 sm:p-8">
+            <h2 id="login-title" ref={titleRef} className="text-xl font-bold text-foreground mb-5">Masuk</h2>
 
-          <form onSubmit={handleLogin} className="space-y-5">
-            {/* Email Input */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
-                  <Mail size={20} className="text-gray-500" />
+            <form ref={formRef} onSubmit={handleLogin} className="space-y-4">
+              {/* Email */}
+              <div className="form-field space-y-1.5">
+                <Label htmlFor="email">Email</Label>
+                <div className="relative">
+                  <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className="pl-9 h-11 bg-white border-border focus-visible:ring-primary text-foreground"
+                    placeholder="nama@email.com"
+                    required
+                  />
                 </div>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all text-gray-900 bg-white"
-                  placeholder="Masukkan email"
-                  required
-                />
               </div>
-            </div>
 
-            {/* Password Input */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
-                  <Lock size={20} className="text-gray-500" />
+              {/* Password */}
+              <div className="form-field space-y-1.5">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="pl-9 pr-10 h-11 bg-white border-border focus-visible:ring-primary text-foreground"
+                    placeholder="••••••••"
+                    required
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowPassword(p => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
                 </div>
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all text-gray-900 bg-white"
-                  placeholder="Masukkan password"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
               </div>
-            </div>
 
-            {/* Success Message */}
-            {successMessage && (
-              <div className={`px-4 py-3 rounded-lg text-sm ${
-                successMessage.includes('persetujuan') || successMessage.includes('approval') 
-                  ? 'bg-blue-50 border border-blue-200 text-blue-700' 
-                  : 'bg-green-50 border border-green-200 text-green-600'
-              }`}>
-                {successMessage}
-                {successMessage.includes('persetujuan') && (
-                  <div className="mt-2 pt-2 border-t border-blue-200">
-                    <p className="text-xs text-blue-600">
-                      💡 Tip: Hubungi Admin System untuk mempercepat proses persetujuan.
-                    </p>
+              {/* Success */}
+              {successMessage && (
+                <div className={cn(
+                  'form-field rounded-lg px-3 py-2.5 text-xs border flex gap-2 items-start',
+                  successMessage.includes('persetujuan') ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-green-50 border-green-200 text-green-700'
+                )}>
+                  <CheckCircle size={13} className="shrink-0 mt-0.5" />
+                  <span>{successMessage}</span>
+                </div>
+              )}
+
+              {/* Error */}
+              {error && (
+                <div className="form-field space-y-2">
+                  <div className="rounded-lg px-3 py-2.5 text-xs border bg-destructive/5 border-destructive/20 text-destructive flex gap-2 items-start">
+                    <XCircle size={13} className="shrink-0 mt-0.5" />
+                    <span>{error}</span>
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* Error Message */}
-            {error && (
-              <div>
-                <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">
-                  {error}
-                </div>
-                
-                {/* Account Status Indicator */}
-                {accountStatus && (
-                  <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-4">
-                    <p className="text-sm font-semibold text-gray-700 mb-2">Status Akun:</p>
-                    <div className="space-y-1.5 text-sm">
-                      <div className="flex items-center">
-                        <span className={`mr-2 ${accountStatus.emailVerified ? 'text-green-600' : 'text-red-600'}`}>
-                          {accountStatus.emailVerified ? '✅' : '❌'}
-                        </span>
-                        <span className="text-gray-600">
-                          Verifikasi Email: {accountStatus.emailVerified ? 'Sudah terverifikasi' : 'Belum terverifikasi'}
-                        </span>
-                      </div>
-                      <div className="flex items-center">
-                        <span className={`mr-2 ${accountStatus.isApproved ? 'text-green-600' : 'text-amber-600'}`}>
-                          {accountStatus.isApproved ? '✅' : '⏳'}
-                        </span>
-                        <span className="text-gray-600">
-                          Persetujuan Admin: {accountStatus.isApproved ? 'Sudah disetujui' : 'Menunggu persetujuan'}
-                        </span>
+                  {accountStatus && (
+                    <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs space-y-2">
+                      <p className="font-semibold text-foreground">Status Akun:</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {accountStatus.emailVerified
+                          ? <Badge variant="success" className="gap-1 text-[10px]"><CheckCircle size={9} /> Email Terverifikasi</Badge>
+                          : <Badge variant="destructive" className="gap-1 text-[10px]"><XCircle size={9} /> Email Belum Verifikasi</Badge>
+                        }
+                        {accountStatus.isApproved
+                          ? <Badge variant="success" className="gap-1 text-[10px]"><CheckCircle size={9} /> Sudah Disetujui</Badge>
+                          : <Badge variant="warning" className="gap-1 text-[10px]"><Clock size={9} /> Menunggu Persetujuan</Badge>
+                        }
                       </div>
                     </div>
-                    
-                    {accountStatus.emailVerified && !accountStatus.isApproved && (
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <p className="text-xs text-amber-700">
-                          <strong>Akun Anda sedang menunggu persetujuan Admin System.</strong><br/>
-                          Silakan hubungi administrator untuk mempercepat proses persetujuan.
-                        </p>
-                      </div>
-                    )}
-                    
-                    {!accountStatus.emailVerified && (
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <p className="text-xs text-red-700">
-                          <strong>Email Anda belum diverifikasi.</strong><br/>
-                          Silakan cek inbox email Anda dan klik link verifikasi yang telah dikirimkan.
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                  )}
+                </div>
+              )}
+
+              {/* Submit */}
+              <button
+                ref={btnRef}
+                type="submit"
+                disabled={isLoading}
+                className={cn(
+                  'form-field w-full h-11 flex items-center justify-center gap-2 rounded-lg font-semibold text-sm text-white transition-colors will-change-transform',
+                  'bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-primary/25'
                 )}
-              </div>
-            )}
+              >
+                {isLoading ? (
+                  <><Loader2 size={15} className="animate-spin" /> Memproses...</>
+                ) : (
+                  <>Masuk <ArrowRight size={15} /></>
+                )}
+              </button>
+            </form>
 
-            {/* Login Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
-            >
-              {isLoading ? 'Memproses...' : 'Masuk'}
-            </button>
-          </form>
-
-          {/* Register Link */}
-          <div className="mt-6">
-            <p className="text-center text-sm text-gray-600">
+            <p className="text-center text-xs text-muted-foreground mt-5">
               Belum punya akun?{' '}
               <button
                 type="button"
                 onClick={() => router.push('/register')}
-                className="text-red-600 hover:text-red-700 font-semibold hover:underline"
+                className="text-primary hover:underline font-semibold"
               >
                 Daftar di sini
               </button>
             </p>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        {/* Footer */}
-        <p className="text-center text-sm text-gray-500 mt-6">
-          © 2026 SIG ACTIVA - PT Semen Indonesia Grup. All rights reserved.
+        <p className="text-center text-[11px] text-muted-foreground mt-5">
+          © 2026 SIG ACTIVA — PT Semen Indonesia Grup
         </p>
       </div>
     </div>

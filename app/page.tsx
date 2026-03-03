@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { TrendingUp, TrendingDown, CheckCircle, DollarSign, FileText, Package, CreditCard, Clock, BarChart2, Minus } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { gsap } from 'gsap';
 import MetricCard from './components/MetricCard';
 import RekonsiliasiCard from './components/RekonsiliasiCard';
 import SimpleBarChart from './components/SimpleBarChart';
@@ -50,6 +51,27 @@ export default function DashboardPage() {
     totalSaldo: 0,
     jumlahAccrual: 0,
   });
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  /* ── GSAP: animate grid sections in on load ──────────────── */
+  useEffect(() => {
+    if (!contentRef.current) return;
+    const sections = contentRef.current.querySelectorAll('.dashboard-section');
+    if (sections.length === 0) return;
+    gsap.fromTo(
+      sections,
+      { opacity: 0, y: 32 },
+      {
+        opacity: 1, y: 0,
+        duration: 0.65,
+        ease: 'power3.out',
+        stagger: 0.12,
+        delay: 0.1,
+      }
+    );
+  // trigger once after mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -225,9 +247,9 @@ export default function DashboardPage() {
         />
 
         {/* Content Area */}
-        <div className="p-4 sm:p-6 md:p-8 bg-gray-50">
+        <div ref={contentRef} className="p-4 sm:p-6 md:p-8 bg-gray-50">
           {/* Metric Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
+          <div className="dashboard-section grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
             <div className="animate-fadeIn delay-100">
               <MetricCard
                 title="Saldo Accrual"
@@ -264,7 +286,7 @@ export default function DashboardPage() {
 
           {/* Additional Overview Cards */}
           {summary && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
+            <div className="dashboard-section grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
               <div className="animate-fadeIn delay-100">
                 <MetricCard
                   title="Total Material"
@@ -527,7 +549,7 @@ export default function DashboardPage() {
           )}
 
           {/* Rekonsiliasi Cards */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 md:gap-6 animate-fadeIn delay-300">
+          <div className="dashboard-section grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 md:gap-6">
             <RekonsiliasiCard
               title="Rekonsiliasi Accrual vs Realisasi"
               description="Monitoring selisih antara accrual yang dicatat dengan realisasi pembayaran"

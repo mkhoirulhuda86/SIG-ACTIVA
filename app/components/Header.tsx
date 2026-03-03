@@ -1,7 +1,15 @@
 'use client';
 
-import { Bell, User, LogOut, Menu, AlertCircle, TrendingUp, Package } from 'lucide-react';
+import { Bell, User, LogOut, Menu, AlertCircle, TrendingUp, Package, RefreshCw } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import { animate, stagger } from 'animejs';
+import { gsap } from 'gsap';
+import { cn } from '@/lib/utils';
+import { Button } from './ui/button';
+import { Avatar, AvatarFallback } from './ui/avatar';
+import { Badge } from './ui/badge';
+import { Separator } from './ui/separator';
+import { ScrollArea } from './ui/scroll-area';
 
 interface HeaderProps {
   title: string;
@@ -19,242 +27,280 @@ interface Notification {
   createdAt: string;
 }
 
+const priorityVariant: Record<string, string> = {
+  high:   'border-l-4 border-destructive bg-destructive/5',
+  medium: 'border-l-4 border-yellow-400 bg-yellow-50',
+  low:    'border-l-4 border-blue-400 bg-blue-50',
+};
+
 export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
-  const [showLogout, setShowLogout] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [notificationCount, setNotificationCount] = useState(0);
-  const [loadingNotifications, setLoadingNotifications] = useState(false);
-  const [userName, setUserName] = useState('User');
-  const [userRole, setUserRole] = useState('');
-  const [readNotifications, setReadNotifications] = useState<Set<string>>(new Set());
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [showLogout,       setShowLogout]       = useState(false);
+  const [showNotifications,setShowNotifications]= useState(false);
+  const [notifications,    setNotifications]    = useState<Notification[]>([]);
+  const [notificationCount,setNotificationCount]= useState(0);
+  const [loadingNotifs,    setLoadingNotifs]    = useState(false);
+  const [userName,         setUserName]         = useState('User');
+  const [userRole,         setUserRole]         = useState('');
+  const [readNotifications,setReadNotifications]= useState<Set<string>>(new Set());
+
+  const dropdownRef     = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
+  const headerRef       = useRef<HTMLDivElement>(null);
+  const bellRef         = useRef<HTMLButtonElement>(null);
+  const notifPanelRef   = useRef<HTMLDivElement>(null);
+  const userPanelRef    = useRef<HTMLDivElement>(null);
+
+  /* â”€â”€ Entrance animation (anime.js) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  useEffect(() => {
+    if (!headerRef.current) return;
+    animate(headerRef.current, {
+      translateY: [-40, 0],
+      opacity: [0, 1],
+      duration: 600,
+      ease: 'outExpo',
+    });
+  }, []);
+
+  /* â”€â”€ Bell shake animation on new notifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  const shakeBell = () => {
+    if (!bellRef.current) return;
+    animate(bellRef.current, {
+      rotate: [{ to: -15 }, { to: 15 }, { to: -10 }, { to: 10 }, { to: 0 }],
+      duration: 600,
+      ease: 'inOutSine',
+    });
+  };
+
+  /* â”€â”€ Dropdown open/close animations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  const animatePanel = (el: HTMLElement | null, show: boolean) => {
+    if (!el) return;
+    if (show) {
+      animate(el, {
+        opacity: [0, 1],
+        translateY: [-8, 0],
+        scale: [0.97, 1],
+        duration: 220,
+        ease: 'outCubic',
+      });
+    } else {
+      animate(el, {
+        opacity: 0,
+        translateY: -6,
+        scale: 0.97,
+        duration: 160,
+        ease: 'inCubic',
+      });
+    }
+  };
+
+  /* â”€â”€ Notification items stagger in â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  const animateNotifItems = () => {
+    setTimeout(() => {
+      const items = notifPanelRef.current?.querySelectorAll('.notif-item');
+      if (!items?.length) return;
+      animate(items, {
+        opacity: [0, 1],
+        translateX: [12, 0],
+        duration: 350,
+        delay: stagger(45),
+        ease: 'outExpo',
+      });
+    }, 50);
+  };
 
   useEffect(() => {
-    // Get user info from localStorage
     const username = localStorage.getItem('username') || 'User';
-    const role = localStorage.getItem('userRole') || '';
-    console.log('Header - Username:', username, 'Role:', role);
+    const role     = localStorage.getItem('userRole') || '';
     setUserName(username);
     setUserRole(role);
 
-    // Load read notifications from localStorage
     const readIds = localStorage.getItem('readNotifications');
-    if (readIds) {
-      setReadNotifications(new Set(JSON.parse(readIds)));
-    }
+    if (readIds) setReadNotifications(new Set(JSON.parse(readIds)));
 
-    // Load notifications
     fetchNotifications();
-
-    // Refresh notifications every 5 minutes
     const interval = setInterval(fetchNotifications, 5 * 60 * 1000);
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchNotifications = async () => {
     try {
-      setLoadingNotifications(true);
-      const response = await fetch('/api/notifications');
-      if (response.ok) {
-        const data = await response.json();
+      setLoadingNotifs(true);
+      const res = await fetch('/api/notifications');
+      if (res.ok) {
+        const data = await res.json();
         setNotifications(data.notifications || []);
-        
-        // Get read notifications from localStorage
-        const readIds = localStorage.getItem('readNotifications');
-        const readSet = readIds ? new Set(JSON.parse(readIds)) : new Set();
-        
-        // Count only unread notifications
-        const unreadCount = data.notifications.filter((n: Notification) => !readSet.has(n.id)).length;
-        setNotificationCount(unreadCount);
+        const readIds  = localStorage.getItem('readNotifications');
+        const readSet  = readIds ? new Set(JSON.parse(readIds)) : new Set<string>();
+        const unread = (data.notifications as Notification[]).filter(n => !readSet.has(n.id)).length;
+        if (unread > notificationCount) shakeBell();
+        setNotificationCount(unread);
       }
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-    } finally {
-      setLoadingNotifications(false);
-    }
+    } catch { /* silent */ } finally { setLoadingNotifs(false); }
   };
 
-  const markAsRead = (notificationId: string) => {
-    const newReadSet = new Set(readNotifications);
-    newReadSet.add(notificationId);
-    setReadNotifications(newReadSet);
-    
-    // Save to localStorage
-    localStorage.setItem('readNotifications', JSON.stringify([...newReadSet]));
-    
-    // Update count
-    const unreadCount = notifications.filter(n => !newReadSet.has(n.id)).length;
-    setNotificationCount(unreadCount);
+  const markAsRead = (id: string) => {
+    const next = new Set(readNotifications); next.add(id);
+    setReadNotifications(next);
+    localStorage.setItem('readNotifications', JSON.stringify([...next]));
+    setNotificationCount(notifications.filter(n => !next.has(n.id)).length);
   };
 
   const markAllAsRead = () => {
-    const allIds = new Set(notifications.map(n => n.id));
-    setReadNotifications(allIds);
-    localStorage.setItem('readNotifications', JSON.stringify([...allIds]));
+    const all = new Set(notifications.map(n => n.id));
+    setReadNotifications(all);
+    localStorage.setItem('readNotifications', JSON.stringify([...all]));
     setNotificationCount(0);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('username');
-    localStorage.removeItem('userName');
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('userId');
+    ['isAuthenticated','username','userName','userRole','userId'].forEach(k => localStorage.removeItem(k));
     window.location.href = '/login';
   };
 
-  // Close dropdown when clicking outside
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowLogout(false);
-      }
-      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
-        setShowNotifications(false);
-      }
-    }
-
-    if (showLogout || showNotifications) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
+    const onOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowLogout(false);
+      if (notificationRef.current && !notificationRef.current.contains(e.target as Node)) setShowNotifications(false);
+    };
+    if (showLogout || showNotifications) document.addEventListener('mousedown', onOutside);
+    return () => document.removeEventListener('mousedown', onOutside);
   }, [showLogout, showNotifications]);
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'accrual':
-        return <TrendingUp size={16} className="text-blue-500" />;
-      case 'prepaid':
-        return <AlertCircle size={16} className="text-orange-500" />;
-      case 'material':
-        return <Package size={16} className="text-purple-500" />;
-      default:
-        return <Bell size={16} className="text-gray-500" />;
-    }
+  const handleToggleNotif = () => {
+    const next = !showNotifications;
+    setShowNotifications(next);
+    animatePanel(notifPanelRef.current, next);
+    if (next) animateNotifItems();
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return 'border-l-4 border-red-500 bg-red-50';
-      case 'medium':
-        return 'border-l-4 border-yellow-500 bg-yellow-50';
-      case 'low':
-        return 'border-l-4 border-blue-500 bg-blue-50';
-      default:
-        return 'border-l-4 border-gray-300 bg-gray-50';
-    }
+  const handleToggleUser = () => {
+    const next = !showLogout;
+    setShowLogout(next);
+    animatePanel(userPanelRef.current, next);
   };
 
-  const handleNotificationClick = (notif: Notification) => {
-    markAsRead(notif.id);
-    setShowNotifications(false);
-    window.location.href = notif.link;
-  };
+  const getNotifIcon = (type: string) => ({
+    accrual:  <TrendingUp  size={14} className="text-blue-500" />,
+    prepaid:  <AlertCircle size={14} className="text-orange-500" />,
+    material: <Package     size={14} className="text-purple-500" />,
+  }[type] ?? <Bell size={14} className="text-muted-foreground" />);
+
+  const initials = userName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+  const formatRole = (r: string) =>
+    r.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   return (
-    <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-4 flex items-center justify-between">
-      <div className="flex items-center gap-4">
-        {/* Hamburger Menu for Mobile */}
-        <button
+    <header
+      ref={headerRef}
+      className="bg-background border-b border-border px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-40 shadow-sm"
+    >
+      {/* Left */}
+      <div className="flex items-center gap-3">
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={onMenuClick}
-          className="lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          className="lg:hidden h-9 w-9"
         >
-          <Menu size={24} className="text-gray-600" />
-        </button>
-        
+          <Menu size={20} />
+        </Button>
+
         <div>
-          <h1 className="text-lg md:text-2xl font-bold text-gray-800">{title}</h1>
-          <p className="text-xs md:text-sm text-gray-500 hidden sm:block">{subtitle}</p>
+          <h1 className="text-base md:text-xl font-bold text-foreground leading-tight">{title}</h1>
+          <p className="text-xs text-muted-foreground hidden sm:block">{subtitle}</p>
         </div>
       </div>
-      
-      <div className="flex items-center gap-2 md:gap-4">
-        {/* Notification */}
-        <div className="relative" ref={notificationRef}>
-          <button 
-            onClick={() => setShowNotifications(!showNotifications)}
-            className="relative p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <Bell className="text-gray-600 w-5 h-5" />
-            {notificationCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-                {notificationCount > 9 ? '9+' : notificationCount}
-              </span>
-            )}
-          </button>
 
-          {/* Notifications Dropdown */}
+      {/* Right */}
+      <div className="flex items-center gap-1.5 md:gap-2">
+
+        {/* Notifications */}
+        <div className="relative" ref={notificationRef}>
+          <Button
+            ref={bellRef}
+            variant="ghost"
+            size="icon"
+            onClick={handleToggleNotif}
+            className="relative h-9 w-9"
+          >
+            <Bell size={18} />
+            {notificationCount > 0 && (
+              <Badge
+                variant="destructive"
+                className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 text-[10px] font-bold flex items-center justify-center rounded-full animate-scaleIn"
+              >
+                {notificationCount > 9 ? '9+' : notificationCount}
+              </Badge>
+            )}
+          </Button>
+
+          {/* Notification Panel */}
           {showNotifications && (
-            <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-[80vh] overflow-hidden flex flex-col">
+            <div
+              ref={notifPanelRef}
+              className="absolute right-0 mt-2 w-80 md:w-96 bg-popover rounded-xl shadow-xl border border-border z-50 overflow-hidden flex flex-col max-h-[80vh]"
+            >
               {/* Header */}
-              <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-800">Notifikasi</h3>
-                  <div className="flex items-center gap-2">
-                    {notificationCount > 0 && (
-                      <>
-                        <span className="text-xs bg-red-500 text-white px-2 py-1 rounded-full">
-                          {notificationCount} Baru
-                        </span>
-                        <button
-                          onClick={markAllAsRead}
-                          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                        >
-                          Tandai Semua
-                        </button>
-                      </>
-                    )}
-                  </div>
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-muted/40">
+                <h3 className="font-semibold text-sm text-foreground">Notifikasi</h3>
+                <div className="flex items-center gap-2">
+                  {notificationCount > 0 && (
+                    <>
+                      <Badge variant="destructive" className="text-[10px]">{notificationCount} Baru</Badge>
+                      <button
+                        onClick={markAllAsRead}
+                        className="text-[11px] text-primary hover:underline font-medium"
+                      >
+                        Tandai Semua
+                      </button>
+                    </>
+                  )}
+                  <button onClick={fetchNotifications} className="text-muted-foreground hover:text-foreground">
+                    <RefreshCw size={13} className={loadingNotifs ? 'animate-spin' : ''} />
+                  </button>
                 </div>
               </div>
 
-              {/* Notifications List */}
-              <div className="overflow-y-auto flex-1">
-                {loadingNotifications ? (
-                  <div className="p-4 text-center text-gray-500">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto"></div>
-                    <p className="mt-2 text-sm">Memuat notifikasi...</p>
+              {/* List */}
+              <ScrollArea className="flex-1">
+                {loadingNotifs ? (
+                  <div className="p-6 text-center">
+                    <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-primary mx-auto" />
+                    <p className="mt-2 text-xs text-muted-foreground">Memuat...</p>
                   </div>
                 ) : notifications.length === 0 ? (
-                  <div className="p-8 text-center text-gray-500">
-                    <Bell size={32} className="mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm">Tidak ada notifikasi</p>
+                  <div className="p-8 text-center">
+                    <Bell size={28} className="mx-auto mb-2 text-muted-foreground/40" />
+                    <p className="text-xs text-muted-foreground">Tidak ada notifikasi</p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-100">
-                    {notifications.map((notif) => {
+                  <div className="divide-y divide-border">
+                    {notifications.map(notif => {
                       const isRead = readNotifications.has(notif.id);
                       return (
                         <button
                           key={notif.id}
-                          onClick={() => handleNotificationClick(notif)}
-                          className={`w-full text-left p-4 hover:bg-gray-50 transition-colors ${getPriorityColor(notif.priority)} ${isRead ? 'opacity-60' : ''}`}
+                          onClick={() => { markAsRead(notif.id); setShowNotifications(false); window.location.href = notif.link; }}
+                          className={cn(
+                            'notif-item w-full text-left p-3 hover:bg-accent transition-colors',
+                            priorityVariant[notif.priority],
+                            isRead ? 'opacity-55' : ''
+                          )}
                         >
-                          <div className="flex gap-3">
-                            <div className="flex-shrink-0 mt-1">
-                              {getNotificationIcon(notif.type)}
-                            </div>
+                          <div className="flex gap-2.5">
+                            <div className="mt-0.5 shrink-0">{getNotifIcon(notif.type)}</div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className={`text-sm font-semibold text-gray-800 ${!isRead ? 'font-bold' : ''}`}>
+                              <div className="flex items-center gap-1.5">
+                                <p className={cn('text-xs text-foreground truncate', !isRead && 'font-semibold')}>
                                   {notif.title}
                                 </p>
-                                {!isRead && (
-                                  <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                                )}
+                                {!isRead && <span className="w-1.5 h-1.5 bg-primary rounded-full shrink-0" />}
                               </div>
-                              <p className="text-xs text-gray-600 line-clamp-2">
-                                {notif.message}
-                              </p>
-                              <p className="text-xs text-gray-400 mt-1">
-                                {new Date(notif.createdAt).toLocaleDateString('id-ID', {
-                                  day: 'numeric',
-                                  month: 'short',
-                                  year: 'numeric'
-                                })}
+                              <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">{notif.message}</p>
+                              <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+                                {new Date(notif.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                               </p>
                             </div>
                           </div>
@@ -263,69 +309,53 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
                     })}
                   </div>
                 )}
-              </div>
-
-              {/* Footer */}
-              {notifications.length > 0 && (
-                <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
-                  <button
-                    onClick={() => {
-                      fetchNotifications();
-                    }}
-                    className="text-sm text-red-600 hover:text-red-700 font-medium w-full text-center"
-                  >
-                    Refresh Notifikasi
-                  </button>
-                </div>
-              )}
+              </ScrollArea>
             </div>
           )}
         </div>
-        
-        {/* Admin Profile */}
+
+        {/* User */}
         <div className="relative" ref={dropdownRef}>
-          <button 
-            onClick={() => setShowLogout(!showLogout)}
-            className="flex items-center gap-2 md:gap-3 hover:bg-gray-50 rounded-lg px-2 md:px-3 py-2 transition-colors"
+          <button
+            onClick={handleToggleUser}
+            className="flex items-center gap-2 hover:bg-accent rounded-lg px-2 py-1.5 transition-colors"
           >
-            <div className="text-right">
-              <p className="text-sm font-medium text-gray-800">{userName}</p>
+            <div className="text-right hidden sm:block">
+              <p className="text-xs font-semibold text-foreground leading-tight">{userName}</p>
               {userRole && (
-                <p className="text-xs text-gray-500 font-medium">
-                  {userRole.replace('_', ' ').replace('ADMIN', 'Admin').replace('STAFF', 'Staff').replace('SUPERVISOR', 'Supervisor').replace('AUDITOR', 'Auditor')}
-                </p>
+                <p className="text-[10px] text-muted-foreground">{formatRole(userRole)}</p>
               )}
             </div>
-            <div className="w-8 h-8 md:w-10 md:h-10 bg-red-600 rounded-full flex items-center justify-center">
-              <User size={16} className="md:w-5 md:h-5 text-white" />
-            </div>
+            <Avatar className="h-8 w-8 bg-primary">
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
           </button>
 
-          {/* Logout Dropdown */}
+          {/* User Dropdown */}
           {showLogout && (
-            <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
-              {/* User Info Section */}
-              <div className="px-4 py-3 border-b border-gray-200">
-                <p className="text-sm font-semibold text-gray-800 truncate">{userName}</p>
-                {userRole && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    {userRole.replace('_', ' ').replace('ADMIN', 'Admin').replace('STAFF', 'Staff').replace('SUPERVISOR', 'Supervisor').replace('AUDITOR', 'Auditor')}
-                  </p>
-                )}
+            <div
+              ref={userPanelRef}
+              className="absolute right-0 mt-2 w-52 bg-popover rounded-xl shadow-xl border border-border py-1.5 z-50"
+            >
+              <div className="px-3 py-2">
+                <p className="text-xs font-semibold text-foreground truncate">{userName}</p>
+                {userRole && <p className="text-[10px] text-muted-foreground mt-0.5">{formatRole(userRole)}</p>}
               </div>
-              
-              {/* Logout Button */}
+              <Separator className="my-1" />
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-600 transition-colors mt-1"
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-destructive/10 hover:text-destructive transition-colors rounded-md mx-auto"
               >
-                <LogOut size={16} />
+                <LogOut size={14} />
                 <span>Logout</span>
               </button>
             </div>
           )}
         </div>
       </div>
-    </div>
+    </header>
   );
 }
+
