@@ -286,16 +286,15 @@ export default function DetailAkunFluktuasiPage() {
       .map(([code, total]) => ({ code, total, color: codeColorMap.get(code) ?? '#94a3b8' }));
   }, [accountTotalsMap, codeColorMap]);
 
-  // Klasifikasi totals (split by ";" and distribute amount evenly — only count active filter parts)
+  // Klasifikasi totals (split by ";" — always divide by full parts count, only accumulate active parts)
   const klasifikasiTotalsMap = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach(r => {
       const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
+      const share = r.amount / parts.length; // always divide by full count
       const activeParts = filterKlasifikasi.size > 0
         ? parts.filter((k: string) => filterKlasifikasi.has(k))
         : parts;
-      if (activeParts.length === 0) return;
-      const share = r.amount / activeParts.length;
       activeParts.forEach((k: string) => m.set(k, (m.get(k) ?? 0) + share));
     });
     return [...m.entries()]

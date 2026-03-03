@@ -296,12 +296,10 @@ export default function OverviewFluktuasiPage() {
     filtered.forEach(r => {
       const raw = r.klasifikasi || '(Tanpa Klasifikasi)';
       const parts = raw.split(';').map((p: string) => p.trim()).filter(Boolean);
-      // Only count parts that are in the active filter (if any filter is set)
+      const share = r.amount / parts.length; // always divide by full count
       const activeParts = filterKlasifikasi.size > 0
         ? parts.filter((k: string) => filterKlasifikasi.has(k))
         : parts;
-      if (activeParts.length === 0) return;
-      const share = r.amount / activeParts.length;
       activeParts.forEach((k: string) => {
         m.set(k, (m.get(k) ?? 0) + share);
       });
