@@ -1,5 +1,6 @@
 'use client';
 
+import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 
@@ -125,16 +126,16 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
       });
 
       if (response.ok) {
-        alert(`Data prepaid berhasil ${mode === 'edit' ? 'diupdate' : 'ditambahkan'}!`);
+        toast.success(`Data prepaid berhasil ${mode === 'edit' ? 'diupdate' : 'ditambahkan'}!`);
         onSuccess();
         onClose();
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error || 'Gagal menyimpan data'}`);
+        toast.error(`Error: ${error.error || 'Gagal menyimpan data'}`);
       }
     } catch (error) {
       console.error('Error submitting form:', error);
-      alert('Terjadi kesalahan saat menyimpan data');
+      toast.error('Terjadi kesalahan saat menyimpan data');
     } finally {
       setLoading(false);
     }

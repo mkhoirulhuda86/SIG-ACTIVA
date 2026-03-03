@@ -1,5 +1,6 @@
 'use client';
 
+import { toast } from 'sonner';
 import { useState, useRef } from 'react';
 import { Upload, FileSpreadsheet, X } from 'lucide-react';
 
@@ -46,7 +47,7 @@ export default function ExcelImport({ onDataImport }: ExcelImportProps) {
         if (pivotSheet) {
           sheetName = pivotSheet;
         } else {
-          alert('Sheet "Pivot" tidak ditemukan dalam file Excel. Sheets yang tersedia: ' + workbook.SheetNames.join(', '));
+          toast.error('Sheet "Pivot" tidak ditemukan dalam file Excel. Sheets yang tersedia: ' + workbook.SheetNames.join(', '));
           setIsProcessing(false);
           setFileName('');
           return;
@@ -61,7 +62,7 @@ export default function ExcelImport({ onDataImport }: ExcelImportProps) {
       const processedData = processExcelData(jsonData);
       
       if (processedData.length === 0) {
-        alert('Tidak ada data yang berhasil diproses. Silakan periksa format file Excel.');
+        toast.success('Tidak ada data yang berhasil diproses. Silakan periksa format file Excel.');
         setFileName('');
       } else {
         onDataImport(processedData);
@@ -69,7 +70,7 @@ export default function ExcelImport({ onDataImport }: ExcelImportProps) {
       }
     } catch (error) {
       console.error('Error processing file:', error);
-      alert('Terjadi kesalahan saat membaca file Excel: ' + (error as Error).message);
+      toast.error('Terjadi kesalahan saat membaca file Excel: ' + (error as Error).message);
       setFileName('');
     } finally {
       setIsProcessing(false);

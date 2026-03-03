@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import { toast } from 'sonner';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
@@ -1001,14 +1002,14 @@ export default function FluktuasiOIPage() {
       });
       const result = await res.json();
       if (result.success) {
-        alert(result.message);
+        toast.info(result.message);
         loadKeywords();
       } else {
-        alert(result.error);
+        toast.error(result.error);
       }
     } catch (error) {
       console.error('Error loading examples:', error);
-      alert('Gagal load contoh keywords');
+      toast.error('Gagal load contoh keywords');
     }
   };
 
@@ -1038,7 +1039,7 @@ export default function FluktuasiOIPage() {
       );
       
       if (isDuplicate) {
-        alert(`Keyword "${formToUse.keyword}" dengan type "${formToUse.type}" sudah ada. Silakan gunakan keyword yang berbeda.`);
+        toast.info(`Keyword "${formToUse.keyword}" dengan type "${formToUse.type}" sudah ada. Silakan gunakan keyword yang berbeda.`);
         return;
       }
       
@@ -1055,7 +1056,7 @@ export default function FluktuasiOIPage() {
 
       const result = await res.json();
       if (result.success) {
-        alert(result.message);
+        toast.info(result.message);
         loadKeywords();
         setShowKeywordModal(false);
         setEditingKeyword(null);
@@ -1066,11 +1067,11 @@ export default function FluktuasiOIPage() {
         setColHeader('');
         setColPattern('');
       } else {
-        alert(result.error);
+        toast.error(result.error);
       }
     } catch (error) {
       console.error('Error saving keyword:', error);
-      alert('Gagal menyimpan keyword');
+      toast.error('Gagal menyimpan keyword');
     }
   };
 
@@ -1081,10 +1082,10 @@ export default function FluktuasiOIPage() {
       const res = await fetch(`/api/fluktuasi/keywords?id=${id}`, { method: 'DELETE' });
       const result = await res.json();
       if (result.success) { loadKeywords(); }
-      else { alert(result.error); }
+      else { toast.error(result.error); }
     } catch (error) {
       console.error('Error deleting keyword:', error);
-      alert('Gagal menghapus keyword');
+      toast.error('Gagal menghapus keyword');
     }
   };
 
@@ -1094,14 +1095,14 @@ export default function FluktuasiOIPage() {
       const res = await fetch('/api/fluktuasi/keywords?all=true', { method: 'DELETE' });
       const result = await res.json();
       if (result.success) {
-        alert(result.message);
+        toast.info(result.message);
         loadKeywords();
       } else {
-        alert(result.error);
+        toast.error(result.error);
       }
     } catch (error) {
       console.error('Error deleting all keywords:', error);
-      alert('Gagal menghapus semua keyword');
+      toast.error('Gagal menghapus semua keyword');
     }
   };
 
@@ -1130,7 +1131,7 @@ export default function FluktuasiOIPage() {
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
       if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
-        alert('Belum ada data tersimpan di database. Upload file terlebih dahulu.');
+        toast.info('Belum ada data tersimpan di database. Upload file terlebih dahulu.');
         return;
       }
       const records: AkunPeriodeRecord[] = data.data;
@@ -1144,7 +1145,7 @@ export default function FluktuasiOIPage() {
         setAiReasons({});
       }
     } catch (e: any) {
-      alert('Gagal memuat data dari DB: ' + (e?.message || e));
+      toast.error('Gagal memuat data dari DB: ' + (e?.message || e));
     } finally {
       setLoadingDbRekap(false);
     }
@@ -1167,10 +1168,10 @@ export default function FluktuasiOIPage() {
         _sheetCache = null;
         idbClearSheets();
         fetch('/api/fluktuasi/sheet-rows', { method: 'DELETE' }).catch(() => {});
-        alert(data.message);
+        toast.info(data.message);
       }
     } catch (e) {
-      alert('Gagal menghapus data DB');
+      toast.error('Gagal menghapus data DB');
     }
   };
 
@@ -1864,7 +1865,7 @@ export default function FluktuasiOIPage() {
 
   const handleDownload = async () => {
     if (!sheetDataList.length && !rekapSheetData) {
-      alert('Belum ada data. Upload file terlebih dahulu.');
+      toast.info('Belum ada data. Upload file terlebih dahulu.');
       return;
     }
     setIsDownloading(true);
@@ -1885,7 +1886,7 @@ export default function FluktuasiOIPage() {
       URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error(err);
-      alert('Gagal download: ' + (err?.message || err));
+      toast.error('Gagal download: ' + (err?.message || err));
     } finally {
       setIsDownloading(false);
     }

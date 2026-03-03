@@ -1,5 +1,6 @@
 'use client';
 
+import { toast } from 'sonner';
 import { useState } from 'react';
 
 export default function DebugUser() {
@@ -10,7 +11,7 @@ export default function DebugUser() {
 
   const checkUser = async () => {
     if (!email) {
-      alert('Masukkan email!');
+      toast.info('Masukkan email!');
       return;
     }
 
@@ -34,7 +35,7 @@ export default function DebugUser() {
 
   const forceVerify = async () => {
     if (!email) {
-      alert('Masukkan email!');
+      toast.info('Masukkan email!');
       return;
     }
 
@@ -53,14 +54,14 @@ export default function DebugUser() {
       const data = await response.json();
       
       if (data.success) {
-        alert('✅ User berhasil di-verify! Silakan cek status lagi.');
+        toast.success('✅ User berhasil di-verify! Silakan cek status lagi.');
         checkUser(); // Refresh status
       } else {
-        alert('❌ Error: ' + data.error);
+        toast.error('❌ Error: ' + data.error);
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('❌ Terjadi kesalahan');
+      toast.error('❌ Terjadi kesalahan');
     } finally {
       setVerifying(false);
     }

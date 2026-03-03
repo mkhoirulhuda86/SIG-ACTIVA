@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import { toast } from 'sonner';
 import { useState, useMemo, useEffect, useRef, useCallback, startTransition } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import {
@@ -403,7 +404,7 @@ export default function LaporanMaterialPage() {
           'Stok Akhir - OPR': item.stokAkhir?.opr??0, 'Stok Akhir - SAP': item.stokAkhir?.sap??0, 'Stok Akhir - Selisih': item.stokAkhir?.selisih??0,
         }));
         await exportToExcel(exportData, 'Material_Reconciliation.xlsx');
-      } catch (error) { console.error('Export error:', error); alert('Gagal export data: ' + error); }
+      } catch (error) { console.error('Export error:', error); toast.error('Gagal export data: ' + error); }
     }
   };
 
@@ -423,10 +424,10 @@ export default function LaporanMaterialPage() {
         setHistoryDates(sortedDates);
         if (sortedDates.length > 0) setSelectedDate(sortedDates[0]);
       }
-      alert(`✅ Data berhasil diimport dan disimpan ke database!\n\nTotal: ${result.count} records tersimpan`);
+      toast.success('Data berhasil diimport dan disimpan ke database!', { description: `Total: ${result.count} records tersimpan` });
     } catch (error: any) {
       console.error('Error saving to database:', error);
-      alert(`❌ Data berhasil diimport tetapi gagal disimpan ke database:\n\n${error.message}`);
+      toast.error('Data berhasil diimport tetapi gagal disimpan ke database', { description: error.message });
     }
   };
 

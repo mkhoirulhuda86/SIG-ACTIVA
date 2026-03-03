@@ -1,5 +1,6 @@
 'use client';
 
+import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Download, Plus, MoreVertical, X, Edit2, Trash2, Upload, ChevronDown, ChevronRight } from 'lucide-react';
@@ -613,7 +614,7 @@ export default function MonitoringAccrualPage() {
     URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error generating report:', error);
-      alert('Gagal membuat laporan. Silakan coba lagi.');
+      toast.error('Gagal membuat laporan. Silakan coba lagi.');
     }
   };
 
@@ -793,7 +794,7 @@ export default function MonitoringAccrualPage() {
     URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error generating global report:', error);
-      alert('Gagal membuat laporan global. Silakan coba lagi.');
+      toast.error('Gagal membuat laporan global. Silakan coba lagi.');
     }
   };
 
@@ -998,7 +999,7 @@ export default function MonitoringAccrualPage() {
         });
         
         if (allRealisasi.length === 0) {
-          alert('Tidak ada realisasi untuk kode akun ini.');
+          toast.info('Tidak ada realisasi untuk kode akun ini.');
           return;
         }
         
@@ -1135,7 +1136,7 @@ export default function MonitoringAccrualPage() {
       }
     } catch (error) {
       console.error('Error generating jurnal SAP per kode akun:', error);
-      alert('Gagal membuat jurnal SAP per kode akun. Silakan coba lagi.');
+      toast.error('Gagal membuat jurnal SAP per kode akun. Silakan coba lagi.');
     }
   };
 
@@ -1144,7 +1145,7 @@ export default function MonitoringAccrualPage() {
     const companyCode = item.companyCode || '2000';
     
     if (!item.companyCode) {
-      alert('Company code tidak ditemukan untuk item ini');
+      toast.error('Company code tidak ditemukan untuk item ini');
       return;
     }
     
@@ -1269,7 +1270,7 @@ export default function MonitoringAccrualPage() {
       const companyCode = item.companyCode || '2000';
       
       if (!item.companyCode) {
-        alert('Company code tidak ditemukan untuk item ini');
+        toast.error('Company code tidak ditemukan untuk item ini');
         return;
       }
       
@@ -1353,7 +1354,7 @@ export default function MonitoringAccrualPage() {
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error generating jurnal SAP per periode:', error);
-      alert('Gagal membuat jurnal SAP per periode. Silakan coba lagi.');
+      toast.error('Gagal membuat jurnal SAP per periode. Silakan coba lagi.');
     }
   };
 
@@ -1473,7 +1474,7 @@ export default function MonitoringAccrualPage() {
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error generating jurnal SAP per realisasi:', error);
-      alert('Gagal membuat jurnal SAP per realisasi. Silakan coba lagi.');
+      toast.error('Gagal membuat jurnal SAP per realisasi. Silakan coba lagi.');
     }
   };
 
@@ -1575,7 +1576,7 @@ export default function MonitoringAccrualPage() {
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error generating grouped jurnal SAP:', error);
-      alert('Gagal membuat jurnal SAP untuk group. Silakan coba lagi.');
+      toast.error('Gagal membuat jurnal SAP untuk group. Silakan coba lagi.');
     }
   };
 
@@ -1670,7 +1671,7 @@ export default function MonitoringAccrualPage() {
       document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error generating jurnal rincian accrual group:', error);
-      alert('Gagal membuat jurnal SAP. Silakan coba lagi.');
+      toast.error('Gagal membuat jurnal SAP. Silakan coba lagi.');
     }
   };
 
@@ -1702,7 +1703,7 @@ export default function MonitoringAccrualPage() {
     const companyCode = item.companyCode || '2000';
     
     if (!item.companyCode) {
-      alert('Company code tidak ditemukan untuk item ini');
+      toast.error('Company code tidak ditemukan untuk item ini');
       return;
     }
     
@@ -1813,12 +1814,12 @@ export default function MonitoringAccrualPage() {
       const { ExcelJS: ExcelJSLib } = await loadExcelLibraries();
       const companyCode = item.companyCode || '2000';
       if (!item.companyCode) {
-        alert('Company code tidak ditemukan untuk item ini');
+        toast.error('Company code tidak ditemukan untuk item ini');
         return;
       }
       const totalRealisasi = calculateItemRealisasi(item);
       if (totalRealisasi <= 0) {
-        alert('Tidak ada realisasi untuk item ini.');
+        toast.info('Tidak ada realisasi untuk item ini.');
         return;
       }
       const workbook = new ExcelJSLib.Workbook();
@@ -1927,7 +1928,7 @@ export default function MonitoringAccrualPage() {
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error generating Jurnal SAP Realisasi:', error);
-      alert('Gagal membuat jurnal SAP realisasi. Silakan coba lagi.');
+      toast.error('Gagal membuat jurnal SAP realisasi. Silakan coba lagi.');
     }
   };
 
@@ -1968,7 +1969,7 @@ export default function MonitoringAccrualPage() {
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error downloading jurnal detail:', error);
-      alert('Gagal download jurnal detail. Silakan coba lagi.');
+      toast.error('Gagal download jurnal detail. Silakan coba lagi.');
     }
   };
 
@@ -2061,10 +2062,10 @@ export default function MonitoringAccrualPage() {
         next.delete(id);
         return next;
       });
-      alert('Data berhasil dihapus!');
+      toast.success('Data berhasil dihapus!');
     } catch (error) {
       console.error('Error deleting accrual:', error);
-      alert('Gagal menghapus data');
+      toast.error('Gagal menghapus data');
     }
   }, []);
 
@@ -2083,10 +2084,10 @@ export default function MonitoringAccrualPage() {
       const data = await response.json();
       setSelectedIds(new Set());
       fetchAccrualData();
-      alert(data.count != null ? `${data.count} data berhasil dihapus.` : 'Data berhasil dihapus.');
+      toast.success(data.count != null ? `${data.count} data berhasil dihapus.` : 'Data berhasil dihapus.');
     } catch (error) {
       console.error('Error bulk delete:', error);
-      alert('Gagal menghapus data terpilih');
+      toast.error('Gagal menghapus data terpilih');
     } finally {
       setDeletingSelected(false);
     }
@@ -2161,14 +2162,14 @@ export default function MonitoringAccrualPage() {
       setEditingId(null);
       setShowModal(false);
 
-      alert(isEditing ? 'Data accrual berhasil diupdate!' : 'Data accrual berhasil ditambahkan!');
+      toast.success(isEditing ? 'Data accrual berhasil diupdate!' : 'Data accrual berhasil ditambahkan!');
 
       // Background refresh tanpa full-page loading spinner
       const accrualRes = await fetch('/api/accrual');
       if (accrualRes.ok) setAccrualData(await accrualRes.json());
     } catch (error) {
       console.error('Error creating accrual:', error);
-      alert('Gagal menambahkan data accrual. Silakan coba lagi.');
+      toast.error('Gagal menambahkan data accrual. Silakan coba lagi.');
     } finally {
       setSubmitting(false);
     }
@@ -2233,7 +2234,7 @@ export default function MonitoringAccrualPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        alert(`Gagal import realisasi: ${result.error}\n${result.details || ''}`);
+        toast.error(`Gagal import realisasi: ${result.error}`, { description: result.details || '' });
         return;
       }
 
@@ -2246,7 +2247,7 @@ export default function MonitoringAccrualPage() {
           message += `\n... dan ${result.errors.length - 10} error lainnya`;
         }
       }
-      alert(message);
+      toast.info(message);
 
       // Background: refresh realisasi & accrual secara paralel (tanpa full-page loading)
       const periodeId = selectedPeriode.id;
@@ -2268,7 +2269,7 @@ export default function MonitoringAccrualPage() {
       }
     } catch (error) {
       console.error('Error uploading file:', error);
-      alert('Gagal mengupload file. Silakan coba lagi.');
+      toast.error('Gagal mengupload file. Silakan coba lagi.');
     } finally {
       setUploadingExcel(false);
       e.target.value = '';
@@ -2314,7 +2315,7 @@ export default function MonitoringAccrualPage() {
       });
       setEditingRealisasiId(null);
 
-      alert(isEditing ? 'Realisasi berhasil diupdate!' : 'Realisasi berhasil ditambahkan!');
+      toast.success(isEditing ? 'Realisasi berhasil diupdate!' : 'Realisasi berhasil ditambahkan!');
 
       // Background: parallel refresh tanpa full-page loading
       const periodeId = selectedPeriode.id;
@@ -2336,7 +2337,7 @@ export default function MonitoringAccrualPage() {
       }
     } catch (error) {
       console.error('Error saving realisasi:', error);
-      alert('Gagal menyimpan realisasi');
+      toast.error('Gagal menyimpan realisasi');
     } finally {
       setSubmittingRealisasi(false);
     }
@@ -2355,7 +2356,7 @@ export default function MonitoringAccrualPage() {
       // Update local state immediately — no need to wait for heavy re-fetch
       setRealisasiData(prev => prev.filter(r => r.id !== id));
 
-      alert('Realisasi berhasil dihapus!');
+      toast.success('Realisasi berhasil dihapus!');
 
       // Background: refresh accrual & realisasi data for accurate computed values
       const periodeId = selectedPeriode?.id;
@@ -2379,7 +2380,7 @@ export default function MonitoringAccrualPage() {
       }
     } catch (error) {
       console.error('Error deleting realisasi:', error);
-      alert('Gagal menghapus realisasi');
+      toast.error('Gagal menghapus realisasi');
     }
   };
 
@@ -2408,7 +2409,7 @@ export default function MonitoringAccrualPage() {
   // Bulk delete realisasi
   const handleBulkDeleteRealisasi = async () => {
     if (selectedRealisasiIds.size === 0) {
-      alert('Pilih minimal satu realisasi untuk dihapus');
+      toast.info('Pilih minimal satu realisasi untuk dihapus');
       return;
     }
 
@@ -2432,7 +2433,7 @@ export default function MonitoringAccrualPage() {
       setRealisasiData(prev => prev.filter(r => !deletedSet.has(r.id)));
       setSelectedRealisasiIds(new Set());
 
-      alert(`Berhasil menghapus ${data.count ?? ids.length} realisasi!`);
+      toast.success(`Berhasil menghapus ${data.count ?? ids.length} realisasi!`);
 
       // Background: refresh in parallel for accurate computed values
       const periodeId = selectedPeriode?.id;
@@ -2456,7 +2457,7 @@ export default function MonitoringAccrualPage() {
       }
     } catch (error) {
       console.error('Error bulk deleting realisasi:', error);
-      alert('Gagal menghapus realisasi');
+      toast.error('Gagal menghapus realisasi');
     } finally {
       setDeletingBulkRealisasi(false);
     }
@@ -2531,7 +2532,7 @@ export default function MonitoringAccrualPage() {
 
       setCostCenterForm({ costCenter: '', kdAkunBiaya: '', amount: '', headerText: '', lineText: '', keterangan: '' });
       setEditingCostCenterId(null);
-      alert(isEditing ? 'Rincian berhasil diupdate!' : 'Rincian berhasil ditambahkan!');
+      toast.success(isEditing ? 'Rincian berhasil diupdate!' : 'Rincian berhasil ditambahkan!');
 
       // Refresh list + accrual data in parallel
       const periodeId = costCenterModalPeriode.id;
@@ -2552,7 +2553,7 @@ export default function MonitoringAccrualPage() {
       }
     } catch (error) {
       console.error('Error saving cost center entry:', error);
-      alert('Gagal menyimpan rincian');
+      toast.error('Gagal menyimpan rincian');
     } finally {
       setSubmittingCostCenter(false);
     }
@@ -2565,7 +2566,7 @@ export default function MonitoringAccrualPage() {
       if (!res.ok) throw new Error('Failed to delete');
 
       setCostCenterData(prev => prev.filter(c => c.id !== id));
-      alert('Rincian berhasil dihapus!');
+      toast.success('Rincian berhasil dihapus!');
 
       const periodeId = costCenterModalPeriode?.id;
       const [listRes, accrualRes] = await Promise.all([
@@ -2584,7 +2585,7 @@ export default function MonitoringAccrualPage() {
       }
     } catch (error) {
       console.error('Error deleting cost center entry:', error);
-      alert('Gagal menghapus rincian');
+      toast.error('Gagal menghapus rincian');
     }
   };
 
@@ -2617,7 +2618,7 @@ export default function MonitoringAccrualPage() {
       const deletedSet = new Set(ids);
       setCostCenterData(prev => prev.filter(c => !deletedSet.has(c.id)));
       setSelectedCostCenterIds(new Set());
-      alert(`Berhasil menghapus ${data.count ?? ids.length} rincian!`);
+      toast.success(`Berhasil menghapus ${data.count ?? ids.length} rincian!`);
 
       const periodeId = costCenterModalPeriode?.id;
       const [listRes, accrualRes] = await Promise.all([
@@ -2636,7 +2637,7 @@ export default function MonitoringAccrualPage() {
       }
     } catch (error) {
       console.error('Error bulk deleting cost center:', error);
-      alert('Gagal menghapus rincian');
+      toast.error('Gagal menghapus rincian');
     } finally {
       setDeletingBulkCostCenter(false);
     }
@@ -2658,7 +2659,7 @@ export default function MonitoringAccrualPage() {
       });
       const result = await response.json();
       if (!response.ok) {
-        alert(`Gagal import: ${result.error}\n${result.details || ''}`);
+        toast.error(`Gagal import: ${result.error}`, { description: result.details || '' });
         return;
       }
       let message = `Import selesai!\nBerhasil: ${result.successCount} data\nGagal: ${result.errorCount} data`;
@@ -2666,7 +2667,7 @@ export default function MonitoringAccrualPage() {
         message += `\n\nDetail error:\n${result.errors.slice(0, 5).join('\n')}`;
         if (result.errors.length > 5) message += `\n...dan ${result.errors.length - 5} error lainnya`;
       }
-      alert(message);
+      toast.info(message);
 
       const periodeId = costCenterModalPeriode.id;
       const [listRes, accrualRes] = await Promise.all([
@@ -2683,7 +2684,7 @@ export default function MonitoringAccrualPage() {
       }
     } catch (error) {
       console.error('Error uploading cost center file:', error);
-      alert('Gagal mengupload file. Silakan coba lagi.');
+      toast.error('Gagal mengupload file. Silakan coba lagi.');
     } finally {
       setUploadingCostCenterFile(false);
       e.target.value = '';
@@ -2708,7 +2709,7 @@ export default function MonitoringAccrualPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        alert(`Gagal import realisasi: ${result.error}\n${result.details || ''}`);
+        toast.error(`Gagal import realisasi: ${result.error}`, { description: result.details || '' });
         return;
       }
 
@@ -2720,7 +2721,7 @@ export default function MonitoringAccrualPage() {
           message += `\n... dan ${result.errors.length - 10} error lainnya`;
         }
       }
-      alert(message);
+      toast.info(message);
       setShowImportGlobalModal(false);
 
       // Background: refresh tanpa full-page loading
@@ -2728,7 +2729,7 @@ export default function MonitoringAccrualPage() {
       if (accrualRes.ok) setAccrualData(await accrualRes.json());
     } catch (error) {
       console.error('Error uploading file:', error);
-      alert('Gagal mengupload file. Silakan coba lagi.');
+      toast.error('Gagal mengupload file. Silakan coba lagi.');
     } finally {
       setUploadingGlobalExcel(false);
       if (e.target) {
@@ -2796,7 +2797,7 @@ export default function MonitoringAccrualPage() {
         message += `\n\nWarnings:\n${result.warnings.slice(0, 3).join('\n')}`;
       }
 
-      alert(message);
+      toast.info(message);
       setShowImportExcelModal(false);
 
       // Background refresh tanpa full-page loading spinner
@@ -2809,7 +2810,7 @@ export default function MonitoringAccrualPage() {
       const displayError = errorMessage.length > 200 
         ? errorMessage.substring(0, 200) + '...' 
         : errorMessage.replace(/<[^>]*>/g, ''); // Remove HTML tags
-      alert(`Gagal mengimport file Excel: ${displayError}`);
+      toast.error(`Gagal mengimport file Excel: ${displayError}`);
     } finally {
       setUploadingImportExcel(false);
       e.target.value = '';
@@ -2830,14 +2831,14 @@ export default function MonitoringAccrualPage() {
 
       setEditingPeriodeId(null);
       setEditPeriodeAmount('');
-      alert('Amount periode berhasil diupdate!');
+      toast.success('Amount periode berhasil diupdate!');
 
       // Background refresh tanpa full-page loading spinner
       const accrualRes = await fetch('/api/accrual');
       if (accrualRes.ok) setAccrualData(await accrualRes.json());
     } catch (error) {
       console.error('Error updating periode amount:', error);
-      alert('Gagal mengupdate amount periode');
+      toast.error('Gagal mengupdate amount periode');
     }
   };
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { toast } from 'sonner';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Download, Plus, Edit, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock, Upload } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -97,7 +98,7 @@ export default function MonitoringPrepaidPage() {
         await fetchPrepaidData();
         setEditingPeriode(null);
       } else {
-        alert('Gagal menyimpan amortisasi');
+        toast.error('Gagal menyimpan amortisasi');
       }
     } finally {
       setSavingPeriode(false);
@@ -312,7 +313,7 @@ export default function MonitoringPrepaidPage() {
     URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error generating report:', error);
-      alert('Gagal membuat laporan. Silakan coba lagi.');
+      toast.error('Gagal membuat laporan. Silakan coba lagi.');
     }
   };
 
@@ -489,7 +490,7 @@ export default function MonitoringPrepaidPage() {
     URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error generating Jurnal SAP:', error);
-      alert('Gagal membuat jurnal SAP. Silakan coba lagi.');
+      toast.error('Gagal membuat jurnal SAP. Silakan coba lagi.');
     }
   };
 
@@ -677,7 +678,7 @@ export default function MonitoringPrepaidPage() {
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error generating Jurnal SAP per periodo:', error);
-      alert('Gagal membuat jurnal SAP. Silakan coba lagi.');
+      toast.error('Gagal membuat jurnal SAP. Silakan coba lagi.');
     }
   };
 
@@ -726,13 +727,13 @@ export default function MonitoringPrepaidPage() {
         const skippedMsg = result.skipped > 0 
           ? `\n${result.skipped} baris gagal diimport (error)`
           : '';
-        alert(`Import berhasil!\n${result.created} data berhasil diimport${skippedMsg}${warningsMsg}`);
+        toast.success('Import berhasil!', { description: `${result.created} data berhasil diimport${skippedMsg}${warningsMsg}` });
         await fetchPrepaidData();
       } else {
-        alert(`Gagal mengimpor: ${result.error}`);
+        toast.error(`Gagal mengimpor: ${result.error}`);
       }
     } catch (err) {
-      alert('Terjadi kesalahan saat mengimpor file');
+      toast.error('Terjadi kesalahan saat mengimpor file');
     } finally {
       setImportLoading(false);
       if (importFileRef.current) importFileRef.current.value = '';
@@ -759,10 +760,10 @@ export default function MonitoringPrepaidPage() {
       const data = await response.json();
       setSelectedIds(new Set());
       fetchPrepaidData();
-      alert(data.count != null ? `${data.count} data berhasil dihapus.` : 'Data berhasil dihapus.');
+      toast.success(data.count != null ? `${data.count} data berhasil dihapus.` : 'Data berhasil dihapus.');
     } catch (error) {
       console.error('Error bulk delete:', error);
-      alert('Gagal menghapus data terpilih');
+      toast.error('Gagal menghapus data terpilih');
     } finally {
       setDeletingSelected(false);
     }
@@ -786,14 +787,14 @@ export default function MonitoringPrepaidPage() {
       });
 
       if (response.ok) {
-        alert('Data prepaid berhasil dihapus!');
+        toast.success('Data prepaid berhasil dihapus!');
         fetchPrepaidData();
       } else {
-        alert('Gagal menghapus data prepaid');
+        toast.error('Gagal menghapus data prepaid');
       }
     } catch (error) {
       console.error('Error deleting prepaid:', error);
-      alert('Terjadi kesalahan saat menghapus data');
+      toast.error('Terjadi kesalahan saat menghapus data');
     }
     setOpenDropdown(null);
   };

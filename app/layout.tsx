@@ -1,6 +1,7 @@
  import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import AuthGuard from "./components/AuthGuard";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: "Dashboard - SIG ACTIVA",
@@ -28,6 +29,7 @@ export default function RootLayout({
         <AuthGuard>
           {children}
         </AuthGuard>
+        <Toaster richColors position="top-right" />
       </body>
     </html>
   );
