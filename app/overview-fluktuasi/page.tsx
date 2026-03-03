@@ -259,7 +259,11 @@ export default function OverviewFluktuasiPage() {
   }, [records]);
 
   const allKlasifikasi = useMemo(() => {
-    const s = new Set(records.map(r => r.klasifikasi || '(Tanpa Klasifikasi)'));
+    const s = new Set<string>();
+    records.forEach(r => {
+      const raw = r.klasifikasi || '(Tanpa Klasifikasi)';
+      raw.split(';').map((p: string) => p.trim()).filter(Boolean).forEach((k: string) => s.add(k));
+    });
     return [...s].sort();
   }, [records]);
 
@@ -270,7 +274,10 @@ export default function OverviewFluktuasiPage() {
 
   const filtered = useMemo(() => records.filter(r => {
     if (selectedYear !== 'all' && !r.periode.startsWith(selectedYear + '.')) return false;
-    if (filterKlasifikasi.size > 0 && !filterKlasifikasi.has(r.klasifikasi || '(Tanpa Klasifikasi)')) return false;
+    if (filterKlasifikasi.size > 0) {
+      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
+      if (!parts.some((k: string) => filterKlasifikasi.has(k))) return false;
+    }
     if (filterAccount.size > 0 && !filterAccount.has(r.accountCode)) return false;
     return true;
   }), [records, selectedYear, filterKlasifikasi, filterAccount]);
@@ -287,8 +294,12 @@ export default function OverviewFluktuasiPage() {
   const byKlasifikasi = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach(r => {
-      const k = r.klasifikasi || '(Tanpa Klasifikasi)';
-      m.set(k, (m.get(k) ?? 0) + r.amount);
+      const raw = r.klasifikasi || '(Tanpa Klasifikasi)';
+      const parts = raw.split(';').map((p: string) => p.trim()).filter(Boolean);
+      const share = r.amount / parts.length;
+      parts.forEach((k: string) => {
+        m.set(k, (m.get(k) ?? 0) + share);
+      });
     });
     return [...m.entries()]
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
