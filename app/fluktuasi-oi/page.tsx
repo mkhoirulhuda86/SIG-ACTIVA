@@ -238,7 +238,11 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
   const textStr = String(text ?? '').trim();
   const textLower = textStr.toLowerCase();
   const docnoStr = String(docno ?? '').trim();
-  
+
+  // For klasifikasi: collect ALL matching results (deduplicated, ordered by priority)
+  // For remark: return only first match (legacy behaviour)
+  const collectAll = type === 'klasifikasi';
+
   // Filter by type and sort by priority (highest first)
   const relevantKeywords = keywords
     .filter((kw) => kw.type === type)
@@ -260,20 +264,28 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
     return { str: textStr, lower: textLower };
   };
 
+  const collected = new Set<string>();
+
+  const addResult = (result: string): boolean => {
+    const r = (result ?? '').trim();
+    if (!r) return false;
+    collected.add(r);
+    // For remark (single result), signal to stop after first match
+    return !collectAll;
+  };
+
   // ── Pass 1: positive / regex / docno / col keywords (checked in priority order)
   for (const kw of positiveKeywords) {
     const kwLower = kw.keyword.toLowerCase();
 
     // ── Col mode: match against any column by header name
-    // Syntax: col:NamaKolom:searchPattern
     if (kwLower.startsWith('col:')) {
       if (!rowData) continue;
-      const withoutPrefix = kw.keyword.slice(4); // "NamaKolom:searchPattern"
+      const withoutPrefix = kw.keyword.slice(4);
       const colonIdx = withoutPrefix.indexOf(':');
       if (colonIdx < 0) continue;
       const colName = withoutPrefix.slice(0, colonIdx).trim();
       const pattern  = withoutPrefix.slice(colonIdx + 1).trim();
-      // Find column value: exact header match first, then case-insensitive
       const colValue = (() => {
         const exactKey = Object.keys(rowData).find(k => k === colName);
         if (exactKey !== undefined) return String(rowData[exactKey] ?? '').trim();
@@ -283,10 +295,8 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
       if (!colValue) continue;
       let matched = false;
       if (pattern.toLowerCase().startsWith('regex:')) {
-        try {
-          const re = new RegExp(pattern.slice(6).trim(), 'i');
-          matched = re.test(colValue);
-        } catch (e) { console.warn('Invalid col regex:', kw.keyword); }
+        try { const re = new RegExp(pattern.slice(6).trim(), 'i'); matched = re.test(colValue); }
+        catch (e) { console.warn('Invalid col regex:', kw.keyword); }
       } else if (pattern.startsWith('*') && pattern.endsWith('*') && pattern.length > 2) {
         matched = colValue.toLowerCase().includes(pattern.slice(1, -1).toLowerCase());
       } else if (pattern.endsWith('*')) {
@@ -294,32 +304,28 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
       } else if (pattern.startsWith('*')) {
         matched = colValue.toLowerCase().endsWith(pattern.slice(1).toLowerCase());
       } else {
-        // exact / contains
         matched = colValue.toLowerCase().includes(pattern.toLowerCase());
       }
-      if (matched) return kw.result || colValue;
+      if (matched && addResult(kw.result || colValue)) return [...collected].join('; ');
       continue;
     }
 
-    // ── DocNo mode: match against document number column (column B)
+    // ── DocNo mode
     if (kwLower.startsWith('docno:')) {
       if (!docnoStr) continue;
       const pattern = kw.keyword.slice(6).trim();
       if (pattern.toLowerCase().startsWith('regex:')) {
         try {
           const regex = new RegExp(pattern.slice(6).trim(), 'i');
-          if (regex.test(docnoStr)) return kw.result;
-        } catch (e) {
-          console.warn('Invalid docno regex:', kw.keyword);
-        }
+          if (regex.test(docnoStr) && addResult(kw.result)) return [...collected].join('; ');
+        } catch (e) { console.warn('Invalid docno regex:', kw.keyword); }
       } else {
-        // Default: startsWith check (e.g. docno:18 matches "1800001234")
-        if (docnoStr.startsWith(pattern)) return kw.result;
+        if (docnoStr.startsWith(pattern) && addResult(kw.result)) return [...collected].join('; ');
       }
       continue;
     }
 
-    // ── Regex / Pattern mode — respects sourceColumn
+    // ── Regex / Pattern mode
     if (kwLower.startsWith('regex:')) {
       const { str: effStr } = getEffText(kw);
       try {
@@ -327,39 +333,37 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
         const regex = new RegExp(pattern, 'i');
         const match = effStr.match(regex);
         if (match) {
-          if (!kw.result || kw.result.trim() === '{match}') return match[0];
           let result = kw.result;
-          for (let i = 1; i < match.length; i++) {
-            result = result.replace(new RegExp(`\\{${i}\\}`, 'g'), match[i] ?? '');
+          if (!result || result.trim() === '{match}') result = match[0];
+          else {
+            for (let i = 1; i < match.length; i++) result = result.replace(new RegExp(`\\{${i}\\}`, 'g'), match[i] ?? '');
+            result = result.replace(/\{match\}/gi, match[0]);
           }
-          result = result.replace(/\{match\}/gi, match[0]);
-          return result;
+          if (addResult(result)) return [...collected].join('; ');
         }
-      } catch (e) {
-        console.warn('Invalid regex pattern:', kw.keyword);
-      }
+      } catch (e) { console.warn('Invalid regex pattern:', kw.keyword); }
       continue;
     }
 
-    // ── Normal text includes matching — respects sourceColumn
+    // ── Normal text includes matching
     const { lower: effLower } = getEffText(kw);
-    const keywordLower = kw.keyword.toLowerCase();
-    if (effLower.includes(keywordLower)) {
-      return kw.result;
+    if (effLower.includes(kw.keyword.toLowerCase())) {
+      if (addResult(kw.result)) return [...collected].join('; ');
     }
   }
 
-  // ── Pass 2: NOT keywords (only if no positive match) — respects sourceColumn
+  if (collected.size > 0) return [...collected].join('; ');
+
+  // ── Pass 2: NOT keywords (only if no positive match)
   for (const kw of notKeywords) {
     const { lower: effLower } = getEffText(kw);
-    // Syntax: "not:word1,word2" → match if text contains NONE of word1, word2
     const exclusions = kw.keyword.slice(4).trim().split(/[,|]/).map(s => s.trim().toLowerCase()).filter(Boolean);
     const hasExcluded = exclusions.some(excl => effLower.includes(excl));
     if (!hasExcluded) {
       return kw.result;
     }
   }
-  
+
   return '';
 };
 
