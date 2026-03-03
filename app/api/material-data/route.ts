@@ -48,6 +48,27 @@ export async function GET(request: NextRequest) {
       where: {
         importDate: targetDate
       },
+      select: {
+        materialId: true,
+        materialName: true,
+        location: true,
+        stokAwalOpr: true,
+        stokAwalSap: true,
+        stokAwalSelisih: true,
+        stokAwalTotal: true,
+        produksiOpr: true,
+        produksiSap: true,
+        produksiSelisih: true,
+        produksiTotal: true,
+        rilisOpr: true,
+        rilisSap: true,
+        rilisSelisih: true,
+        rilisTotal: true,
+        stokAkhirOpr: true,
+        stokAkhirSap: true,
+        stokAkhirSelisih: true,
+        stokAkhirTotal: true,
+      },
       orderBy: [
         { materialId: 'asc' },
         { location: 'asc' }

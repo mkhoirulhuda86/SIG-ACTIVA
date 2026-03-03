@@ -1,10 +1,10 @@
 ﻿'use client';
 
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, startTransition } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Download, Search, AlertCircle, TrendingDown, Package,
-  MapPin, Calculator, Factory, FolderOpen, Navigation, Clock,
+  MapPin, Calculator, FolderOpen, Navigation, Clock,
 } from 'lucide-react';
 import { gsap } from 'gsap';
 import { animate, stagger } from 'animejs';
@@ -158,6 +158,8 @@ export default function LaporanMaterialPage() {
   const [selectedKategori, setSelectedKategori] = useState('all');
   const [selectedSelisih, setSelectedSelisih] = useState('ada selisih');
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [importedData, setImportedData] = useState<MaterialData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [historyDates, setHistoryDates] = useState<string[]>([]);
@@ -223,36 +225,58 @@ export default function LaporanMaterialPage() {
   useEffect(() => { setUserRole(localStorage.getItem('userRole') || ''); }, []);
   const canEdit = userRole === 'ADMIN_SYSTEM' || userRole === 'STAFF_ACCOUNTING';
 
+  // Fetch data for a specific import date (used when user picks from dropdown)
+  const fetchDataForDate = useCallback(async (date: string) => {
+    if (!date) return;
+    setIsLoading(true);
+    try {
+      const res = await fetch(`/api/material-data?importDate=${encodeURIComponent(date)}`);
+      if (res.ok) setImportedData(await res.json());
+      else console.error('Failed to load data, status:', res.status);
+    } catch (e) { console.error('Error loading material data:', e); }
+    finally { setIsLoading(false); }
+  }, []);
+
+  // On mount / refresh: fetch history AND latest data IN PARALLEL (eliminates sequential waterfall)
   useEffect(() => {
-    const loadHistory = async () => {
+    const init = async () => {
+      setIsLoading(true);
       try {
-        const response = await fetch('/api/material-data?action=history');
-        if (response.ok) {
-          const dates = await response.json();
-          const sortedDates = dates.sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime());
-          setHistoryDates(sortedDates);
-          if (sortedDates.length > 0) setSelectedDate(sortedDates[0]);
+        const [histRes, dataRes] = await Promise.all([
+          fetch('/api/material-data?action=history'),
+          fetch('/api/material-data'),  // no importDate → returns latest
+        ]);
+        if (histRes.ok) {
+          const dates = await histRes.json();
+          const sorted = dates.sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime());
+          setHistoryDates(sorted);
+          if (sorted.length > 0) setSelectedDate(sorted[0]);
         }
-      } catch (error) { console.error('Error loading history:', error); }
+        if (dataRes.ok) setImportedData(await dataRes.json());
+      } catch (error) { console.error('Error initialising material page:', error); }
+      finally { setIsLoading(false); }
     };
-    loadHistory();
+    init();
   }, [materialRefreshKey]);
 
   useRealtimeUpdates(['material'], () => { setMaterialRefreshKey(k => k + 1); });
 
-  useEffect(() => {
-    if (!selectedDate) { setIsLoading(false); return; }
-    const loadData = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/material-data?importDate=${selectedDate}`);
-        if (response.ok) { const data = await response.json(); setImportedData(data); }
-        else console.error('Failed to load data, status:', response.status);
-      } catch (error) { console.error('Error loading material data:', error); }
-      finally { setIsLoading(false); }
-    };
-    loadData();
-  }, [selectedDate]);
+  // Debounced search – only re-filter after 280 ms of inactivity
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setSearchInput(val);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => startTransition(() => setSearchTerm(val)), 280);
+  }, []);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); }, []);
+
+  // User explicitly picks a different import date from the dropdown
+  const handleDateChange = useCallback((date: string) => {
+    setSelectedDate(date);
+    fetchDataForDate(date);
+  }, [fetchDataForDate]);
 
   const uniqueLocations = useMemo(() => {
     if (importedData.length === 0) return ['All'];
@@ -302,11 +326,6 @@ export default function LaporanMaterialPage() {
     { name: 'Produksi',  value: dynamicStats.selisihPerKategori.produksi },
     { name: 'Rilis',     value: dynamicStats.selisihPerKategori.rilis },
     { name: 'Stok Akhir',value: dynamicStats.selisihPerKategori.stokAkhir },
-  ], [dynamicStats]);
-
-  const volumeSelisihPerFasilitas = useMemo(() => [
-    { name: 'Pabrik', value: 'selisihPerFasilitas' in dynamicStats ? (dynamicStats.selisihPerFasilitas?.pabrik || 0) : 0 },
-    { name: 'Gudang', value: 'selisihPerFasilitas' in dynamicStats ? (dynamicStats.selisihPerFasilitas?.gudang || 0) : 0 },
   ], [dynamicStats]);
 
   const volumeSelisihPerLokasi = useMemo(() =>
@@ -389,12 +408,15 @@ export default function LaporanMaterialPage() {
   };
 
   const handleDataImport = async (data: MaterialData[]) => {
-    setImportedData(data);
+    // Optimistically show the data immediately, then persist in background
+    startTransition(() => setImportedData(data));
     try {
       const response = await fetch('/api/material-data', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed to save data'); }
-      const result = await response.json();
-      const historyResponse = await fetch('/api/material-data?action=history');
+      const [result, historyResponse] = await Promise.all([
+        response.json(),
+        fetch('/api/material-data?action=history'),
+      ]);
       if (historyResponse.ok) {
         const dates = await historyResponse.json();
         const sortedDates = dates.sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime());
@@ -438,7 +460,7 @@ export default function LaporanMaterialPage() {
                 </div>
                 <select
                   value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
+                  onChange={(e) => handleDateChange(e.target.value)}
                   className="w-full sm:w-auto px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs sm:text-sm bg-white transition-shadow hover:shadow-md"
                 >
                   {historyDates.map((date, index) => (
@@ -588,8 +610,8 @@ export default function LaporanMaterialPage() {
                   <div className="filter-item relative sm:col-span-2 lg:col-span-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={15} />
                     <input
-                      type="text" placeholder="Search Material" value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
+                      type="text" placeholder="Search Material" value={searchInput}
+                      onChange={handleSearchChange}
                       className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white shadow-sm text-xs sm:text-sm transition-shadow hover:shadow-md"
                     />
                   </div>
