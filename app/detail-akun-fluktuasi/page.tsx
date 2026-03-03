@@ -217,9 +217,13 @@ export default function DetailAkunFluktuasiPage() {
     [allAkunCodes],
   );
 
-  // Klasifikasi list
+  // Klasifikasi list (split by ";")
   const allKlasifikasi = useMemo(() => {
-    const s = new Set(records.map(r => r.klasifikasi || '(Tanpa Klasifikasi)'));
+    const s = new Set<string>();
+    records.forEach(r => {
+      const raw = r.klasifikasi || '(Tanpa Klasifikasi)';
+      raw.split(';').map((p: string) => p.trim()).filter(Boolean).forEach((k: string) => s.add(k));
+    });
     return [...s].sort();
   }, [records]);
 
@@ -232,7 +236,10 @@ export default function DetailAkunFluktuasiPage() {
   const filtered = useMemo(() => records.filter(r => {
     if (selectedYear !== 'all' && !r.periode.startsWith(selectedYear + '.')) return false;
     if (filterAkun.size > 0 && !filterAkun.has(r.accountCode)) return false;
-    if (filterKlasifikasi.size > 0 && !filterKlasifikasi.has(r.klasifikasi || '(Tanpa Klasifikasi)')) return false;
+    if (filterKlasifikasi.size > 0) {
+      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
+      if (!parts.some((k: string) => filterKlasifikasi.has(k))) return false;
+    }
     return true;
   }), [records, selectedYear, filterAkun, filterKlasifikasi]);
 
@@ -279,12 +286,13 @@ export default function DetailAkunFluktuasiPage() {
       .map(([code, total]) => ({ code, total, color: codeColorMap.get(code) ?? '#94a3b8' }));
   }, [accountTotalsMap, codeColorMap]);
 
-  // Klasifikasi totals
+  // Klasifikasi totals (split by ";" and distribute amount evenly)
   const klasifikasiTotalsMap = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach(r => {
-      const k = r.klasifikasi || '(Tanpa Klasifikasi)';
-      m.set(k, (m.get(k) ?? 0) + r.amount);
+      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
+      const share = r.amount / parts.length;
+      parts.forEach((k: string) => m.set(k, (m.get(k) ?? 0) + share));
     });
     return [...m.entries()]
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
@@ -724,8 +732,13 @@ export default function DetailAkunFluktuasiPage() {
                         </span>
                       ) : <span className="text-slate-300">-</span>}
                     </td>
-                    <td className="px-3 py-1.5 text-slate-600 max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap"
-                      title={row.klasifikasi}>{row.klasifikasi}</td>
+                    <td className="px-3 py-1.5 max-w-[200px]">
+                      <div className="flex flex-wrap gap-0.5">
+                        {(row.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((k, ki) => (
+                          <span key={ki} className="inline-block px-1 py-0.5 rounded text-[8px] font-medium bg-slate-100 text-slate-600 border border-slate-200">{k.trim()}</span>
+                        ))}
+                      </div>
+                    </td>
                     <td className="px-3 py-1.5 text-right font-mono font-bold"
                       style={{ color: isPos ? '#16a34a' : '#dc2626' }}>
                       {fmtFull(row.total)}

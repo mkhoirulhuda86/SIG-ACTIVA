@@ -228,9 +228,13 @@ export default function SubAkunFluktuasiPage() {
     return [...SUB_GROUPS, ...extras.sort((a, b) => a.code.localeCompare(b.code))];
   }, [records, resolveGroup]);
 
-  // All klasifikasi
+  // All klasifikasi (split by ";")
   const allKlasifikasi = useMemo(() => {
-    const s = new Set(records.map(r => r.klasifikasi || '(Tanpa Klasifikasi)'));
+    const s = new Set<string>();
+    records.forEach(r => {
+      const raw = r.klasifikasi || '(Tanpa Klasifikasi)';
+      raw.split(';').map((p: string) => p.trim()).filter(Boolean).forEach((k: string) => s.add(k));
+    });
     return [...s].sort();
   }, [records]);
 
@@ -241,7 +245,10 @@ export default function SubAkunFluktuasiPage() {
       const grp = resolveGroup(r.accountCode);
       if (!filterSubAkun.has(grp.code)) return false;
     }
-    if (filterKlasifikasi.size > 0 && !filterKlasifikasi.has(r.klasifikasi || '(Tanpa Klasifikasi)')) return false;
+    if (filterKlasifikasi.size > 0) {
+      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
+      if (!parts.some((k: string) => filterKlasifikasi.has(k))) return false;
+    }
     return true;
   }), [records, selectedYear, filterSubAkun, filterKlasifikasi, resolveGroup]);
 
@@ -283,12 +290,13 @@ export default function SubAkunFluktuasiPage() {
     })).sort((a, b) => Math.abs(b.total) - Math.abs(a.total)),
   [filteredByGroup, visibleGroups]);
 
-  // Klasifikasi totals
+  // Klasifikasi totals (split by ";" and distribute amount evenly)
   const klasifikasiTotals = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach(r => {
-      const k = r.klasifikasi || '(Tanpa Klasifikasi)';
-      m.set(k, (m.get(k) ?? 0) + r.amount);
+      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
+      const share = r.amount / parts.length;
+      parts.forEach((k: string) => m.set(k, (m.get(k) ?? 0) + share));
     });
     return [...m.entries()]
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
@@ -679,7 +687,13 @@ export default function SubAkunFluktuasiPage() {
                       </span>
                     </td>
                     <td className="px-3 py-1.5 font-mono font-semibold text-blue-600">{row.accountCode}</td>
-                    <td className="px-3 py-1.5 text-slate-600" title={row.klasifikasi}>{row.klasifikasi}</td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex flex-wrap gap-0.5">
+                        {(row.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((k, ki) => (
+                          <span key={ki} className="inline-block px-1 py-0.5 rounded text-[8px] font-medium bg-slate-100 text-slate-600 border border-slate-200">{k.trim()}</span>
+                        ))}
+                      </div>
+                    </td>
                     <td className="px-3 py-1.5 text-right font-mono font-bold"
                       style={{ color: isPos ? '#16a34a' : '#dc2626' }}>
                       {fmtFull(row.total)}

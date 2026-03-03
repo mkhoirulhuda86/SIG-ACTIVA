@@ -794,8 +794,13 @@ export default function OverviewFluktuasiPage() {
                         style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td className="px-3 py-1.5 text-slate-400">{globalRi + 1}.</td>
                         <td className="px-3 py-1.5 font-mono font-semibold text-blue-600">{row.accountCode}</td>
-                        <td className="px-3 py-1.5 text-slate-600 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap"
-                          title={row.klasifikasi}>{row.klasifikasi}</td>
+                        <td className="px-3 py-1.5 max-w-[220px]">
+                          <div className="flex flex-wrap gap-0.5">
+                            {(row.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((k, ki) => (
+                              <span key={ki} className="inline-block px-1 py-0.5 rounded text-[8px] font-medium bg-slate-100 text-slate-600 border border-slate-200">{k.trim()}</span>
+                            ))}
+                          </div>
+                        </td>
                         <td className="px-3 py-1.5 text-right font-mono font-bold"
                           style={{ color: isPos ? '#16a34a' : '#dc2626' }}>
                           {fmtFull(row.total)}
