@@ -635,7 +635,7 @@ export default function SubAkunFluktuasiPage() {
             </p>
             <p className="text-[9px] text-slate-400">
               {listingRows.length.toLocaleString('id-ID')} entri
-              {listingTotalPages > 1 && ` Â· Hal ${listPage + 1} / ${listingTotalPages}`}
+              {listingTotalPages > 1 && ` · Hal ${listPage + 1} / ${listingTotalPages}`}
             </p>
           </div>
           {listingTotalPages > 1 && (
