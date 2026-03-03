@@ -2101,7 +2101,7 @@ export default function FluktuasiOIPage() {
   // ── Anime.js keyword rows stagger (fires whenever page/filter changes) ────
   useEffect(() => {
     if (!keywordBodyRef.current) return;
-    const rows = keywordBodyRef.current.querySelectorAll('tr.js-kw-row');
+    const rows = Array.from(keywordBodyRef.current.querySelectorAll('tr.js-kw-row'));
     if (rows.length === 0) return;
     animeJs(rows, {
       opacity: [0, 1],
@@ -2110,12 +2110,12 @@ export default function FluktuasiOIPage() {
       delay: animeStagger(35),
       ease: 'easeOutExpo',
     });
-  }, [keywordBodyRef.current?.children.length]);
+  }, [keywordPage, keywordFilter, keywordSearch]);
 
   // ── Anime.js rekap rows stagger (fires on page/data change) ──────────────
   useEffect(() => {
     if (!rekapBodyRef.current) return;
-    const rows = rekapBodyRef.current.querySelectorAll('tr.js-rekap-row');
+    const rows = Array.from(rekapBodyRef.current.querySelectorAll('tr.js-rekap-row'));
     if (rows.length === 0) return;
     animeJs(rows, {
       opacity: [0, 1],
@@ -2124,7 +2124,7 @@ export default function FluktuasiOIPage() {
       delay: animeStagger(15),
       ease: 'easeOutCubic',
     });
-  }, [rekapBodyRef.current?.children.length]);
+  }, [rekapPage]);
 
   // ── GSAP modal entrance ───────────────────────────────────────────────────
   useEffect(() => {
@@ -2139,7 +2139,7 @@ export default function FluktuasiOIPage() {
   // ── Anime.js DB stats badges ──────────────────────────────────────────────
   useEffect(() => {
     if (!dbStatsRef.current || !dbPeriodeStats) return;
-    const badges = dbStatsRef.current.querySelectorAll('.js-periode-badge');
+    const badges = Array.from(dbStatsRef.current.querySelectorAll('.js-periode-badge'));
     if (badges.length === 0) return;
     animeJs(badges, {
       opacity: [0, 1],
