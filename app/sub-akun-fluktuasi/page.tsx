@@ -117,7 +117,7 @@ function DonutChart({ data, total }: { data: { label: string; value: number; col
 function TrendChart({ data }: { data: { label: string; value: number }[] }) {
   if (data.length < 2) return (
     <div className="flex items-center justify-center h-full">
-      <span className="text-slate-400 text-xs">Butuh â‰¥ 2 periode</span>
+      <span className="text-slate-400 text-xs">Butuh &ge; 2 periode</span>
     </div>
   );
   const W = 480, H = 130, PX = 44, PY = 16;
@@ -643,12 +643,12 @@ export default function SubAkunFluktuasiPage() {
               <button disabled={listPage === 0}
                 onClick={() => setListPage(p => Math.max(0, p - 1))}
                 className="text-sm px-2.5 py-0.5 border border-gray-200 rounded bg-gray-50 text-slate-500 disabled:opacity-30 hover:bg-gray-100 transition">
-                â€¹
+                {'‹'}
               </button>
               <button disabled={listPage >= listingTotalPages - 1}
                 onClick={() => setListPage(p => Math.min(listingTotalPages - 1, p + 1))}
                 className="text-sm px-2.5 py-0.5 border border-gray-200 rounded bg-gray-50 text-slate-500 disabled:opacity-30 hover:bg-gray-100 transition">
-                â€º
+                {'›'}
               </button>
             </div>
           )}
