@@ -31,6 +31,10 @@ const SUB_GROUPS: SubGroup[] = [
   { code: '71510000', prefix: '715', label: '71510000', color: '#d97706' },
   { code: '71600000', prefix: '716', label: '71600000', color: '#7c3aed' },
 ];
+// Prefix overrides: more specific prefixes that redirect to a different group than the 3-char prefix would imply
+const PREFIX_OVERRIDES: { prefix: string; code: string }[] = [
+  { prefix: '7156', code: '71400000' }, // 7156xxxx masuk 71400000
+];
 const KNOWN_PREFIXES = SUB_GROUPS.map(g => g.prefix);
 const PREFIX_TO_GROUP = new Map(SUB_GROUPS.map(g => [g.prefix, g]));
 
@@ -205,6 +209,13 @@ export default function SubAkunFluktuasiPage() {
 
   // Resolve which SubGroup an accountCode belongs to (by prefix), or build an ad-hoc group
   const resolveGroup = useCallback((code: string): SubGroup => {
+    // Check specific overrides first (more specific wins)
+    for (const ov of PREFIX_OVERRIDES) {
+      if (code.startsWith(ov.prefix)) {
+        const g = SUB_GROUPS.find(s => s.code === ov.code);
+        if (g) return g;
+      }
+    }
     for (const g of SUB_GROUPS) {
       if (code.startsWith(g.prefix)) return g;
     }
