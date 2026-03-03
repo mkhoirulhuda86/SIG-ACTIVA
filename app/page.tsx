@@ -81,9 +81,13 @@ export default function DashboardPage() {
     fetchDashboardSummary();
   }, []);
 
-  // Realtime: re-fetch whenever any accrual/realisasi data changes
-  useRealtimeUpdates(['accrual'], () => {
-    fetchDashboardStats();
+  // Realtime: re-fetch whenever accrual, prepaid, material, or fluktuasi data changes
+  useRealtimeUpdates(['accrual', 'prepaid', 'material', 'fluktuasi'], (event) => {
+    // Accrual stats card needs full accrual recalc
+    if (event === 'accrual') {
+      fetchDashboardStats();
+    }
+    // Summary (charts + all cards) always re-fetched on any event
     fetchDashboardSummary();
   });
 
