@@ -51,12 +51,12 @@ const colorForCode = (code: string, allCodes: string[]): string => {
   return PALETTE[idx % PALETTE.length];
 };
 
-// Determine which sub-group a code belongs to
+// Determine which sub-group a code belongs to (3-char prefix matches all child accounts)
 const SUB_GROUP_PREFIXES: { prefix: string; label: string; color: string }[] = [
-  { prefix: '7130', label: '71300000', color: '#2563eb' },
-  { prefix: '7140', label: '71400000', color: '#16a34a' },
-  { prefix: '7151', label: '71510000', color: '#d97706' },
-  { prefix: '7160', label: '71600000', color: '#7c3aed' },
+  { prefix: '713', label: '71300000', color: '#2563eb' },
+  { prefix: '714', label: '71400000', color: '#16a34a' },
+  { prefix: '715', label: '71510000', color: '#d97706' },
+  { prefix: '716', label: '71600000', color: '#7c3aed' },
 ];
 const subGroupForCode = (code: string) =>
   SUB_GROUP_PREFIXES.find(g => code.startsWith(g.prefix));

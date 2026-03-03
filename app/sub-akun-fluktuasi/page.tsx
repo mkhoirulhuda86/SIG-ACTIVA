@@ -24,12 +24,12 @@ type SubGroup = {
   color: string;
 };
 
-// Fixed 4 sub-akun groups
+// Fixed 4 sub-akun groups (3-char prefix to match all child accounts)
 const SUB_GROUPS: SubGroup[] = [
-  { code: '71300000', prefix: '7130', label: '71300000', color: '#2563eb' },
-  { code: '71400000', prefix: '7140', label: '71400000', color: '#16a34a' },
-  { code: '71510000', prefix: '7151', label: '71510000', color: '#d97706' },
-  { code: '71600000', prefix: '7160', label: '71600000', color: '#7c3aed' },
+  { code: '71300000', prefix: '713', label: '71300000', color: '#2563eb' },
+  { code: '71400000', prefix: '714', label: '71400000', color: '#16a34a' },
+  { code: '71510000', prefix: '715', label: '71510000', color: '#d97706' },
+  { code: '71600000', prefix: '716', label: '71600000', color: '#7c3aed' },
 ];
 const KNOWN_PREFIXES = SUB_GROUPS.map(g => g.prefix);
 const PREFIX_TO_GROUP = new Map(SUB_GROUPS.map(g => [g.prefix, g]));
@@ -303,19 +303,18 @@ export default function SubAkunFluktuasiPage() {
       .map(([label, value], i) => ({ label, value, color: KLASI_PALETTE[i % KLASI_PALETTE.length] }));
   }, [filtered]);
 
-  // Listing rows — each row is still the raw accountCode, but subGroup is resolved via prefix
+  // Listing rows — grouped by sub-akun code (not individual accountCode)
   const listingRows = useMemo(() => {
     const m = new Map<string, {
       subGroup: SubGroup;
-      accountCode: string;
       klasifikasi: string;
       total: number;
       periodes: number;
     }>();
     filtered.forEach(r => {
-      const key = `${r.accountCode}|${r.klasifikasi}`;
       const sg  = resolveGroup(r.accountCode);
-      const ex  = m.get(key) ?? { subGroup: sg, accountCode: r.accountCode, klasifikasi: r.klasifikasi || '(Tanpa Klasifikasi)', total: 0, periodes: 0 };
+      const key = `${sg.code}|${r.klasifikasi}`;
+      const ex  = m.get(key) ?? { subGroup: sg, klasifikasi: r.klasifikasi || '(Tanpa Klasifikasi)', total: 0, periodes: 0 };
       m.set(key, { ...ex, total: ex.total + r.amount, periodes: ex.periodes + 1 });
     });
     return [...m.values()].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
@@ -655,7 +654,7 @@ export default function SubAkunFluktuasiPage() {
           <table className="w-full" style={{ fontSize: 10.5, borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'linear-gradient(90deg,#1e3a5f,#1e40af)' }}>
-                {['#','Sub Akun','Kode Akun','Klasifikasi','Total Amount','Jml Periode'].map(h => (
+                {['#','Sub Akun','Klasifikasi','Total Amount','Jml Periode'].map(h => (
                   <th key={h} style={{
                     padding: '7px 12px',
                     textAlign: h === 'Total Amount' || h === 'Jml Periode' ? 'right' : 'left',
@@ -686,7 +685,6 @@ export default function SubAkunFluktuasiPage() {
                         {row.subGroup?.label ?? '-'}
                       </span>
                     </td>
-                    <td className="px-3 py-1.5 font-mono font-semibold text-blue-600">{row.accountCode}</td>
                     <td className="px-3 py-1.5">
                       <div className="flex flex-wrap gap-0.5">
                         {(row.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((k, ki) => (
@@ -704,14 +702,14 @@ export default function SubAkunFluktuasiPage() {
               })}
               {listingPage.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">Tidak ada data sesuai filter</td>
+                  <td colSpan={5} className="py-8 text-center text-slate-400">Tidak ada data sesuai filter</td>
                 </tr>
               )}
             </tbody>
             {listingPage.length > 0 && (
               <tfoot>
                 <tr className="bg-slate-50 border-t border-gray-200">
-                  <td colSpan={4} className="px-3 py-1.5 font-bold text-slate-600 text-xs">TOTAL (filtered)</td>
+                  <td colSpan={3} className="px-3 py-1.5 font-bold text-slate-600 text-xs">TOTAL (filtered)</td>
                   <td className="px-3 py-1.5 text-right font-mono font-extrabold text-sm"
                     style={{ color: totalFiltered >= 0 ? '#16a34a' : '#dc2626' }}>
                     {fmtFull(totalFiltered)}
