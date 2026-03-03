@@ -18,18 +18,21 @@ type AkunPeriodeRecord = {
 };
 
 type SubGroup = {
-  code: string;   // e.g. "71510000"
-  label: string;  // display name
+  code: string;    // e.g. "71510000"
+  prefix: string;  // leading digits to match, e.g. "7151"
+  label: string;
   color: string;
 };
 
-// Preferred colors for known account codes
-const PREFERRED_COLORS: Record<string, string> = {
-  '71300000': '#2563eb',
-  '71400000': '#16a34a',
-  '71510000': '#d97706',
-  '71600000': '#7c3aed',
-};
+// Fixed 4 sub-akun groups
+const SUB_GROUPS: SubGroup[] = [
+  { code: '71300000', prefix: '7130', label: '71300000', color: '#2563eb' },
+  { code: '71400000', prefix: '7140', label: '71400000', color: '#16a34a' },
+  { code: '71510000', prefix: '7151', label: '71510000', color: '#d97706' },
+  { code: '71600000', prefix: '7160', label: '71600000', color: '#7c3aed' },
+];
+const KNOWN_PREFIXES = SUB_GROUPS.map(g => g.prefix);
+const PREFIX_TO_GROUP = new Map(SUB_GROUPS.map(g => [g.prefix, g]));
 
 // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const MONTHS_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
@@ -200,15 +203,30 @@ export default function SubAkunFluktuasiPage() {
     return [...s].sort();
   }, [records]);
 
-  // Dynamic sub groups — built from ALL unique account codes in data
-  const dynamicGroups = useMemo((): SubGroup[] => {
-    const codes = [...new Set(records.map(r => r.accountCode))].sort();
-    return codes.map((code, i) => ({
-      code,
-      label: code,
-      color: PREFERRED_COLORS[code] ?? KLASI_PALETTE[i % KLASI_PALETTE.length],
-    }));
-  }, [records]);
+  // Resolve which SubGroup an accountCode belongs to (by prefix), or build an ad-hoc group
+  const resolveGroup = useCallback((code: string): SubGroup => {
+    for (const g of SUB_GROUPS) {
+      if (code.startsWith(g.prefix)) return g;
+    }
+    // Account doesn't belong to any known sub-akun → own group
+    const idx = code.charCodeAt(0) % KLASI_PALETTE.length;
+    return { code, prefix: code, label: code, color: KLASI_PALETTE[idx] };
+  }, []);
+
+  // All effective groups visible in data (4 fixed + any extras not matching a prefix)
+  const visibleGroups = useMemo((): SubGroup[] => {
+    const known = new Set(KNOWN_PREFIXES);
+    const extras: SubGroup[] = [];
+    const extraCodes = new Set<string>();
+    records.forEach(r => {
+      const matched = SUB_GROUPS.some(g => r.accountCode.startsWith(g.prefix));
+      if (!matched && !extraCodes.has(r.accountCode)) {
+        extraCodes.add(r.accountCode);
+        extras.push(resolveGroup(r.accountCode));
+      }
+    });
+    return [...SUB_GROUPS, ...extras.sort((a, b) => a.code.localeCompare(b.code))];
+  }, [records, resolveGroup]);
 
   // All klasifikasi
   const allKlasifikasi = useMemo(() => {
@@ -216,30 +234,36 @@ export default function SubAkunFluktuasiPage() {
     return [...s].sort();
   }, [records]);
 
-  // Filtered records
+  // Filtered records (filter by sub-akun group code, not raw accountCode)
   const filtered = useMemo(() => records.filter(r => {
     if (selectedYear !== 'all' && !r.periode.startsWith(selectedYear + '.')) return false;
-    if (filterSubAkun.size > 0 && !filterSubAkun.has(r.accountCode)) return false;
+    if (filterSubAkun.size > 0) {
+      const grp = resolveGroup(r.accountCode);
+      if (!filterSubAkun.has(grp.code)) return false;
+    }
     if (filterKlasifikasi.size > 0 && !filterKlasifikasi.has(r.klasifikasi || '(Tanpa Klasifikasi)')) return false;
     return true;
-  }), [records, selectedYear, filterSubAkun, filterKlasifikasi]);
+  }), [records, selectedYear, filterSubAkun, filterKlasifikasi, resolveGroup]);
 
   const totalFiltered = useMemo(() => filtered.reduce((s, r) => s + r.amount, 0), [filtered]);
 
-  // Single-pass per-code aggregation
-  const filteredByCode = useMemo(() => {
+  // Single-pass aggregation by sub-akun group
+  const filteredByGroup = useMemo(() => {
     const m = new Map<string, number>();
-    dynamicGroups.forEach(g => m.set(g.code, 0));
-    filtered.forEach(r => m.set(r.accountCode, (m.get(r.accountCode) ?? 0) + r.amount));
+    visibleGroups.forEach(g => m.set(g.code, 0));
+    filtered.forEach(r => {
+      const grp = resolveGroup(r.accountCode);
+      m.set(grp.code, (m.get(grp.code) ?? 0) + r.amount);
+    });
     return m;
-  }, [filtered, dynamicGroups]);
+  }, [filtered, visibleGroups, resolveGroup]);
 
   // Donut data: per sub group
-  const donutData = useMemo(() => dynamicGroups.map(g => ({
+  const donutData = useMemo(() => visibleGroups.map(g => ({
     label: g.label,
-    value: filteredByCode.get(g.code) ?? 0,
+    value: filteredByGroup.get(g.code) ?? 0,
     color: g.color,
-  })).filter(d => d.value !== 0), [filteredByCode, dynamicGroups]);
+  })).filter(d => d.value !== 0), [filteredByGroup, visibleGroups]);
   const donutTotal = useMemo(() => donutData.reduce((s, d) => s + Math.abs(d.value), 0), [donutData]);
 
   // Trend per periode
@@ -253,11 +277,11 @@ export default function SubAkunFluktuasiPage() {
 
   // Sub-akun totals
   const subAkunTotals = useMemo(() =>
-    dynamicGroups.map(g => ({
+    visibleGroups.map(g => ({
       group: g,
-      total: filteredByCode.get(g.code) ?? 0,
+      total: filteredByGroup.get(g.code) ?? 0,
     })).sort((a, b) => Math.abs(b.total) - Math.abs(a.total)),
-  [filteredByCode, dynamicGroups]);
+  [filteredByGroup, visibleGroups]);
 
   // Klasifikasi totals
   const klasifikasiTotals = useMemo(() => {
@@ -271,11 +295,10 @@ export default function SubAkunFluktuasiPage() {
       .map(([label, value], i) => ({ label, value, color: KLASI_PALETTE[i % KLASI_PALETTE.length] }));
   }, [filtered]);
 
-  // Listing rows
-  const codeToGroup = useMemo(() => new Map(dynamicGroups.map(g => [g.code, g])), [dynamicGroups]);
+  // Listing rows — each row is still the raw accountCode, but subGroup is resolved via prefix
   const listingRows = useMemo(() => {
     const m = new Map<string, {
-      subGroup: SubGroup | undefined;
+      subGroup: SubGroup;
       accountCode: string;
       klasifikasi: string;
       total: number;
@@ -283,12 +306,12 @@ export default function SubAkunFluktuasiPage() {
     }>();
     filtered.forEach(r => {
       const key = `${r.accountCode}|${r.klasifikasi}`;
-      const sg  = codeToGroup.get(r.accountCode);
+      const sg  = resolveGroup(r.accountCode);
       const ex  = m.get(key) ?? { subGroup: sg, accountCode: r.accountCode, klasifikasi: r.klasifikasi || '(Tanpa Klasifikasi)', total: 0, periodes: 0 };
       m.set(key, { ...ex, total: ex.total + r.amount, periodes: ex.periodes + 1 });
     });
     return [...m.values()].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
-  }, [filtered, codeToGroup]);
+  }, [filtered, resolveGroup]);
 
   const listingTotalPages = useMemo(
     () => Math.ceil(listingRows.length / LIST_PAGE_SIZE),
@@ -541,8 +564,8 @@ export default function SubAkunFluktuasiPage() {
                 <span className="flex-1 text-[8.5px] font-semibold text-slate-500 uppercase">Sub Akun</span>
                 <span className="text-[8.5px] font-semibold text-slate-500 uppercase">Amount</span>
               </div>
-              {dynamicGroups.map(g => {
-                const amt       = filteredByCode.get(g.code) ?? 0;
+              {visibleGroups.map(g => {
+                const amt       = filteredByGroup.get(g.code) ?? 0;
                 const isChecked = filterSubAkun.size === 0 || filterSubAkun.has(g.code);
                 return (
                   <label key={g.code}
