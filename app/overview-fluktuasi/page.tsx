@@ -296,15 +296,20 @@ export default function OverviewFluktuasiPage() {
     filtered.forEach(r => {
       const raw = r.klasifikasi || '(Tanpa Klasifikasi)';
       const parts = raw.split(';').map((p: string) => p.trim()).filter(Boolean);
-      const share = r.amount / parts.length;
-      parts.forEach((k: string) => {
+      // Only count parts that are in the active filter (if any filter is set)
+      const activeParts = filterKlasifikasi.size > 0
+        ? parts.filter((k: string) => filterKlasifikasi.has(k))
+        : parts;
+      if (activeParts.length === 0) return;
+      const share = r.amount / activeParts.length;
+      activeParts.forEach((k: string) => {
         m.set(k, (m.get(k) ?? 0) + share);
       });
     });
     return [...m.entries()]
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
       .map(([label, value], i) => ({ label, value, color: PALETTE[i % PALETTE.length] }));
-  }, [filtered]);
+  }, [filtered, filterKlasifikasi]);
 
   const byPeriode = useMemo(() => {
     const m = new Map<string, number>();
