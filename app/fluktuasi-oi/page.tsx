@@ -809,14 +809,33 @@ const OPENROUTER_MODELS = [
   { id: 'mistralai/mistral-small-3.1-24b-instruct',          label: 'Mistral Small 3.1 24B',      keyIdx: 11 },
 ];
 
-// ─── Module-level sheet cache ───────────────────────────────────────────────
-// Persists across component remounts (same browser tab, no serialisation cost,
-// no sessionStorage size limit). Cleared when user explicitly wipes DB data.
-let _sheetCache: {
-  sheets: SheetData[];
-  rekap: RekapSheetData | null;
-  fileName: string;
-} | null = null;
+// ─── Sheet cache: L1 in-memory + L2 IndexedDB ──────────────────────────────
+// L1: module-level variable — survives in-tab navigation / component remount
+// L2: IndexedDB — survives full page refresh, no size limit
+type SheetCacheEntry = { sheets: SheetData[]; rekap: RekapSheetData | null; fileName: string };
+let _sheetCache: SheetCacheEntry | null = null;
+
+const IDB_NAME  = 'fluktuasi-oi-v1';
+const IDB_STORE = 'sheets';
+const IDB_KEY   = 'current';
+
+function _idbOpen(): Promise<IDBDatabase> {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(IDB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
+    r.onsuccess = () => res(r.result);
+    r.onerror   = () => rej(r.error);
+  });
+}
+async function idbSaveSheets(entry: SheetCacheEntry) {
+  try { const db = await _idbOpen(); await new Promise<void>((res, rej) => { const tx = db.transaction(IDB_STORE,'readwrite'); const r = tx.objectStore(IDB_STORE).put(entry, IDB_KEY); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); }); db.close(); } catch(e) { console.warn('idbSave failed',e); }
+}
+async function idbLoadSheets(): Promise<SheetCacheEntry | null> {
+  try { const db = await _idbOpen(); const v = await new Promise<any>((res, rej) => { const tx = db.transaction(IDB_STORE,'readonly'); const r = tx.objectStore(IDB_STORE).get(IDB_KEY); r.onsuccess=()=>res(r.result??null); r.onerror=()=>rej(r.error); }); db.close(); return v; } catch(e) { console.warn('idbLoad failed',e); return null; }
+}
+async function idbClearSheets() {
+  try { const db = await _idbOpen(); await new Promise<void>((res, rej) => { const tx = db.transaction(IDB_STORE,'readwrite'); const r = tx.objectStore(IDB_STORE).delete(IDB_KEY); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); }); db.close(); } catch(e) { console.warn('idbClear failed',e); }
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function FluktuasiOIPage() {
@@ -880,12 +899,21 @@ export default function FluktuasiOIPage() {
   // ── Load data from database on mount ──────────────────────────────────────
   useEffect(() => {
     const loadData = async () => {
-      // ── Restore from in-memory cache (survives in-tab navigation) ──────────
+      // L1: in-memory (same session, instant)
       if (_sheetCache && _sheetCache.sheets.some(s => s.rows.length > 0)) {
         setSheetDataList(_sheetCache.sheets);
         setRekapSheetData(_sheetCache.rekap);
         setFileName(_sheetCache.fileName);
-        return; // Skip DB load — full row data already in memory
+        return;
+      }
+      // L2: IndexedDB (survives page refresh, no size limit)
+      const idbEntry = await idbLoadSheets();
+      if (idbEntry && idbEntry.sheets.some(s => s.rows.length > 0)) {
+        _sheetCache = idbEntry;
+        setSheetDataList(idbEntry.sheets);
+        setRekapSheetData(idbEntry.rekap);
+        setFileName(idbEntry.fileName);
+        return;
       }
 
       try {
@@ -1105,6 +1133,7 @@ export default function FluktuasiOIPage() {
         setRekapSheetData(null);
         setFileName('');
         _sheetCache = null;
+        idbClearSheets();
         alert(data.message);
       }
     } catch (e) {
@@ -1586,8 +1615,9 @@ export default function FluktuasiOIPage() {
       // ── Save to database ───────────────────────────────────────────────────
       await saveToDatabase(file.name, result, rekapData);
 
-      // ── Save to in-memory cache so in-tab navigation keeps per-account rows ─
+      // ── Save to L1 + L2 cache ───────────────────────────────────────────────────
       _sheetCache = { sheets: result, rekap: rekapData, fileName: file.name };
+      idbSaveSheets(_sheetCache); // fire-and-forget
 
     } catch (err: any) {
       console.error(err);
