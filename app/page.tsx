@@ -255,19 +255,45 @@ export default function DashboardPage() {
     return sign + Math.round(a).toLocaleString('id-ID');
   };
 
-  /* ── GSAP: animate material progress bars on data load ────── */
+  /* ── GSAP: animate material progress bars on data load + hover ── */
   useEffect(() => {
     if (!materialRef.current || !materialChartData.length) return;
-    const bars = materialRef.current.querySelectorAll('.mat-bar');
+    const bars = materialRef.current.querySelectorAll<HTMLElement>('.mat-bar');
     gsap.from(bars, { width: '0%', duration: 1.1, ease: 'power3.out', stagger: 0.08, delay: 0.15 });
+
+    const rows = materialRef.current.querySelectorAll<HTMLElement>('.mat-row');
+    const cleanups: (() => void)[] = [];
+    rows.forEach(row => {
+      const track = row.querySelector<HTMLElement>('.mat-track');
+      const rowBars = row.querySelectorAll<HTMLElement>('.mat-bar');
+      const onEnter = () => {
+        gsap.to(row,    { y: -3, scale: 1.01, duration: 0.25, ease: 'power2.out' });
+        gsap.to(track,  { boxShadow: '0 4px 16px rgba(0,0,0,0.15)', duration: 0.25 });
+        gsap.to(rowBars, { filter: 'brightness(1.15)', duration: 0.2 });
+      };
+      const onLeave = () => {
+        gsap.to(row,    { y: 0,  scale: 1,    duration: 0.3, ease: 'power2.inOut' });
+        gsap.to(track,  { boxShadow: '0 0px 0px rgba(0,0,0,0)',  duration: 0.3 });
+        gsap.to(rowBars, { filter: 'brightness(1)', duration: 0.25 });
+      };
+      row.addEventListener('mouseenter', onEnter);
+      row.addEventListener('mouseleave', onLeave);
+      cleanups.push(() => {
+        row.removeEventListener('mouseenter', onEnter);
+        row.removeEventListener('mouseleave', onLeave);
+      });
+    });
+    return () => cleanups.forEach(c => c());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [materialChartData]);
 
-  /* ── anime.js: stagger fluktuasi stat cards ─────────────────── */
+  /* ── anime.js: stagger + GSAP hover for fluktuasi stat cards ── */
   useEffect(() => {
     if (!fluktuasiRef.current) return;
-    const cards = fluktuasiRef.current.querySelectorAll('.flukt-card');
+    const cards = Array.from(fluktuasiRef.current.querySelectorAll<HTMLElement>('.flukt-card'));
     if (!cards.length) return;
+
+    // entrance stagger
     animate(cards, {
       opacity:    [0, 1],
       translateY: [28, 0],
@@ -276,15 +302,72 @@ export default function DashboardPage() {
       delay:      stagger(100),
       ease:       'outExpo',
     });
+
+    // GSAP hover per card
+    const cleanups: (() => void)[] = [];
+    cards.forEach(card => {
+      const bar   = card.querySelector<HTMLElement>('.h-1');
+      const value = card.querySelector<HTMLElement>('.text-2xl');
+      const onEnter = () => {
+        gsap.to(card,  { y: -6, scale: 1.02, boxShadow: '0 8px 28px rgba(0,0,0,0.12)', duration: 0.28, ease: 'power2.out' });
+        if (bar)   gsap.to(bar,   { scaleX: 1.04, duration: 0.28, ease: 'power2.out', transformOrigin: 'left' });
+        if (value) gsap.to(value, { scale: 1.06, duration: 0.22, ease: 'back.out(2)' });
+      };
+      const onLeave = () => {
+        gsap.to(card,  { y: 0, scale: 1, boxShadow: '0 0px 0px rgba(0,0,0,0)', duration: 0.35, ease: 'power2.inOut' });
+        if (bar)   gsap.to(bar,   { scaleX: 1, duration: 0.3, ease: 'power2.inOut', transformOrigin: 'left' });
+        if (value) gsap.to(value, { scale: 1, duration: 0.28, ease: 'power2.inOut' });
+      };
+      card.addEventListener('mouseenter', onEnter);
+      card.addEventListener('mouseleave', onLeave);
+      cleanups.push(() => {
+        card.removeEventListener('mouseenter', onEnter);
+        card.removeEventListener('mouseleave', onLeave);
+      });
+    });
+    return () => cleanups.forEach(c => c());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary?.fluktuasi?.total]);
 
-  /* ── GSAP: animate trend bars ───────────────────────────────── */
+  /* ── GSAP: animate trend bars + hover ─────────────────── */
   useEffect(() => {
     if (!trendRef.current) return;
-    const bars = trendRef.current.querySelectorAll('.trend-bar');
+    const bars = trendRef.current.querySelectorAll<HTMLElement>('.trend-bar');
     if (!bars.length) return;
+
+    // entrance
     gsap.from(bars, { width: '0%', duration: 0.9, ease: 'power2.out', stagger: 0.08, delay: 0.1 });
+
+    // hover per row
+    const rows = trendRef.current.querySelectorAll<HTMLElement>('.trend-row');
+    const cleanups: (() => void)[] = [];
+    rows.forEach(row => {
+      const bar    = row.querySelector<HTMLElement>('.trend-bar');
+      const label  = row.querySelector<HTMLElement>('.trend-label');
+      const value  = row.querySelector<HTMLElement>('.trend-value');
+      const track  = row.querySelector<HTMLElement>('.trend-track');
+      const onEnter = () => {
+        gsap.to(row,   { y: -2, duration: 0.22, ease: 'power2.out' });
+        if (bar)   gsap.to(bar,   { filter: 'brightness(1.2) saturate(1.3)', duration: 0.2 });
+        if (track) gsap.to(track, { boxShadow: '0 2px 12px rgba(0,0,0,0.1)', duration: 0.22 });
+        if (label) gsap.to(label, { x: 4, duration: 0.22, ease: 'power2.out' });
+        if (value) gsap.to(value, { scale: 1.08, duration: 0.2, ease: 'back.out(2)' });
+      };
+      const onLeave = () => {
+        gsap.to(row,   { y: 0, duration: 0.3, ease: 'power2.inOut' });
+        if (bar)   gsap.to(bar,   { filter: 'brightness(1) saturate(1)', duration: 0.28 });
+        if (track) gsap.to(track, { boxShadow: '0 0px 0px rgba(0,0,0,0)', duration: 0.3 });
+        if (label) gsap.to(label, { x: 0, duration: 0.28, ease: 'power2.inOut' });
+        if (value) gsap.to(value, { scale: 1, duration: 0.28, ease: 'power2.inOut' });
+      };
+      row.addEventListener('mouseenter', onEnter);
+      row.addEventListener('mouseleave', onLeave);
+      cleanups.push(() => {
+        row.removeEventListener('mouseenter', onEnter);
+        row.removeEventListener('mouseleave', onLeave);
+      });
+    });
+    return () => cleanups.forEach(c => c());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary?.fluktuasi?.last6Periodes]);
 
@@ -380,14 +463,14 @@ export default function DashboardPage() {
                         const selisihPercent = total > 0 ? (item.countSelisih / total) * 100 : 0;
                         const clearPercent   = total > 0 ? (item.countClear   / total) * 100 : 0;
                         return (
-                          <div key={index} className="space-y-1.5">
+                          <div key={index} className="mat-row space-y-1.5 cursor-pointer">
                             <div className="flex justify-between items-center text-sm">
                               <span className="font-medium text-foreground">{item.label}</span>
                               <span className="text-xs text-muted-foreground">
                                 Selisih: {item.countSelisih} | Clear: {item.countClear}
                               </span>
                             </div>
-                            <div className="relative h-8 bg-muted rounded-full overflow-hidden">
+                            <div className="mat-track relative h-8 bg-muted rounded-full overflow-hidden">
                               <div
                                 className="mat-bar absolute left-0 top-0 h-full bg-destructive rounded-l-full"
                                 style={{ width: `${selisihPercent}%` }}
@@ -457,7 +540,7 @@ export default function DashboardPage() {
 
                   {/* Fluktuasi stat cards — animated by anime.js stagger */}
                   <div ref={fluktuasiRef} className="dashboard-section grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <Card className="flukt-card overflow-hidden">
+                    <Card className="flukt-card overflow-hidden cursor-pointer">
                       <div className="h-1 bg-primary" />
                       <CardContent className="pt-5">
                         <p className="text-xs text-muted-foreground mb-1">Total Records</p>
@@ -466,7 +549,7 @@ export default function DashboardPage() {
                       </CardContent>
                     </Card>
 
-                    <Card className="flukt-card overflow-hidden">
+                    <Card className="flukt-card overflow-hidden cursor-pointer">
                       <div className="h-1 bg-violet-500" />
                       <CardContent className="pt-5">
                         <p className="text-xs text-muted-foreground mb-1">Net Amount</p>
@@ -475,7 +558,7 @@ export default function DashboardPage() {
                       </CardContent>
                     </Card>
 
-                    <Card className="flukt-card overflow-hidden">
+                    <Card className="flukt-card overflow-hidden cursor-pointer">
                       <div className={cn('h-1', {
                         'bg-muted':       summary.fluktuasi.momChange === 0,
                         'bg-destructive': summary.fluktuasi.momChange > 0,
@@ -526,16 +609,16 @@ export default function DashboardPage() {
                                 const pct    = Math.abs(p.value) / maxAbs * 100;
                                 const isLast = i === summary.fluktuasi.last6Periodes.length - 1;
                                 return (
-                                  <div key={p.periode} className="space-y-1">
+                                  <div key={p.periode} className="trend-row space-y-1 cursor-pointer">
                                     <div className="flex justify-between text-xs">
-                                      <span className={cn('font-medium', isLast ? 'text-primary' : 'text-muted-foreground')}>
+                                      <span className={cn('trend-label font-medium', isLast ? 'text-primary' : 'text-muted-foreground')}>
                                         {periodeToLabel(p.periode)}
                                       </span>
-                                      <span className={cn('font-semibold', p.value < 0 ? 'text-green-600' : 'text-destructive')}>
+                                      <span className={cn('trend-value font-semibold', p.value < 0 ? 'text-green-600' : 'text-destructive')}>
                                         {p.value > 0 ? '+' : ''}{fmtCompact(p.value)}
                                       </span>
                                     </div>
-                                    <div className="h-5 bg-muted rounded-full overflow-hidden">
+                                    <div className="trend-track h-5 bg-muted rounded-full overflow-hidden">
                                       <div
                                         className={cn('trend-bar h-full rounded-full', {
                                           'bg-primary':         isLast,
