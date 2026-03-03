@@ -286,18 +286,22 @@ export default function DetailAkunFluktuasiPage() {
       .map(([code, total]) => ({ code, total, color: codeColorMap.get(code) ?? '#94a3b8' }));
   }, [accountTotalsMap, codeColorMap]);
 
-  // Klasifikasi totals (split by ";" and distribute amount evenly)
+  // Klasifikasi totals (split by ";" and distribute amount evenly — only count active filter parts)
   const klasifikasiTotalsMap = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach(r => {
       const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
-      const share = r.amount / parts.length;
-      parts.forEach((k: string) => m.set(k, (m.get(k) ?? 0) + share));
+      const activeParts = filterKlasifikasi.size > 0
+        ? parts.filter((k: string) => filterKlasifikasi.has(k))
+        : parts;
+      if (activeParts.length === 0) return;
+      const share = r.amount / activeParts.length;
+      activeParts.forEach((k: string) => m.set(k, (m.get(k) ?? 0) + share));
     });
     return [...m.entries()]
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
       .map(([label, value], i) => ({ label, value, color: PALETTE[i % PALETTE.length] }));
-  }, [filtered]);
+  }, [filtered, filterKlasifikasi]);
 
   // O(1) lookup for filter panel
   const klasifikasiLookup = useMemo(

@@ -290,18 +290,22 @@ export default function SubAkunFluktuasiPage() {
     })).sort((a, b) => Math.abs(b.total) - Math.abs(a.total)),
   [filteredByGroup, visibleGroups]);
 
-  // Klasifikasi totals (split by ";" and distribute amount evenly)
+  // Klasifikasi totals (split by ";" and distribute amount evenly — only count active filter parts)
   const klasifikasiTotals = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach(r => {
       const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
-      const share = r.amount / parts.length;
-      parts.forEach((k: string) => m.set(k, (m.get(k) ?? 0) + share));
+      const activeParts = filterKlasifikasi.size > 0
+        ? parts.filter((k: string) => filterKlasifikasi.has(k))
+        : parts;
+      if (activeParts.length === 0) return;
+      const share = r.amount / activeParts.length;
+      activeParts.forEach((k: string) => m.set(k, (m.get(k) ?? 0) + share));
     });
     return [...m.entries()]
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
       .map(([label, value], i) => ({ label, value, color: KLASI_PALETTE[i % KLASI_PALETTE.length] }));
-  }, [filtered]);
+  }, [filtered, filterKlasifikasi]);
 
   // Listing rows — grouped by sub-akun code (not individual accountCode)
   const listingRows = useMemo(() => {
