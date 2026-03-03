@@ -179,7 +179,13 @@ export default function DashboardPage() {
   }, []);
 
   const formatCurrency = useCallback((amount: number) => {
-    return `Rp ${Math.round(amount).toLocaleString('id-ID')}`;
+    const a = Math.abs(amount);
+    const sign = amount < 0 ? '-' : '';
+    if (a >= 1_000_000_000_000) return `Rp ${sign}${(a / 1_000_000_000_000).toFixed(1).replace('.', ',')} T`;
+    if (a >= 1_000_000_000)     return `Rp ${sign}${(a / 1_000_000_000).toFixed(1).replace('.', ',')} M`;
+    if (a >= 1_000_000)         return `Rp ${sign}${Math.round(a / 1_000_000).toLocaleString('id-ID')} JT`;
+    if (a >= 1_000)             return `Rp ${sign}${Math.round(a / 1_000).toLocaleString('id-ID')} RB`;
+    return `Rp ${sign}${Math.round(a).toLocaleString('id-ID')}`;
   }, []);
 
   // Memoized chart data
