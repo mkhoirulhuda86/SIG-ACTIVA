@@ -7,6 +7,7 @@ import Header from '../components/Header';
 import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight, Trash2, ChevronDown, Loader2, Sparkles } from 'lucide-react';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { gsap } from 'gsap';
+import { animate as animeAnimate, stagger as animeStagger } from 'animejs';
 import { Progress } from '@/app/components/ui/progress';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { Badge } from '@/app/components/ui/badge';
@@ -906,6 +907,8 @@ export default function FluktuasiOIPage() {
   const keywordBodyRef   = useRef<HTMLTableSectionElement>(null);
   const rekapBodyRef     = useRef<HTMLTableSectionElement>(null);
   const modalRef         = useRef<HTMLDivElement>(null);
+  const modalBackdropRef = useRef<HTMLDivElement>(null);
+  const modalFormBodyRef = useRef<HTMLDivElement>(null);
   const dbStatsRef       = useRef<HTMLDivElement>(null);
 
   // ── Per-account row hydration (lazy DB fetch) ──────────────────────────────
@@ -2119,14 +2122,44 @@ export default function FluktuasiOIPage() {
     );
   }, [rekapPage]);
 
-  // ── GSAP modal entrance ───────────────────────────────────────────────────
+  // ── Modal entrance: GSAP backdrop + container, anime.js form fields ────────
   useEffect(() => {
-    if (!showKeywordModal || !modalRef.current) return;
-    gsap.fromTo(
-      modalRef.current,
-      { opacity: 0, scale: 0.93, y: 18 },
-      { opacity: 1, scale: 1, y: 0, duration: 0.32, ease: 'power3.out' }
-    );
+    if (!showKeywordModal) return;
+
+    // 1. GSAP — backdrop fade in
+    if (modalBackdropRef.current) {
+      gsap.fromTo(modalBackdropRef.current,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.22, ease: 'power1.out' }
+      );
+    }
+
+    // 2. GSAP — modal card scale + slide in
+    if (modalRef.current) {
+      gsap.fromTo(modalRef.current,
+        { opacity: 0, scale: 0.9, y: 28 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.38, ease: 'power3.out', delay: 0.04 }
+      );
+    }
+
+    // 3. anime.js — stagger every direct child section in the form body
+    // Runs after the card finishes sliding in
+    const timer = setTimeout(() => {
+      if (!modalFormBodyRef.current) return;
+      const fields = Array.from(modalFormBodyRef.current.children) as HTMLElement[];
+      if (fields.length === 0) return;
+      // Reset to invisible first so stagger is visible even if already rendered
+      fields.forEach(el => { el.style.opacity = '0'; el.style.transform = 'translateY(14px)'; });
+      animeAnimate(fields, {
+        opacity: [0, 1],
+        translateY: [14, 0],
+        duration: 340,
+        delay: animeStagger(55, { start: 0 }),
+        ease: 'easeOutExpo',
+      });
+    }, 80);
+
+    return () => clearTimeout(timer);
   }, [showKeywordModal]);
 
   // ── GSAP DB stats badges ──────────────────────────────────────────────────
@@ -3401,7 +3434,7 @@ export default function FluktuasiOIPage() {
 
       {/* ── Keyword Modal ─────────────────────────────────────────────────── */}
       {showKeywordModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div ref={modalBackdropRef} className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div ref={modalRef} className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
               <h3 className="text-xl font-semibold text-gray-800">
@@ -3438,7 +3471,7 @@ export default function FluktuasiOIPage() {
               )}
             </div>
             
-            <div className="p-6 space-y-5">
+            <div ref={modalFormBodyRef} className="p-6 space-y-5">
               {/* Simple Natural Language Input */}
               {inputMode === 'simple' && !editingKeyword && (
                 <div>
