@@ -7,7 +7,6 @@ import Header from '../components/Header';
 import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight, Trash2, ChevronDown, Loader2, Sparkles } from 'lucide-react';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { gsap } from 'gsap';
-import { animate as animeJs, stagger as animeStagger } from 'animejs';
 import { Progress } from '@/app/components/ui/progress';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { Badge } from '@/app/components/ui/badge';
@@ -2098,32 +2097,26 @@ export default function FluktuasiOIPage() {
     });
   }, []);
 
-  // ── Anime.js keyword rows stagger (fires whenever page/filter changes) ────
+  // ── GSAP keyword rows stagger (fires whenever page/filter changes) ────────
   useEffect(() => {
     if (!keywordBodyRef.current) return;
-    const rows = Array.from(keywordBodyRef.current.querySelectorAll('tr.js-kw-row'));
+    const rows = Array.from(keywordBodyRef.current.querySelectorAll('tr.js-kw-row')) as HTMLElement[];
     if (rows.length === 0) return;
-    animeJs(rows, {
-      opacity: [0, 1],
-      translateX: [-18, 0],
-      duration: 380,
-      delay: animeStagger(35),
-      ease: 'easeOutExpo',
-    });
+    gsap.fromTo(rows,
+      { opacity: 0, x: -18 },
+      { opacity: 1, x: 0, duration: 0.35, ease: 'power3.out', stagger: 0.035 }
+    );
   }, [keywordPage, keywordFilter, keywordSearch]);
 
-  // ── Anime.js rekap rows stagger (fires on page/data change) ──────────────
+  // ── GSAP rekap rows stagger (fires on page/data change) ──────────────────
   useEffect(() => {
     if (!rekapBodyRef.current) return;
-    const rows = Array.from(rekapBodyRef.current.querySelectorAll('tr.js-rekap-row'));
+    const rows = Array.from(rekapBodyRef.current.querySelectorAll('tr.js-rekap-row')) as HTMLElement[];
     if (rows.length === 0) return;
-    animeJs(rows, {
-      opacity: [0, 1],
-      translateY: [10, 0],
-      duration: 280,
-      delay: animeStagger(15),
-      ease: 'easeOutCubic',
-    });
+    gsap.fromTo(rows,
+      { opacity: 0, y: 10 },
+      { opacity: 1, y: 0, duration: 0.25, ease: 'power2.out', stagger: 0.012 }
+    );
   }, [rekapPage]);
 
   // ── GSAP modal entrance ───────────────────────────────────────────────────
@@ -2136,21 +2129,18 @@ export default function FluktuasiOIPage() {
     );
   }, [showKeywordModal]);
 
-  // ── Anime.js DB stats badges ──────────────────────────────────────────────
+  // ── GSAP DB stats badges ──────────────────────────────────────────────────
   useEffect(() => {
     if (!dbStatsRef.current || !dbPeriodeStats) return;
-    const badges = Array.from(dbStatsRef.current.querySelectorAll('.js-periode-badge'));
+    const badges = Array.from(dbStatsRef.current.querySelectorAll('.js-periode-badge')) as HTMLElement[];
     if (badges.length === 0) return;
-    animeJs(badges, {
-      opacity: [0, 1],
-      scale: [0.6, 1],
-      duration: 350,
-      delay: animeStagger(28, { start: 80 }),
-      ease: 'easeOutBack',
-    });
+    gsap.fromTo(badges,
+      { opacity: 0, scale: 0.6 },
+      { opacity: 1, scale: 1, duration: 0.3, ease: 'back.out(1.7)', stagger: 0.025, delay: 0.08 }
+    );
   }, [dbPeriodeStats]);
 
-  // ── Animate upload processing overlay ────────────────────────────────────
+  // ── GSAP upload processing overlay ───────────────────────────────────────
   useEffect(() => {
     const el = document.getElementById('upload-processing-bar');
     if (!el) return;
