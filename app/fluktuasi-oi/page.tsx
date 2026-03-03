@@ -871,6 +871,27 @@ export default function FluktuasiOIPage() {
   // ── Load data from database on mount ──────────────────────────────────────
   useEffect(() => {
     const loadData = async () => {
+      // ── Restore from sessionStorage (survives in-tab navigation) ──────────
+      try {
+        const cachedSheets = sessionStorage.getItem('fluktuasi-oi-sheets');
+        if (cachedSheets) {
+          const sheets: SheetData[] = JSON.parse(cachedSheets);
+          if (sheets.length > 0 && sheets.some(s => s.rows.length > 0)) {
+            setSheetDataList(sheets);
+            const cachedRekap = sessionStorage.getItem('fluktuasi-oi-rekap');
+            if (cachedRekap) setRekapSheetData(JSON.parse(cachedRekap) as RekapSheetData);
+            const cachedFn = sessionStorage.getItem('fluktuasi-oi-filename');
+            if (cachedFn) setFileName(cachedFn);
+            return; // Skip DB sheet load — fresh row data already in session
+          }
+        }
+      } catch {
+        // Parse error — clear stale cache and fall through to DB load
+        sessionStorage.removeItem('fluktuasi-oi-sheets');
+        sessionStorage.removeItem('fluktuasi-oi-rekap');
+        sessionStorage.removeItem('fluktuasi-oi-filename');
+      }
+
       try {
         const res = await fetch('/api/fluktuasi?uploadedBy=system');
         if (res.ok) {
@@ -1120,6 +1141,9 @@ export default function FluktuasiOIPage() {
         setSheetDataList([]);
         setRekapSheetData(null);
         setFileName('');
+        sessionStorage.removeItem('fluktuasi-oi-sheets');
+        sessionStorage.removeItem('fluktuasi-oi-rekap');
+        sessionStorage.removeItem('fluktuasi-oi-filename');
         alert(data.message);
       }
     } catch (e) {
@@ -1600,6 +1624,18 @@ export default function FluktuasiOIPage() {
 
       // ── Save to database ───────────────────────────────────────────────────
       await saveToDatabase(file.name, result, rekapData);
+
+      // ── Persist to sessionStorage so in-tab navigation keeps per-account rows ─
+      try {
+        sessionStorage.setItem('fluktuasi-oi-sheets', JSON.stringify(result));
+        sessionStorage.setItem('fluktuasi-oi-rekap', rekapData ? JSON.stringify(rekapData) : '');
+        sessionStorage.setItem('fluktuasi-oi-filename', file.name);
+      } catch {
+        // Quota exceeded — clear to avoid partial stale state
+        sessionStorage.removeItem('fluktuasi-oi-sheets');
+        sessionStorage.removeItem('fluktuasi-oi-rekap');
+        sessionStorage.removeItem('fluktuasi-oi-filename');
+      }
 
     } catch (err: any) {
       console.error(err);
