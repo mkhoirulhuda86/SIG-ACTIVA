@@ -246,6 +246,23 @@ model FluktuasiAkunPeriode {
   @@index([uploadedBy])
 }
 
+model FluktuasiSheetRows {
+  id                Int      @id @default(autoincrement())
+  accountCode       String   @unique  // Sheet name / kode akun, e.g. "71510001"
+  headers           Json     // string[] — deduplicated internal headers
+  originalHeaders   Json     // string[] — display headers
+  klasifikasiColIdx Int?     // Index of description column in headers
+  docnoColIdx       Int?     // Index of document number column in headers
+  rows              Json     // Array<Record<string, any>> — full transaction rows
+  fileName          String   @default("")
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("fluktuasi_sheet_rows")
+  @@index([accountCode])
+}
+
 model FluktuasiKeyword {
   id           Int      @id @default(autoincrement())
   keyword      String   // Keyword yang dicari (case-insensitive)

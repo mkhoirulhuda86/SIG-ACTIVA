@@ -896,6 +896,33 @@ export default function FluktuasiOIPage() {
   const [loadingDbRekap,  setLoadingDbRekap]  = useState(false);
   const [dbPeriodeStats,  setDbPeriodeStats]  = useState<{ periodes: string[]; accounts: number } | null>(null);
 
+  // ── Per-account row hydration (lazy DB fetch) ──────────────────────────────
+  const fetchingAccountsRef = useRef<Set<string>>(new Set());
+  const hydrateSheetRows = useCallback(async (idx: number, accountCode: string) => {
+    if (fetchingAccountsRef.current.has(accountCode)) return;
+    fetchingAccountsRef.current.add(accountCode);
+    try {
+      const res = await fetch(`/api/fluktuasi/sheet-rows?accountCode=${encodeURIComponent(accountCode)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.success || !data.data) return;
+      const rec = data.data;
+      if (!Array.isArray(rec.rows) || rec.rows.length === 0) return;
+      setSheetDataList(prev => prev.map((sd, i) => i !== idx ? sd : {
+        ...sd,
+        rows:              rec.rows as Record<string, any>[],
+        headers:           (rec.headers           as string[]) ?? sd.headers,
+        originalHeaders:   (rec.originalHeaders   as string[]) ?? sd.originalHeaders,
+        klasifikasiColIdx: rec.klasifikasiColIdx  ?? sd.klasifikasiColIdx,
+        docnoColIdx:       rec.docnoColIdx        ?? sd.docnoColIdx,
+      }));
+    } catch(e) {
+      console.warn('hydrateSheetRows failed', e);
+    } finally {
+      fetchingAccountsRef.current.delete(accountCode);
+    }
+  }, []);
+
   // ── Load data from database on mount ──────────────────────────────────────
   useEffect(() => {
     const loadData = async () => {
@@ -928,6 +955,11 @@ export default function FluktuasiOIPage() {
             const rekap: RekapSheetData | null = result.data.rekapSheetData ?? null;
             setRekapSheetData(rekap);
             setSheetDataList(rawSheets);
+            // If all sheets are stripped and we have the new sheet-rows DB,
+            // eagerly load the first account so the tab bar appears.
+            if (rawSheets.length > 0 && rawSheets.every(s => s.rows.length === 0)) {
+              hydrateSheetRows(0, rawSheets[0].sheetName);
+            }
           }
         }
       } catch (error) {
@@ -1134,6 +1166,7 @@ export default function FluktuasiOIPage() {
         setFileName('');
         _sheetCache = null;
         idbClearSheets();
+        fetch('/api/fluktuasi/sheet-rows', { method: 'DELETE' }).catch(() => {});
         alert(data.message);
       }
     } catch (e) {
@@ -1619,6 +1652,23 @@ export default function FluktuasiOIPage() {
       _sheetCache = { sheets: result, rekap: rekapData, fileName: file.name };
       idbSaveSheets(_sheetCache); // fire-and-forget
 
+      // ── Save rows per-account to DB (so other users can view without re-uploading) ─
+      for (const sd of result) {
+        fetch('/api/fluktuasi/sheet-rows', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accountCode:       sd.sheetName,
+            headers:           sd.headers,
+            originalHeaders:   sd.originalHeaders,
+            klasifikasiColIdx: sd.klasifikasiColIdx ?? null,
+            docnoColIdx:       sd.docnoColIdx ?? null,
+            rows:              sd.rows,
+            fileName:          file.name,
+          }),
+        }).catch(e => console.warn('Failed to save sheet rows to DB', e));
+      }
+
     } catch (err: any) {
       console.error(err);
       setUploadError('Gagal membaca file: ' + (err?.message || err));
@@ -2000,7 +2050,16 @@ export default function FluktuasiOIPage() {
   [rekapDisplayRowsLive, rekapPage]);
 
   // Reset pages when switching tabs
-  const switchTab = useCallback((idx: number) => { setActiveSheetIdx(idx); setKaPage(0); }, []);
+  const switchRef = useRef<SheetData[]>([]);
+  useEffect(() => { switchRef.current = sheetDataList; }, [sheetDataList]);
+  const switchTab = useCallback((idx: number) => {
+    setActiveSheetIdx(idx);
+    setKaPage(0);
+    const target = switchRef.current[idx];
+    if (target && target.rows.length === 0) {
+      hydrateSheetRows(idx, target.sheetName);
+    }
+  }, [hydrateSheetRows]);
 
   // Auto-scroll active tab into view when activeSheetIdx changes
   const tabBarRef = useRef<HTMLDivElement>(null);
