@@ -4,21 +4,29 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest) {
   try {
+    // Get the latest material importDate first
+    const latestMaterial = await prisma.materialData.findFirst({
+      select: { importDate: true },
+      orderBy: { importDate: 'desc' },
+    });
+
     // Parallel fetching for better performance
     const [materialData, prepaidData, accrualData, fluktuasiData] = await Promise.all([
-      // Material Data Summary - Only fetch needed fields
-      prisma.materialData.findMany({
-        select: {
-          location: true,
-          grandTotal: true,
-          materialId: true,
-          stokAwalSelisih: true,
-          produksiSelisih: true,
-          rilisSelisih: true,
-          stokAkhirSelisih: true,
-        },
-        take: 1000, // Limit for performance
-      }),
+      // Material Data Summary - Only latest import date (mirrors laporan-material page)
+      latestMaterial
+        ? prisma.materialData.findMany({
+            select: {
+              location: true,
+              grandTotal: true,
+              materialId: true,
+              stokAwalSelisih: true,
+              produksiSelisih: true,
+              rilisSelisih: true,
+              stokAkhirSelisih: true,
+            },
+            where: { importDate: latestMaterial.importDate },
+          })
+        : Promise.resolve([]),
       
       // Prepaid Summary - Only fetch needed fields
       prisma.prepaid.findMany({
@@ -192,25 +200,18 @@ export async function GET(req: NextRequest) {
       return total;
     };
 
-    // Mirror calculateItemRealisasi: effective realisasi with rollover (capped per periode)
-    const calcEffectiveRealisasi = (accrual: any): number => {
+    // Raw realisasi per accrual: plain sum of all realisasi amounts (mirrors calculateActualRealisasi)
+    const calcRawRealisasi = (accrual: any): number => {
       if (!accrual.periodes || accrual.periodes.length === 0) return 0;
-      let rollover = 0;
-      let total = 0;
-      for (const p of accrual.periodes) {
-        const realisasiRaw = p.realisasis?.reduce((s: number, r: any) => s + Math.abs(r.amount), 0) || 0;
-        const totalAvailable = realisasiRaw + rollover;
-        const cap = Math.abs(p.amountAccrual || 0);
-        const effective = Math.min(totalAvailable, cap);
-        total += effective;
-        rollover = Math.max(0, totalAvailable - cap);
-      }
-      return total;
+      return accrual.periodes.reduce((s: number, p: any) => {
+        return s + (p.realisasis?.reduce((rs: number, r: any) => rs + Math.abs(r.amount), 0) || 0);
+      }, 0);
     };
 
     const accrualWithCalculations = accrualData.map((accrual: any) => {
       const totalAccrualItem = calcAccrualAmount(accrual);
-      const totalRealized = calcEffectiveRealisasi(accrual);
+      // Use raw realisasi to match the monitoring-accrual page "Saldo" metric logic
+      const totalRealized = calcRawRealisasi(accrual);
       const saldoAwal = accrual.saldoAwal != null ? Number(accrual.saldoAwal) : Math.abs(accrual.totalAmount || 0);
       const remaining = saldoAwal + totalAccrualItem - totalRealized;
       return {
@@ -272,11 +273,17 @@ export async function GET(req: NextRequest) {
     const fluktuasiTotal = fluktuasiData.reduce((s: number, r: any) => s + r.amount, 0);
 
     // Top 5 by klasifikasi (absolute amount)
-    const fluktuasiByKlasifikasi = fluktuasiData.reduce((acc: Record<string, number>, r: any) => {
-      const k = r.klasifikasi || 'Tidak ada klasifikasi';
-      acc[k] = (acc[k] ?? 0) + r.amount;
-      return acc;
-    }, {});
+    // Split multi-value klasifikasi by ';' and distribute amount proportionally
+    // (mirrors byKlasifikasi logic in overview-fluktuasi page)
+    const fluktuasiByKlasifikasi: Record<string, number> = {};
+    fluktuasiData.forEach((r: any) => {
+      const raw = r.klasifikasi || '(Tanpa Klasifikasi)';
+      const parts = raw.split(';').map((p: string) => p.trim()).filter(Boolean);
+      const share = r.amount / parts.length;
+      parts.forEach((k: string) => {
+        fluktuasiByKlasifikasi[k] = (fluktuasiByKlasifikasi[k] ?? 0) + share;
+      });
+    });
     const topFluktuasiByKlasifikasi = Object.entries(fluktuasiByKlasifikasi)
       .map(([label, value]) => ({ label, value: value as number }))
       .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))

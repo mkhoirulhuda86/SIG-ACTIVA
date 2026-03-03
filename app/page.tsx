@@ -127,20 +127,11 @@ export default function DashboardPage() {
           return total;
         };
 
-        // Mirror calculateItemRealisasi: effective realisasi with rollover (capped per periode)
-        const calcRealisasi = (item: any): number => {
+        // Raw realisasi: plain sum per item (mirrors calculateActualRealisasi on monitoring page)
+        // Used for both Total Realisasi and Total Saldo Accrual
+        const calcRawRealisasi = (item: any): number => {
           if (!item.periodes || item.periodes.length === 0) return 0;
-          let rollover = 0;
-          let total = 0;
-          for (const p of item.periodes) {
-            const realisasiPeriode = p.totalRealisasi ?? 0;
-            const totalAvailable = realisasiPeriode + rollover;
-            const cap = Math.abs(p.amountAccrual || 0);
-            const effective = Math.min(totalAvailable, cap);
-            total += effective;
-            rollover = Math.max(0, totalAvailable - cap);
-          }
-          return total;
+          return item.periodes.reduce((s: number, p: any) => s + (p.totalRealisasi ?? 0), 0);
         };
 
         let totalAccrualSum = 0;
@@ -149,10 +140,12 @@ export default function DashboardPage() {
         accruals.forEach((item: any) => {
           const saldoAwal = item.saldoAwal != null ? Number(item.saldoAwal) : Math.abs(item.totalAmount || 0);
           const totalAccrualItem = calcAccrual(item);
-          const totalRealisasiItem = calcRealisasi(item);
+          const rawRealisasiItem = calcRawRealisasi(item);
           totalAccrualSum += totalAccrualItem;
-          totalRealisasiSum += totalRealisasiItem;
-          totalSaldoSum += saldoAwal + totalAccrualItem - totalRealisasiItem;
+          // Total Realisasi = raw sum of all realisasi (matches Realisasi column in monitoring table)
+          totalRealisasiSum += rawRealisasiItem;
+          // Total Saldo = saldo awal + accrual - raw realisasi (matches "Saldo" metric card on monitoring page)
+          totalSaldoSum += saldoAwal + totalAccrualItem - rawRealisasiItem;
         });
         setStats({
           totalAccrual: totalAccrualSum,
@@ -302,7 +295,7 @@ export default function DashboardPage() {
           <div className="dashboard-section grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
             <div className="animate-fadeIn delay-100">
               <MetricCard
-                title="Saldo Accrual"
+                title="Total Accrual"
                 value={formatCurrency(stats.totalAccrual)}
                 icon={<TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />}
                 color="blue"
