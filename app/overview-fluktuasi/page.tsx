@@ -61,11 +61,11 @@ function SemiGauge({
   const fgEndY   = cy - R * Math.sin(Math.PI - angle);
   const largeArc = 0;
 
-  // FIX: at 100%, use a near-full arc with large-arc=0 (avoid full-circle collapse)
+  // FIX: at 100%, use two quarter-arcs to avoid degenerate single-arc path
   const fgPath = pct < 0.01
     ? ''
     : pct >= 0.999
-      ? `M ${startX + 0.1} ${cy} A ${R} ${R} 0 0 1 ${endX - 0.1} ${cy}`
+      ? `M ${startX} ${cy} A ${R} ${R} 0 0 1 ${cx} ${cy - R} A ${R} ${R} 0 0 1 ${endX} ${cy}`
       : `M ${startX} ${cy} A ${R} ${R} 0 ${largeArc} 1 ${fgEndX} ${fgEndY}`;
 
   return (
@@ -592,12 +592,12 @@ export default function OverviewFluktuasiPage() {
                   KLASIFIKASI GROUPING FLUKTUASI
                 </p>
                 <div className="flex flex-wrap justify-center gap-3">
-                  {byKlasifikasi.slice(0, 7).map((d, i) => (
+                  {byKlasifikasi.map((d, i) => (
                     <SemiGauge key={i} value={Math.abs(d.value)} max={maxAbsKlasi} label={d.label} amount={d.value} color={d.color} />
                   ))}
                 </div>
                 <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                  {byKlasifikasi.slice(0, 8).map((d, i) => {
+                  {byKlasifikasi.map((d, i) => {
                     const pct = maxAbsKlasi > 0 ? (Math.abs(d.value) / maxAbsKlasi) * 100 : 0;
                     return (
                       <div key={i} className="flex items-center gap-2">
