@@ -395,48 +395,67 @@ export default function UserManagementPage() {
     </div>
   );
 
-  // ── Loading skeleton ──────────────────────────────────────────────
-  if (isLoading) return (
-    <AuthGuard>
-      {shell(
-        <div className="flex-1 p-4 sm:p-6 md:p-8">
-      {/* Stat cards skeleton */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-        {[1,2,3].map(i => (
-          <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex items-center gap-4">
-            <Skeleton className="h-12 w-12 rounded-xl" />
-            <div className="space-y-2 flex-1">
-              <Skeleton className="h-3 w-24 rounded" />
-              <Skeleton className="h-7 w-16 rounded" />
-            </div>
-          </div>
-        ))}
-      </div>
-      {/* Action button skeleton */}
-      <div className="flex justify-end mb-4">
-        <Skeleton className="h-10 w-36 rounded-lg" />
-      </div>
-      {/* Table skeleton */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
-        <div className="flex gap-4 pb-3 border-b border-gray-100">
-          {[1,2,3,4,5,6,7].map(i => <Skeleton key={i} className="h-4 flex-1 rounded" />)}
-        </div>
-        {[...Array(6)].map((_,i) => (
-          <div key={i} className="flex gap-4 items-center py-1">
-            {[1,2,3,4,5,6,7].map(j => <Skeleton key={j} className="h-8 flex-1 rounded" />)}
-          </div>
-        ))}
-      </div>
-    </div>
-      )}
-    </AuthGuard>
-  );
-
+  // ── Single return — skeleton vs content inside one AuthGuard ───────
   return (
     <AuthGuard>
       {shell(
-        <div ref={pageRef} className="flex-1 p-3 sm:p-4 md:p-8">
-        <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
+        isLoading ? (
+          /* ── Skeleton ─────────────────────────────────────────── */
+          <div className="flex-1 p-4 sm:p-6 md:p-8">
+            {/* Stat cards skeleton */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+              {[1,2,3].map(i => (
+                <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex items-center gap-4">
+                  <Skeleton className="h-12 w-12 rounded-xl flex-shrink-0" />
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-3 w-24 rounded" />
+                    <Skeleton className="h-7 w-16 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Action button skeleton */}
+            <div className="flex justify-end mb-4">
+              <Skeleton className="h-10 w-36 rounded-lg" />
+            </div>
+            {/* Table skeleton */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              {/* Strip */}
+              <div className="h-11 bg-gradient-to-r from-red-500 to-red-600 flex items-center px-5 gap-2">
+                <Skeleton className="h-4 w-32 rounded bg-white/20" />
+              </div>
+              <div className="p-4 space-y-2.5">
+                {/* Header row */}
+                <div className="flex gap-3 pb-3 border-b border-gray-100">
+                  {[2,3,2,2,1.5,1.5,1].map((w,i) => (
+                    <Skeleton key={i} className={`h-3 rounded flex-${w > 1 ? '['+w+'_'+w+'_0]' : '[1_1_0]'}`} style={{ flex: w }} />
+                  ))}
+                </div>
+                {/* Data rows */}
+                {[...Array(6)].map((_,i) => (
+                  <div key={i} className="flex gap-3 items-center py-0.5">
+                    <div className="flex items-center gap-2" style={{ flex: 2 }}>
+                      <Skeleton className="h-7 w-7 rounded-full flex-shrink-0" />
+                      <Skeleton className="h-4 flex-1 rounded" />
+                    </div>
+                    <Skeleton className="h-4 rounded hidden sm:block" style={{ flex: 3 }} />
+                    <Skeleton className="h-4 rounded" style={{ flex: 2 }} />
+                    <Skeleton className="h-6 w-24 rounded-full" />
+                    <Skeleton className="h-6 w-16 rounded-full" />
+                    <Skeleton className="h-4 rounded hidden md:block" style={{ flex: 1.5 }} />
+                    <div className="flex gap-1 justify-center" style={{ flex: 1 }}>
+                      <Skeleton className="h-7 w-7 rounded-lg" />
+                      <Skeleton className="h-7 w-7 rounded-lg" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* ── Main content ──────────────────────────────────────── */
+          <div ref={pageRef} className="flex-1 p-3 sm:p-4 md:p-8">
+            <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
 
           {/* ── Stat Cards ──────────────────────────────────────── */}
           <div ref={statsRef} className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
@@ -797,6 +816,7 @@ export default function UserManagementPage() {
           </div>
         )}
       </div>
+        )
       )}
     </AuthGuard>
   );
