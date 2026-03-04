@@ -1,7 +1,8 @@
 'use client';
 
 import { toast } from 'sonner';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { gsap } from 'gsap';
 import { X } from 'lucide-react';
 
 interface PrepaidData {
@@ -33,6 +34,8 @@ interface PrepaidFormProps {
 
 export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode = 'create' }: PrepaidFormProps) {
   const [loading, setLoading] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const [formData, setFormData] = useState<PrepaidData>({
     companyCode: '',
     noPo: '',
@@ -141,11 +144,28 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
     }
   };
 
+  // Animate in on open
+  useEffect(() => {
+    if (!isOpen) return;
+    if (overlayRef.current) {
+      gsap.fromTo(overlayRef.current,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.22, ease: 'power2.out' }
+      );
+    }
+    if (panelRef.current) {
+      gsap.fromTo(panelRef.current,
+        { opacity: 0, scale: 0.91, y: 28 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.35, ease: 'back.out(1.5)', delay: 0.07 }
+      );
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-      <div className="bg-gradient-to-br from-red-600 to-red-800 rounded-xl sm:rounded-2xl shadow-2xl max-w-5xl w-full max-h-[95vh] sm:max-h-[90vh] flex flex-col">
+    <div ref={overlayRef} className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+      <div ref={panelRef} className="bg-gradient-to-br from-red-600 to-red-800 rounded-xl sm:rounded-2xl shadow-2xl max-w-5xl w-full max-h-[95vh] sm:max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-6 md:px-8 py-4 sm:py-5 md:py-6">
           <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white">

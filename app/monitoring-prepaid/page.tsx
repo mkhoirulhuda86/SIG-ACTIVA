@@ -1,11 +1,15 @@
-'use client';
+﻿'use client';
 
 import { toast } from 'sonner';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Download, Plus, Edit, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock, Upload } from 'lucide-react';
+import { gsap } from 'gsap';
+import { Search, Download, Plus, Edit, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock, Upload, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { exportToCSV } from '../utils/exportUtils';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
+import { Badge } from '../components/ui/badge';
+import { Skeleton } from '../components/ui/skeleton';
+import { Separator } from '../components/ui/separator';
 
 // Lazy load components
 const Sidebar = dynamic(() => import('../components/Sidebar'), { ssr: false });
@@ -72,6 +76,15 @@ export default function MonitoringPrepaidPage() {
   const importFileRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deletingSelected, setDeletingSelected] = useState(false);
+
+  // Animation refs
+  const pageRef       = useRef<HTMLDivElement>(null);
+  const metricRef     = useRef<HTMLDivElement>(null);
+  const filterBarRef  = useRef<HTMLDivElement>(null);
+  const tableCardRef  = useRef<HTMLDivElement>(null);
+  const tableBodyRef  = useRef<HTMLTableSectionElement>(null);
+  const addBtnRef     = useRef<HTMLButtonElement>(null);
+  const formOverlayRef = useRef<HTMLDivElement>(null);
 
   const bulanMap: Record<string, number> = {
     'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
@@ -151,6 +164,65 @@ export default function MonitoringPrepaidPage() {
 
   // Realtime: refresh when another user adds/updates/deletes prepaid
   useRealtimeUpdates(['prepaid'], () => { fetchPrepaidData(); });
+
+  // â”€â”€â”€ Page entrance animation (runs once data finishes loading) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  useEffect(() => {
+    if (loading) return;
+    const cards = [metricRef.current, filterBarRef.current, tableCardRef.current].filter(Boolean);
+    if (pageRef.current) {
+      gsap.fromTo(pageRef.current,
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.5, ease: 'power3.out' }
+      );
+    }
+    gsap.fromTo(cards,
+      { opacity: 0, y: 36, scale: 0.97 },
+      { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: 'power3.out', stagger: 0.09, delay: 0.1 }
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // â”€â”€â”€ Animate table rows when filtered data changes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  useEffect(() => {
+    if (!tableBodyRef.current) return;
+    const rows = tableBodyRef.current.querySelectorAll('tr.data-row');
+    if (!rows.length) return;
+    gsap.fromTo(rows,
+      { opacity: 0, x: -12 },
+      { opacity: 1, x: 0, duration: 0.26, ease: 'expo.out', stagger: 0.018 }
+    );
+  }, [prepaidData, searchTerm]);
+
+  // â”€â”€â”€ Metric number counter animation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  useEffect(() => {
+    if (loading || !metricRef.current) return;
+    const els = metricRef.current.querySelectorAll('[data-metric]');
+    gsap.fromTo(els,
+      { opacity: 0, y: 20, scale: 0.9 },
+      { opacity: 1, y: 0, scale: 1, duration: 0.55, ease: 'back.out(1.5)', stagger: 0.1, delay: 0.15 }
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // â”€â”€â”€ Animate form overlay open/close â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  useEffect(() => {
+    if (!formOverlayRef.current) return;
+    if (isFormOpen) {
+      gsap.fromTo(formOverlayRef.current,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.22, ease: 'power2.out' }
+      );
+      const panel = formOverlayRef.current.querySelector('[data-form-panel]');
+      if (panel) {
+        gsap.fromTo(panel,
+          { opacity: 0, scale: 0.92, y: 32 },
+          { opacity: 1, scale: 1, y: 0, duration: 0.35, ease: 'back.out(1.4)', delay: 0.05 }
+        );
+      }
+    }
+  }, [isFormOpen]);
+
+
 
   // Calculate totals
   const totalPrepaidValue = prepaidData.reduce((sum, item) => sum + item.totalAmount, 0);
@@ -616,7 +688,7 @@ export default function MonitoringPrepaidPage() {
         }
       };
 
-      // Entry 1: DEBIT – Kode Akun Biaya (positive)
+      // Entry 1: DEBIT â€“ Kode Akun Biaya (positive)
       const row1 = worksheet.getRow(3);
       row1.height = 15;
       row1.getCell(1).value = '';
@@ -641,7 +713,7 @@ export default function MonitoringPrepaidPage() {
       row1.getCell(19).value = 'G';
       applyRowStyle(row1);
 
-      // Entry 2: KREDIT – Kode Akun Prepaid (negative)
+      // Entry 2: KREDIT â€“ Kode Akun Prepaid (negative)
       const row2 = worksheet.getRow(4);
       row2.height = 15;
       row2.getCell(1).value = '';
@@ -691,10 +763,10 @@ export default function MonitoringPrepaidPage() {
     const docDate = `${py}${String(pm + 1).padStart(2, '0')}${String(lastDay).padStart(2, '0')}`;
 
     const rows: string[][] = [
-      // Entry 1: DEBIT – Kode Akun Biaya (positive)
+      // Entry 1: DEBIT â€“ Kode Akun Biaya (positive)
       ['', item.companyCode || '', 'SA', docDate, docDate, 'IDR', '', item.headerText || '', '',
         item.namaAkun, amount.toString(), item.headerText || '', '', '', '', '', '', '', 'G'],
-      // Entry 2: KREDIT – Kode Akun Prepaid (negative)
+      // Entry 2: KREDIT â€“ Kode Akun Prepaid (negative)
       ['', item.companyCode || '', 'SA', docDate, docDate, 'IDR', '', item.headerText || '', '',
         item.kdAkr, (-amount).toString(), item.headerText || '', '', item.alokasi || '', '', '', '', '', 'G'],
     ];
@@ -816,16 +888,16 @@ export default function MonitoringPrepaidPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-red-50/20">
       {/* Mobile Sidebar Overlay */}
       {isMobileSidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+        <div
+          className="fixed inset-0 bg-black/40 z-40 lg:hidden"
           onClick={() => setIsMobileSidebarOpen(false)}
         />
       )}
-      
-      {/* Sidebar - Always rendered, controlled by transform */}
+
+      {/* Sidebar */}
       <div className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out ${
         isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       }`}>
@@ -833,472 +905,516 @@ export default function MonitoringPrepaidPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 bg-gray-50 lg:ml-64 overflow-x-hidden">
-        {/* Header */}
+      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen overflow-hidden">
         <Header
           title="Monitoring Prepaid"
           onMenuClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
           subtitle="Monitoring dan input data prepaid dengan laporan SAP"
         />
 
-        {/* Content Area */}
-        <div className="p-4 sm:p-6 md:p-8 bg-gray-50">
-          {/* Metric Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
-            <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
-              <p className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2">Total Prepaid Value</p>
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-800">
-                {formatCurrency(totalPrepaidValue)}
-              </h3>
+        {/* â”€â”€ Loading Skeleton â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {loading ? (
+          <div className="flex-1 p-4 sm:p-6">
+            {/* Metric skeletons */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-2">
+                  <Skeleton className="h-3 w-32 rounded" />
+                  <Skeleton className="h-7 w-44 rounded" />
+                  <Skeleton className="h-2.5 w-24 rounded" />
+                </div>
+              ))}
             </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
-              <p className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2">Remaining Amount</p>
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-800">
-                {formatCurrency(totalRemaining)}
-              </h3>
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
-              <p className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2">Active Items</p>
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-800">{activeItems}</h3>
-            </div>
-          </div>
-
-          {/* Filter Bar */}
-          <div className="bg-white rounded-lg border border-gray-200 p-3 sm:p-4 mb-4 sm:mb-6">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-              {/* Search */}
-              <div className="relative w-full sm:flex-1 sm:min-w-[250px]">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                <input
-                  type="text"
-                  placeholder="Cari berdasarkan..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
-                />
+            {/* Filter bar skeleton */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-5">
+              <div className="flex flex-wrap gap-2">
+                <Skeleton className="h-9 flex-1 min-w-[180px] rounded-lg" />
+                <Skeleton className="h-9 w-28 rounded-lg" />
+                <Skeleton className="h-9 w-28 rounded-lg" />
+                <Skeleton className="h-9 w-28 rounded-lg" />
+                <Skeleton className="h-9 w-32 rounded-lg" />
               </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:ml-auto">
-                <input
-                  ref={importFileRef}
-                  type="file"
-                  accept=".xlsx,.xls,.xlsb"
-                  className="hidden"
-                  onChange={handleImportExcel}
-                />
-                <button
-                  onClick={() => importFileRef.current?.click()}
-                  disabled={importLoading}
-                  className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center disabled:opacity-60"
-                >
-                  <Upload size={16} className="sm:w-[18px] sm:h-[18px]" />
-                  <span className="hidden sm:inline">{importLoading ? 'Mengimpor...' : 'Import Excel'}</span>
-                  <span className="sm:hidden">{importLoading ? '...' : 'Import'}</span>
-                </button>
-                <button
-                  onClick={handleDownloadGlobalReport}
-                  className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center"
-                >
-                  <Download size={16} className="sm:w-[18px] sm:h-[18px]" />
-                  <span className="hidden sm:inline">Export Laporan Prepaid</span>
-                  <span className="sm:hidden">Laporan</span>
-                </button>
-                {canEdit && selectedIds.size > 0 && (
-                  <button
-                    onClick={handleDeleteSelected}
-                    disabled={deletingSelected}
-                    className="flex items-center gap-1 sm:gap-2 bg-red-700 hover:bg-red-800 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <Trash2 size={16} className="sm:w-[18px] sm:h-[18px]" />
-                    {deletingSelected ? (
-                      <span>Menghapus...</span>
-                    ) : (
-                      <>
-                        <span className="hidden sm:inline">Hapus terpilih ({selectedIds.size})</span>
-                        <span className="sm:hidden">Hapus ({selectedIds.size})</span>
-                      </>
-                    )}
-                  </button>
-                )}
-                {canEdit && (
-                  <button 
-                    onClick={handleAddNew}
-                    className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium w-full sm:w-auto justify-center"
-                  >
-                    <Plus size={16} className="sm:w-[18px] sm:h-[18px]" />
-                    <span className="hidden sm:inline">Tambah Data Prepaid</span>
-                    <span className="sm:hidden">Tambah Data</span>
-                  </button>
-                )}
+            </div>
+            {/* Table skeleton */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 bg-slate-50">
+                <Skeleton className="h-3 w-36 rounded" />
+              </div>
+              <div className="p-3 space-y-2">
+                {[...Array(7)].map((_, i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <Skeleton className="h-4 w-4 rounded" />
+                    <Skeleton className="h-4 w-12 rounded" />
+                    <Skeleton className="h-4 w-16 rounded" />
+                    <Skeleton className="h-4 flex-1 rounded" />
+                    <Skeleton className="h-4 w-20 rounded" />
+                    <Skeleton className="h-4 w-20 rounded" />
+                    <Skeleton className="h-4 w-16 rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Centered loading overlay */}
+            <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-10">
+              <div className="bg-white/90 backdrop-blur-sm border border-red-200/60 rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+                <div className="relative w-14 h-14">
+                  <div className="absolute inset-0 rounded-full border-4 border-red-100" />
+                  <div className="absolute inset-0 rounded-full border-4 border-t-red-600 border-r-red-300 border-b-transparent border-l-transparent animate-spin" />
+                  <FileSpreadsheet className="absolute inset-0 m-auto w-6 h-6 text-red-600" />
+                </div>
+                <p className="text-slate-700 text-sm font-semibold tracking-wide">Memuat data prepaid...</p>
+                <div className="flex gap-1.5">
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className="w-2 h-2 rounded-full bg-red-500 animate-bounce"
+                      style={{ animationDelay: `${i * 0.15}s` }} />
+                  ))}
+                </div>
               </div>
             </div>
           </div>
+        ) : (
+          <div ref={pageRef} className="flex-1 p-4 sm:p-6" style={{ opacity: 0 }}>
 
-          {/* Table */}
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <style jsx>{`
-              .custom-scrollbar::-webkit-scrollbar {
-                height: 10px;
-              }
-              .custom-scrollbar::-webkit-scrollbar-track {
-                background: #f1f5f9;
-                border-radius: 5px;
-              }
-              .custom-scrollbar::-webkit-scrollbar-thumb {
-                background: #cbd5e1;
-                border-radius: 5px;
-              }
-              .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                background: #94a3b8;
-              }
-            `}</style>
-            {loading ? (
-              <div className="text-center py-12">
-                <p className="text-gray-500">Memuat data...</p>
+            {/* â”€â”€ Metric Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            <div ref={metricRef} className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+              {[
+                { label: 'Total Prepaid Value', value: formatCurrency(totalPrepaidValue), dot: 'bg-red-500', sub: 'Seluruh nilai prepaid aktif' },
+                { label: 'Remaining Amount',    value: formatCurrency(totalRemaining),    dot: 'bg-amber-500', sub: 'Saldo belum diamortisasi' },
+                { label: 'Active Items',         value: String(activeItems),               dot: 'bg-green-500', sub: 'Entri prepaid aktif' },
+              ].map((m, i) => (
+                <div key={i} data-metric
+                  className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-all duration-200 group cursor-default"
+                  style={{ opacity: 0 }}
+                  onMouseEnter={e => gsap.to(e.currentTarget, { y: -3, duration: 0.2, ease: 'power2.out' })}
+                  onMouseLeave={e => gsap.to(e.currentTarget, { y: 0, duration: 0.2, ease: 'power2.out' })}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`w-2.5 h-2.5 rounded-full ${m.dot} transition-transform duration-200 group-hover:scale-125`} />
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{m.label}</p>
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-800 mt-1 font-mono">{m.value}</h3>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{m.sub}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* â”€â”€ Filter / Action Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            <div ref={filterBarRef} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-5" style={{ opacity: 0 }}>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Search */}
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                  <input
+                    type="text"
+                    placeholder="Cari akun, nama, vendor..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent text-xs transition-all"
+                  />
+                </div>
+
+                {/* Hidden file input */}
+                <input ref={importFileRef} type="file" accept=".xlsx,.xls,.xlsb" className="hidden" onChange={handleImportExcel} />
+
+                {/* Buttons */}
+                <div className="flex flex-wrap gap-2 ml-auto">
+                  {[
+                    { label: importLoading ? 'Mengimpor...' : 'Import Excel', icon: <Upload size={13}/>, onClick: () => importFileRef.current?.click(), color: '#dc2626', disabled: importLoading },
+                    { label: 'Laporan Prepaid', icon: <Download size={13}/>, onClick: handleDownloadGlobalReport, color: '#dc2626' },
+                    { label: 'Jurnal SAP XLS',  icon: <Download size={13}/>, onClick: handleDownloadJurnalSAP,    color: '#16a34a' },
+                    { label: 'Jurnal SAP TXT',  icon: <Download size={13}/>, onClick: handleDownloadJurnalSAPTxt, color: '#2563eb' },
+                  ].map((btn, i) => (
+                    <button key={i}
+                      onClick={btn.onClick}
+                      disabled={(btn as any).disabled}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all duration-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: btn.color, color: 'white' }}
+                      onMouseEnter={e => gsap.to(e.currentTarget, { scale: 1.05, duration: 0.15, ease: 'power2.out' })}
+                      onMouseLeave={e => gsap.to(e.currentTarget, { scale: 1, duration: 0.15, ease: 'power2.out' })}
+                    >
+                      {btn.icon}
+                      <span className="hidden sm:inline">{btn.label}</span>
+                    </button>
+                  ))}
+
+                  {canEdit && selectedIds.size > 0 && (
+                    <button
+                      onClick={handleDeleteSelected}
+                      disabled={deletingSelected}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all duration-200 active:scale-95 disabled:opacity-60"
+                      style={{ backgroundColor: '#b91c1c', color: 'white' }}
+                      onMouseEnter={e => gsap.to(e.currentTarget, { scale: 1.05, duration: 0.15 })}
+                      onMouseLeave={e => gsap.to(e.currentTarget, { scale: 1, duration: 0.15 })}
+                    >
+                      <Trash2 size={13} />
+                      <span>{deletingSelected ? 'Menghapus...' : `Hapus (${selectedIds.size})`}</span>
+                    </button>
+                  )}
+
+                  {canEdit && (
+                    <button
+                      ref={addBtnRef}
+                      onClick={() => {
+                        if (addBtnRef.current) gsap.fromTo(addBtnRef.current, { scale: 0.88 }, { scale: 1, duration: 0.35, ease: 'back.out(2.5)' });
+                        handleAddNew();
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all duration-200 active:scale-95"
+                      style={{ backgroundColor: '#dc2626', color: 'white' }}
+                      onMouseEnter={e => gsap.to(e.currentTarget, { scale: 1.05, duration: 0.15 })}
+                      onMouseLeave={e => gsap.to(e.currentTarget, { scale: 1, duration: 0.15 })}
+                    >
+                      <Plus size={13} />
+                      <span className="hidden sm:inline">Tambah Prepaid</span>
+                      <span className="sm:hidden">Tambah</span>
+                    </button>
+                  )}
+                </div>
               </div>
-            ) : (
-              <div className="overflow-x-auto overflow-y-auto max-w-full bg-white custom-scrollbar" style={{ maxHeight: 'calc(100vh - 400px)', width: '100%' }}>
-                <table className="w-full text-sm bg-white min-w-max">
-                  <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
-                    <tr className="bg-gray-50">
-                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 w-10">
+            </div>
+
+            {/* â”€â”€ Data Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            <div ref={tableCardRef} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-shadow hover:shadow-md" style={{ opacity: 0 }}>
+              <style jsx>{`
+                .custom-scrollbar::-webkit-scrollbar { height: 8px; width: 8px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+                .expand-detail { animation: expandIn 0.28s cubic-bezier(0.34,1.56,0.64,1); }
+                @keyframes expandIn {
+                  from { opacity: 0; transform: translateY(-10px) scaleY(0.92); }
+                  to   { opacity: 1; transform: translateY(0) scaleY(1); }
+                }
+              `}</style>
+
+              {/* Table top bar */}
+              <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-red-50/30 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <FileSpreadsheet size={11} className="text-red-500" />
+                    <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">DATA PREPAID</p>
+                  </div>
+                  <p className="text-[9px] text-slate-400 mt-0.5">{filteredData.length.toLocaleString('id-ID')} entri ditemukan</p>
+                </div>
+                {filteredData.length > 0 && (
+                  <Badge variant="outline" className="text-[9px] text-slate-500 font-mono">{filteredData.length}</Badge>
+                )}
+              </div>
+
+              <div className="overflow-x-auto overflow-y-auto max-w-full custom-scrollbar" style={{ maxHeight: 'calc(100vh - 380px)' }}>
+                <table className="w-full text-sm min-w-max" style={{ borderCollapse: 'collapse' }}>
+                  <thead style={{ background: 'linear-gradient(90deg,#7f1d1d,#dc2626)', position: 'sticky', top: 0, zIndex: 10 }}>
+                    <tr>
+                      <th className="px-3 py-3 text-center w-10">
                         <input
                           type="checkbox"
-                          className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer"
-                          checked={filteredData.length > 0 && filteredData.every((item) => selectedIds.has(item.id))}
+                          className="w-3.5 h-3.5 rounded cursor-pointer accent-white"
+                          checked={filteredData.length > 0 && filteredData.every(item => selectedIds.has(item.id))}
                           onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedIds(new Set(filteredData.map((item) => item.id)));
-                            } else {
-                              setSelectedIds(new Set());
-                            }
+                            if (e.target.checked) setSelectedIds(new Set(filteredData.map(item => item.id)));
+                            else setSelectedIds(new Set());
                           }}
-                          title="Pilih semua"
                         />
                       </th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">
-                        Company Code
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">
-                        No PO
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">
-                        Assignment/Order
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">
-                        Kode Akun Prepaid
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">
-                        Kode Akun Biaya
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700">
-                        Deskripsi
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700">
-                        Header Text
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700">
-                        Klasifikasi
-                      </th>
-                      <th className="px-3 py-3 text-right text-xs font-semibold text-gray-700">
-                        Amount
-                      </th>
-                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">
-                        Start Date
-                      </th>
-                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">
-                        Finish Date
-                      </th>
-                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700">
-                        Periode
-                      </th>
-                      <th className="px-3 py-3 text-right text-xs font-semibold text-gray-700 whitespace-nowrap">
-                        Total Prepaid
-                      </th>
-                      <th className="px-3 py-3 text-right text-xs font-semibold text-gray-700 whitespace-nowrap">
-                        Total Amortisasi
-                      </th>
-                      <th className="px-3 py-3 text-right text-xs font-semibold text-gray-700">
-                        Saldo
-                      </th>
-                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700">
-                        Actions
-                      </th>
+                      {[
+                        'Company', 'No PO', 'Assignment/Order',
+                        'Kd Akun Prepaid', 'Kd Akun Biaya', 'Deskripsi', 'Header Text', 'Klasifikasi',
+                        'Amount', 'Start', 'Finish', 'Periode',
+                        'Total Prepaid', 'Total Amortisasi', 'Saldo', 'Aksi'
+                      ].map(h => (
+                        <th key={h} className="px-3 py-3 whitespace-nowrap"
+                          style={{
+                            textAlign: ['Amount','Total Prepaid','Total Amortisasi','Saldo'].includes(h) ? 'right'
+                              : ['Aksi','Start','Finish','Periode'].includes(h) ? 'center' : 'left',
+                            color: '#fecaca', fontSize: 9, fontWeight: 600,
+                            textTransform: 'uppercase', letterSpacing: 0.5,
+                          }}>
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {filteredData.map((item) => {
+                  <tbody ref={tableBodyRef} className="divide-y divide-gray-100">
+                    {filteredData.map((item, idx) => {
                       const startDate = new Date(item.startDate);
                       const finishDate = new Date(startDate);
                       finishDate.setMonth(finishDate.getMonth() + item.period - 1);
-
                       const totalAmortisasi = item.totalAmortisasi ?? (item.totalAmount - item.remaining);
                       const saldo = item.totalAmount - totalAmortisasi;
                       const isExpanded = expandedRows.has(item.id);
-
                       const today = new Date();
                       const todayFirst = new Date(today.getFullYear(), today.getMonth(), 1);
 
                       return (
                         <React.Fragment key={item.id}>
-                          <tr className="hover:bg-gray-50 transition-colors">
-                          <td className="px-3 py-3 text-center">
-                            <input
-                              type="checkbox"
-                              className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer"
-                              checked={selectedIds.has(item.id)}
-                              onChange={(e) => {
-                                setSelectedIds((prev) => {
-                                  const next = new Set(prev);
-                                  if (e.target.checked) next.add(item.id); else next.delete(item.id);
-                                  return next;
-                                });
-                              }}
-                            />
-                          </td>
-                          <td className="px-3 py-3 text-gray-800 whitespace-nowrap">
-                            {item.companyCode || '-'}
-                          </td>
-                          <td className="px-3 py-3 text-gray-800 whitespace-nowrap">
-                            {item.noPo || '-'}
-                          </td>
-                          <td className="px-3 py-3 text-gray-800">
-                            {item.alokasi}
-                          </td>
-                          <td className="px-3 py-3 text-gray-800 whitespace-nowrap">
-                            {item.kdAkr}
-                          </td>
-                          <td className="px-3 py-3 text-gray-800">
-                            {item.namaAkun}
-                          </td>
-                          <td className="px-3 py-3 text-gray-600">
-                            {item.deskripsi || '-'}
-                          </td>
-                          <td className="px-3 py-3 text-gray-600">
-                            {item.headerText || '-'}
-                          </td>
-                          <td className="px-3 py-3 text-gray-600">
-                            {item.klasifikasi || '-'}
-                          </td>
-                          <td className="px-3 py-3 text-right font-medium text-gray-800">
-                            {formatCurrency(item.totalAmount)}
-                          </td>
-                          <td className="px-3 py-3 text-center text-gray-800 whitespace-nowrap">
-                            {startDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          </td>
-                          <td className="px-3 py-3 text-center text-gray-800 whitespace-nowrap">
-                            {finishDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          </td>
-                          <td className="px-3 py-3 text-center text-gray-800">
-                            {item.period} {item.periodUnit}
-                          </td>
-                          <td className="px-3 py-3 text-right font-medium text-gray-800">
-                            {formatCurrency(item.totalAmount)}
-                          </td>
-                          <td className="px-3 py-3 text-right font-medium text-gray-800">
-                            {formatCurrency(totalAmortisasi)}
-                          </td>
-                          <td className="px-3 py-3 text-right font-medium text-gray-800">
-                            {formatCurrency(saldo)}
-                          </td>
-                          <td className="px-3 py-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => toggleRow(item.id)}
-                                className="text-gray-600 hover:text-gray-800 transition-colors p-1 hover:bg-gray-100 rounded"
-                                title="Detail Periode"
-                              >
-                                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                              </button>
-                              {canEdit && (
-                                <>
-                                  <button
-                                    onClick={() => handleEdit(item)}
-                                    className="text-blue-600 hover:text-blue-800 transition-colors p-1 hover:bg-blue-50 rounded"
-                                    title="Edit"
-                                  >
-                                    <Edit size={16} className="sm:w-[18px] sm:h-[18px]" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDelete(item.id)}
-                                    className="text-red-600 hover:text-red-800 transition-colors p-1 hover:bg-red-50 rounded"
-                                    title="Hapus"
-                                  >
-                                    <Trash2 size={16} className="sm:w-[18px] sm:h-[18px]" />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        {isExpanded && (
-                          <tr>
-                            <td colSpan={17} className="px-0 py-0 bg-gray-50 border-b border-gray-200">
-                              <div className="px-8 pt-2 pb-4">
-                                <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-                                  Detail Amortisasi
-                                </p>
+                          <tr className={`data-row transition-colors duration-100 ${idx % 2 === 0 ? 'bg-white hover:bg-red-50/20' : 'bg-slate-50/50 hover:bg-red-50/30'}`}>
+                            <td className="px-3 py-2.5 text-center">
+                              <input type="checkbox" className="w-3.5 h-3.5 rounded cursor-pointer accent-red-600"
+                                checked={selectedIds.has(item.id)}
+                                onChange={(e) => {
+                                  setSelectedIds(prev => {
+                                    const n = new Set(prev);
+                                    e.target.checked ? n.add(item.id) : n.delete(item.id);
+                                    return n;
+                                  });
+                                }} />
+                            </td>
+                            <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap text-xs">{item.companyCode || '-'}</td>
+                            <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap text-xs">{item.noPo || '-'}</td>
+                            <td className="px-3 py-2.5 text-slate-700 text-xs max-w-[140px] truncate" title={item.alokasi}>{item.alokasi}</td>
+                            <td className="px-3 py-2.5 whitespace-nowrap text-xs">
+                              <span className="font-mono font-semibold text-red-700 bg-red-50 px-1.5 py-0.5 rounded">{item.kdAkr}</span>
+                            </td>
+                            <td className="px-3 py-2.5 text-slate-700 text-xs">{item.namaAkun}</td>
+                            <td className="px-3 py-2.5 text-slate-500 text-xs max-w-[120px] truncate" title={item.deskripsi || ''}>{item.deskripsi || '-'}</td>
+                            <td className="px-3 py-2.5 text-slate-500 text-xs max-w-[120px] truncate" title={item.headerText || ''}>{item.headerText || '-'}</td>
+                            <td className="px-3 py-2.5 text-xs">
+                              {item.klasifikasi
+                                ? <Badge variant="outline" className="text-[8px] px-1.5 py-0 h-4 text-slate-500 border-slate-200">{item.klasifikasi}</Badge>
+                                : <span className="text-slate-300 text-xs">â€”</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-semibold text-xs text-slate-800 whitespace-nowrap font-mono">{formatCurrency(item.totalAmount)}</td>
+                            <td className="px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{startDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                            <td className="px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{finishDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                            <td className="px-3 py-2.5 text-center text-xs text-slate-700">{item.period} {item.periodUnit}</td>
+                            <td className="px-3 py-2.5 text-right font-semibold text-xs text-slate-800 whitespace-nowrap font-mono">{formatCurrency(item.totalAmount)}</td>
+                            <td className="px-3 py-2.5 text-right font-semibold text-xs text-slate-800 whitespace-nowrap font-mono">{formatCurrency(totalAmortisasi)}</td>
+                            <td className="px-3 py-2.5 text-right font-semibold text-xs whitespace-nowrap font-mono"
+                              style={{ color: saldo > 0 ? '#16a34a' : saldo < 0 ? '#dc2626' : '#64748b' }}>
+                              {formatCurrency(saldo)}
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              <div className="flex items-center justify-center gap-0.5">
+                                <button
+                                  onClick={() => toggleRow(item.id)}
+                                  className="p-1.5 rounded-lg transition-all duration-200 hover:bg-slate-100 active:scale-90 text-slate-500 hover:text-slate-800"
+                                  title="Detail Periode"
+                                  onMouseEnter={e => gsap.to(e.currentTarget, { scale: 1.18, duration: 0.15 })}
+                                  onMouseLeave={e => gsap.to(e.currentTarget, { scale: 1,    duration: 0.15 })}
+                                >
+                                  {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                </button>
+                                {canEdit && (
+                                  <>
+                                    <button onClick={() => handleEdit(item)}
+                                      className="p-1.5 rounded-lg transition-all duration-200 hover:bg-blue-50 text-blue-500 active:scale-90"
+                                      title="Edit"
+                                      onMouseEnter={e => gsap.to(e.currentTarget, { scale: 1.18, duration: 0.15 })}
+                                      onMouseLeave={e => gsap.to(e.currentTarget, { scale: 1,    duration: 0.15 })}>
+                                      <Edit size={13} />
+                                    </button>
+                                    <button onClick={() => handleDelete(item.id)}
+                                      className="p-1.5 rounded-lg transition-all duration-200 hover:bg-red-50 text-red-500 active:scale-90"
+                                      title="Hapus"
+                                      onMouseEnter={e => gsap.to(e.currentTarget, { scale: 1.18, duration: 0.15 })}
+                                      onMouseLeave={e => gsap.to(e.currentTarget, { scale: 1,    duration: 0.15 })}>
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </>
+                                )}
                               </div>
-                              <table className="w-full text-sm bg-white">
-                                  <thead className="bg-gray-100 border-y border-gray-200">
-                                    <tr>
-                                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">Periode</th>
-                                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">Bulan</th>
-                                      <th className="px-3 py-3 text-right text-xs font-semibold text-gray-700 whitespace-nowrap">Amortisasi</th>
-                                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">Status</th>
-                                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">Jurnal SAP</th>
-                                      {item.pembagianType === 'manual' && canEdit && (
-                                        <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">Aksi</th>
-                                      )}
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-gray-200">
-                                    {item.periodes.map((p) => {
-                                      const parts = p.bulan.split(' ');
-                                      const pm = bulanMap[parts[0]] ?? 0;
-                                      const py = parseInt(parts[1]);
-                                      const periodeDate = new Date(py, pm, 1);
-                                      const isPast = periodeDate <= todayFirst;
-                                      const displayAmount = item.pembagianType === 'otomatis'
-                                        ? (isPast ? p.amountPrepaid : 0)
-                                        : p.amountPrepaid;
-                                      const isEditing = editingPeriode?.periodeId === p.id;
-
-                                      return (
-                                        <tr key={p.id} className={`hover:bg-gray-50 transition-colors ${!isPast && item.pembagianType === 'otomatis' ? 'text-gray-400' : 'text-gray-800'}`}>
-                                          <td className="px-3 py-3 text-center">{p.periodeKe}</td>
-                                          <td className="px-3 py-3 text-center whitespace-nowrap">{p.bulan}</td>
-                                          <td className="px-3 py-3 text-right font-medium">
-                                            {item.pembagianType === 'manual' && isEditing ? (
-                                              <input
-                                                type="number"
-                                                className="border border-gray-300 rounded px-2 py-1 text-sm w-44 text-right focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                                                value={editingPeriode!.amount}
-                                                onChange={(e) => setEditingPeriode(prev => prev ? { ...prev, amount: e.target.value } : null)}
-                                                onKeyDown={(e) => {
-                                                  if (e.key === 'Enter') handleSavePeriodeAmount(p.id, parseFloat(editingPeriode!.amount) || 0);
-                                                  if (e.key === 'Escape') setEditingPeriode(null);
-                                                }}
-                                                autoFocus
-                                              />
-                                            ) : (
-                                              formatCurrency(displayAmount)
-                                            )}
-                                          </td>
-                                          <td className="px-3 py-3 text-center whitespace-nowrap">
-                                            {item.pembagianType === 'otomatis' ? (
-                                              isPast
-                                                ? <span className="inline-flex items-center gap-1 text-green-600"><CheckCircle size={13} /> Teramortisasi</span>
-                                                : <span className="inline-flex items-center gap-1 text-gray-400"><Clock size={13} /> Belum</span>
-                                            ) : (
-                                              p.amountPrepaid > 0
-                                                ? <span className="inline-flex items-center gap-1 text-green-600"><CheckCircle size={13} /> Diisi</span>
-                                                : <span className="inline-flex items-center gap-1 text-gray-400"><Clock size={13} /> Belum</span>
-                                            )}
-                                          </td>
-                                          {/* Jurnal SAP per periode */}
-                                          <td className="px-3 py-3 text-center whitespace-nowrap">
-                                            {displayAmount > 0 ? (
-                                              <div className="flex items-center justify-center gap-1">
-                                                <button
-                                                  onClick={() => handleDownloadJurnalSAPPeriode(item, p, displayAmount)}
-                                                  className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
-                                                  title="Download Jurnal SAP Excel"
-                                                >
-                                                  <Download size={11} /> XLS
-                                                </button>
-                                                <button
-                                                  onClick={() => handleDownloadJurnalSAPTxtPeriode(item, p, displayAmount)}
-                                                  className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
-                                                  title="Download Jurnal SAP TXT"
-                                                >
-                                                  <Download size={11} /> TXT
-                                                </button>
-                                              </div>
-                                            ) : (
-                                              <span className="text-gray-300 text-xs">—</span>
-                                            )}
-                                          </td>
-                                          {item.pembagianType === 'manual' && canEdit && (
-                                            <td className="px-3 py-3 text-center">
-                                              {isEditing ? (
-                                                <div className="flex items-center gap-1 justify-center">
-                                                  <button
-                                                    onClick={() => handleSavePeriodeAmount(p.id, parseFloat(editingPeriode!.amount) || 0)}
-                                                    disabled={savingPeriode}
-                                                    className="text-xs px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 transition-colors"
-                                                  >
-                                                    {savingPeriode ? '...' : 'Simpan'}
-                                                  </button>
-                                                  <button
-                                                    onClick={() => setEditingPeriode(null)}
-                                                    className="text-xs px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
-                                                  >
-                                                    Batal
-                                                  </button>
-                                                </div>
-                                              ) : (
-                                                <button
-                                                  onClick={() => setEditingPeriode({ prepaidId: item.id, periodeId: p.id, amount: p.amountPrepaid.toString() })}
-                                                  className="text-xs px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
-                                                >
-                                                  Input
-                                                </button>
-                                              )}
-                                            </td>
-                                          )}
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
                             </td>
                           </tr>
-                        )}
-                      </React.Fragment>
+
+                          {/* â”€â”€ Expanded Detail Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+                          {isExpanded && (
+                            <tr>
+                              <td colSpan={17} className="px-0 py-0 bg-gradient-to-r from-red-50/80 to-slate-50 border-b border-red-100">
+                                <div className="expand-detail px-6 pt-3 pb-4">
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <span className="w-1 h-4 rounded-full bg-red-500 inline-block" />
+                                    <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Detail Amortisasi â€” {item.kdAkr}</p>
+                                    <Badge variant="outline" className="text-[8px] px-1.5 h-4 text-slate-400 border-slate-200">{item.periodes.length} periode</Badge>
+                                  </div>
+                                  <div className="overflow-x-auto custom-scrollbar rounded-lg border border-red-100">
+                                    <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
+                                      <thead>
+                                        <tr style={{ background: 'linear-gradient(90deg,#450a0a,#991b1b)' }}>
+                                          {[
+                                            'Periode', 'Bulan', 'Amortisasi', 'Status', 'Jurnal SAP',
+                                            ...(item.pembagianType === 'manual' && canEdit ? ['Aksi'] : [])
+                                          ].map(h => (
+                                            <th key={h} className="px-3 py-2 whitespace-nowrap"
+                                              style={{
+                                                textAlign: h === 'Amortisasi' ? 'right' : 'center',
+                                                color: '#fca5a5', fontSize: 9, fontWeight: 600,
+                                                textTransform: 'uppercase', letterSpacing: 0.4,
+                                              }}>
+                                              {h}
+                                            </th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {item.periodes.map((p) => {
+                                          const parts = p.bulan.split(' ');
+                                          const pm = bulanMap[parts[0]] ?? 0;
+                                          const py = parseInt(parts[1]);
+                                          const periodeDate = new Date(py, pm, 1);
+                                          const isPast = periodeDate <= todayFirst;
+                                          const displayAmount = item.pembagianType === 'otomatis'
+                                            ? (isPast ? p.amountPrepaid : 0)
+                                            : p.amountPrepaid;
+                                          const isEditing = editingPeriode?.periodeId === p.id;
+
+                                          return (
+                                            <tr key={p.id}
+                                              className={`transition-colors duration-100 ${!isPast && item.pembagianType === 'otomatis' ? 'bg-slate-50/60 text-slate-400' : 'bg-white hover:bg-red-50/30 text-slate-700'}`}
+                                              style={{ borderBottom: '1px solid #fee2e2' }}>
+                                              <td className="px-3 py-2 text-center text-xs">{p.periodeKe}</td>
+                                              <td className="px-3 py-2 text-center whitespace-nowrap text-xs font-medium">{p.bulan}</td>
+                                              <td className="px-3 py-2 text-right font-semibold text-xs font-mono">
+                                                {item.pembagianType === 'manual' && isEditing ? (
+                                                  <input type="number"
+                                                    className="border border-red-300 rounded px-2 py-1 text-xs w-40 text-right focus:outline-none focus:ring-2 focus:ring-red-500"
+                                                    value={editingPeriode!.amount}
+                                                    onChange={(e) => setEditingPeriode(prev => prev ? { ...prev, amount: e.target.value } : null)}
+                                                    onKeyDown={(e) => {
+                                                      if (e.key === 'Enter') handleSavePeriodeAmount(p.id, parseFloat(editingPeriode!.amount) || 0);
+                                                      if (e.key === 'Escape') setEditingPeriode(null);
+                                                    }}
+                                                    autoFocus />
+                                                ) : formatCurrency(displayAmount)}
+                                              </td>
+                                              <td className="px-3 py-2 text-center whitespace-nowrap">
+                                                {item.pembagianType === 'otomatis' ? (
+                                                  isPast
+                                                    ? <span className="inline-flex items-center gap-1 text-[9px] font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full"><CheckCircle size={9} /> Teramortisasi</span>
+                                                    : <span className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full"><Clock size={9} /> Belum</span>
+                                                ) : (
+                                                  p.amountPrepaid > 0
+                                                    ? <span className="inline-flex items-center gap-1 text-[9px] font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full"><CheckCircle size={9} /> Diisi</span>
+                                                    : <span className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full"><Clock size={9} /> Belum</span>
+                                                )}
+                                              </td>
+                                              <td className="px-3 py-2 text-center whitespace-nowrap">
+                                                {displayAmount > 0 ? (
+                                                  <div className="flex items-center justify-center gap-1">
+                                                    <button onClick={() => handleDownloadJurnalSAPPeriode(item, p, displayAmount)}
+                                                      className="inline-flex items-center gap-1 text-[9px] font-semibold px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded transition-colors active:scale-90"
+                                                      onMouseEnter={ev => gsap.to(ev.currentTarget, { scale: 1.08, duration: 0.13 })}
+                                                      onMouseLeave={ev => gsap.to(ev.currentTarget, { scale: 1, duration: 0.13 })}>
+                                                      <Download size={9} /> XLS
+                                                    </button>
+                                                    <button onClick={() => handleDownloadJurnalSAPTxtPeriode(item, p, displayAmount)}
+                                                      className="inline-flex items-center gap-1 text-[9px] font-semibold px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors active:scale-90"
+                                                      onMouseEnter={ev => gsap.to(ev.currentTarget, { scale: 1.08, duration: 0.13 })}
+                                                      onMouseLeave={ev => gsap.to(ev.currentTarget, { scale: 1, duration: 0.13 })}>
+                                                      <Download size={9} /> TXT
+                                                    </button>
+                                                  </div>
+                                                ) : <span className="text-slate-300 text-xs">â€”</span>}
+                                              </td>
+                                              {item.pembagianType === 'manual' && canEdit && (
+                                                <td className="px-3 py-2 text-center">
+                                                  {isEditing ? (
+                                                    <div className="flex items-center gap-1 justify-center">
+                                                      <button
+                                                        onClick={() => handleSavePeriodeAmount(p.id, parseFloat(editingPeriode!.amount) || 0)}
+                                                        disabled={savingPeriode}
+                                                        className="text-[10px] px-2.5 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 transition-colors active:scale-95 font-semibold">
+                                                        {savingPeriode ? '...' : 'Simpan'}
+                                                      </button>
+                                                      <button
+                                                        onClick={() => setEditingPeriode(null)}
+                                                        className="text-[10px] px-2.5 py-1 bg-white border border-gray-200 text-slate-600 rounded hover:bg-gray-50 transition-colors active:scale-95">
+                                                        Batal
+                                                      </button>
+                                                    </div>
+                                                  ) : (
+                                                    <button
+                                                      onClick={() => setEditingPeriode({ prepaidId: item.id, periodeId: p.id, amount: p.amountPrepaid.toString() })}
+                                                      className="text-[10px] px-2.5 py-1 bg-white border border-gray-200 text-slate-600 rounded hover:bg-slate-50 transition-colors active:scale-95 font-medium">
+                                                      Input
+                                                    </button>
+                                                  )}
+                                                </td>
+                                              )}
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
-            )}
 
-            {/* Empty State */}
-            {!loading && filteredData.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-gray-500">Tidak ada data yang ditemukan</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Prepaid Form Modal */}
-      <PrepaidForm
-        isOpen={isFormOpen}
-        onClose={() => {
-          setIsFormOpen(false);
-          setEditData(null);
-          setEditMode('create');
-        }}
-        onSuccess={fetchPrepaidData}
-        mode={editMode}
-        editData={editData}
-      />
-
-      {/* Loading Overlay untuk proses yang memakan waktu */}
-      {submitting && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 sm:p-8 shadow-2xl flex flex-col items-center space-y-4 max-w-sm mx-4">
-            <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-4 border-red-600 border-t-transparent"></div>
-            <div className="text-center">
-              <p className="text-base sm:text-lg font-semibold text-gray-800">Memproses data...</p>
-              <p className="text-xs sm:text-sm text-gray-500 mt-1">Mohon tunggu sebentar</p>
+              {/* Empty state */}
+              {filteredData.length === 0 && (
+                <div className="text-center py-14">
+                  <div className="w-14 h-14 mx-auto rounded-2xl bg-red-50 flex items-center justify-center mb-3">
+                    <FileSpreadsheet className="w-7 h-7 text-red-400" />
+                  </div>
+                  <p className="text-slate-600 font-semibold">Tidak ada data ditemukan</p>
+                  <p className="text-slate-400 text-sm mt-1">
+                    {searchTerm ? 'Coba ubah kata kunci pencarian' : 'Belum ada data prepaid yang diinput'}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
+        )}
+
+        {/* â”€â”€ Prepaid Form Wrapper (animated) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        <div ref={formOverlayRef} style={{ opacity: 0, pointerEvents: isFormOpen ? 'auto' : 'none' }}>
+          <PrepaidForm
+            isOpen={isFormOpen}
+            onClose={() => {
+              // Animate out then close
+              if (formOverlayRef.current) {
+                gsap.to(formOverlayRef.current, {
+                  opacity: 0, duration: 0.2, ease: 'power2.in',
+                  onComplete: () => {
+                    setIsFormOpen(false);
+                    setEditData(null);
+                    setEditMode('create');
+                  }
+                });
+              } else {
+                setIsFormOpen(false);
+                setEditData(null);
+                setEditMode('create');
+              }
+            }}
+            onSuccess={fetchPrepaidData}
+            mode={editMode}
+            editData={editData}
+          />
         </div>
-      )}
+
+        {/* â”€â”€ Processing Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {(submitting || importLoading) && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl px-10 py-8 shadow-2xl flex flex-col items-center gap-4 max-w-xs mx-4 border border-red-100">
+              <div className="relative w-16 h-16">
+                <div className="absolute inset-0 rounded-full border-4 border-red-100" />
+                <div className="absolute inset-0 rounded-full border-4 border-t-red-600 border-r-red-300 border-b-transparent border-l-transparent animate-spin" />
+                <FileSpreadsheet className="absolute inset-0 m-auto w-7 h-7 text-red-600" />
+              </div>
+              <div className="text-center">
+                <p className="text-base font-bold text-slate-800">
+                  {importLoading ? 'Mengimpor data...' : 'Memproses data...'}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">Mohon tunggu sebentar</p>
+              </div>
+              <div className="flex gap-1.5">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className="w-2 h-2 rounded-full bg-red-500 animate-bounce"
+                    style={{ animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+
+
