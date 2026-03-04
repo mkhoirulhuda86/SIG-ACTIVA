@@ -8,16 +8,26 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const accountCode = searchParams.get('accountCode');
     const periode     = searchParams.get('periode');
+    // "slim" mode: overview page only needs these 5 fields — skip heavy cols
+    const slim = searchParams.get('slim') === '1';
 
     const records = await prisma.fluktuasiAkunPeriode.findMany({
       where: {
         ...(accountCode ? { accountCode } : {}),
         ...(periode     ? { periode }     : {}),
       },
-      orderBy: [{ accountCode: 'asc' }, { periode: 'asc' }],
+      // skip uploadedBy / fileName / createdAt / updatedAt / remark for slim
+      select: slim
+        ? { accountCode: true, periode: true, amount: true, klasifikasi: true }
+        : undefined,
+      // client sorts anyway — skip DB sort in slim mode to reduce query cost
+      orderBy: slim ? undefined : [{ accountCode: 'asc' }, { periode: 'asc' }],
     });
 
-    return NextResponse.json({ success: true, data: records });
+    const res = NextResponse.json({ success: true, data: records });
+    // Allow CDN/browser to serve stale while revalidating (30 s fresh, 60 s stale)
+    res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+    return res;
   } catch (error) {
     console.error('Error fetching akun periodes:', error);
     return NextResponse.json(

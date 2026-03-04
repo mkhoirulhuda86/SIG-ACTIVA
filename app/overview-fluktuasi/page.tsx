@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, useTransition } from 'react';
 import dynamic from 'next/dynamic';
 import { RotateCcw, TrendingUp, TrendingDown, Minus, Activity, BarChart2, PieChart, Filter, List } from 'lucide-react';
 import { gsap } from 'gsap';
-import { animate, stagger } from 'animejs';
+import { animate } from 'animejs';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -101,6 +101,16 @@ type AkunPeriodeRecord = {
   amount: number;
   klasifikasi: string;
   remark: string;
+};
+
+// Internal enriched record — klasifikasiParts parsed once at load time
+type ParsedRecord = {
+  accountCode: string;
+  periode: string;
+  amount: number;
+  klasifikasi: string;
+  klasifikasiParts: string[]; // pre-split; avoids repeated split(';') in every memo
+  year: string;               // pre-extracted year
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -354,30 +364,25 @@ function HBarItem({
   const barRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
 
+  // Only run the fill animation on mount (when animDelay is set), not on every re-render
+  const mountedRef = useRef(false);
   useEffect(() => {
-    if (barRef.current) {
-      gsap.fromTo(barRef.current,
-        { width: '0%' },
-        { width: `${pct}%`, duration: 1.1, delay: animDelay / 1000 + 0.1, ease: 'power3.out' }
-      );
-    }
-    if (rowRef.current) {
-      gsap.fromTo(rowRef.current,
-        { opacity: 0, x: -16 },
-        { opacity: 1, x: 0, duration: 0.55, delay: animDelay / 1000, ease: 'power3.out' }
-      );
-      const el = rowRef.current;
-      const onEnter = () => gsap.to(el, { x: 3, duration: 0.2, ease: 'power2.out' });
-      const onLeave = () => gsap.to(el, { x: 0, duration: 0.2, ease: 'power2.out' });
-      el.addEventListener('mouseenter', onEnter);
-      el.addEventListener('mouseleave', onLeave);
-      return () => { el.removeEventListener('mouseenter', onEnter); el.removeEventListener('mouseleave', onLeave); };
-    }
+    if (mountedRef.current || !barRef.current || !rowRef.current) return;
+    mountedRef.current = true;
+    gsap.fromTo(rowRef.current, { opacity: 0, x: -16 }, { opacity: 1, x: 0, duration: 0.5, delay: animDelay / 1000, ease: 'power3.out' });
+    gsap.fromTo(barRef.current, { width: '0%' }, { width: `${pct}%`, duration: 1.0, delay: animDelay / 1000 + 0.1, ease: 'power3.out' });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pct, animDelay]);
+  }, []);
+
+  // Update bar width on data change without re-animating from 0
+  useEffect(() => {
+    if (!mountedRef.current || !barRef.current) return;
+    gsap.to(barRef.current, { width: `${pct}%`, duration: 0.5, ease: 'power2.out' });
+  }, [pct]);
 
   return (
-    <div ref={rowRef} className="flex items-center gap-2">
+    // CSS hover translate — no JS event listeners
+    <div ref={rowRef} className="flex items-center gap-2 transition-transform duration-150 hover:translate-x-0.5">
       <span className="text-[9px] w-3 text-right flex-shrink-0 text-slate-400">{rank}.</span>
       <span className="text-[10px] flex-shrink-0 truncate text-slate-500 font-medium" style={{ width: 120 }} title={label}>
         {label.length > 16 ? label.slice(0, 16) + '…' : label}
@@ -476,7 +481,7 @@ function AnimatedAgingChart({ buckets, maxAbsB, bColors, VW, slot, bw, BAR_MAX, 
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function OverviewFluktuasiPage() {
-  const [records, setRecords]                   = useState<AkunPeriodeRecord[]>([]);
+  const [records, setRecords]                   = useState<ParsedRecord[]>([]);
   const [loading, setLoading]                   = useState(true);
   const [isMobileSidebarOpen, setMobileSidebar] = useState(false);
 
@@ -486,139 +491,132 @@ export default function OverviewFluktuasiPage() {
   const [listPage,          setListPage]          = useState(0);
   const LIST_PAGE_SIZE = 100;
 
+  // Marks filter-driven re-renders as non-urgent so the UI stays responsive
+  const [, startTransition] = useTransition();
+
   // ── Load data ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    fetch('/api/fluktuasi/akun-periodes')
+    // ?slim=1 → server selects only the 4 needed columns (no remark/uploadedBy/etc.)
+    fetch('/api/fluktuasi/akun-periodes?slim=1')
       .then(r => r.json())
-      .then(data => { if (data.success && Array.isArray(data.data)) setRecords(data.data); })
+      .then((data: { success: boolean; data: AkunPeriodeRecord[] }) => {
+        if (data.success && Array.isArray(data.data)) {
+          // Pre-parse klasifikasi and year ONCE here → all memos reuse the result
+          setRecords(data.data.map(r => ({
+            accountCode: r.accountCode,
+            periode:     r.periode,
+            amount:      r.amount,
+            klasifikasi: r.klasifikasi,
+            year:        r.periode.split('.')[0],
+            klasifikasiParts: (r.klasifikasi || '(Tanpa Klasifikasi)')
+              .split(';').map(p => p.trim()).filter(Boolean),
+          })));
+        }
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
-  // ── Derived data ───────────────────────────────────────────────────────────
-  const years = useMemo(() => {
-    const s = new Set(records.map(r => r.periode.split('.')[0]));
-    return [...s].sort();
-  }, [records]);
+  // ── Derived data — SINGLE PASS over records ───────────────────────────────
+  // Replaces the previous 4 separate loops (years, allKlasifikasi, allAccounts, byYear)
+  const recordStats = useMemo(() => {
+    const yearTotals    = new Map<string, number>();
+    const klasSet       = new Set<string>();
+    const accSet        = new Set<string>();
 
-  const allKlasifikasi = useMemo(() => {
-    const s = new Set<string>();
-    records.forEach(r => {
-      const raw = r.klasifikasi || '(Tanpa Klasifikasi)';
-      raw.split(';').map((p: string) => p.trim()).filter(Boolean).forEach((k: string) => s.add(k));
-    });
-    return [...s].sort();
-  }, [records]);
-
-  const allAccounts = useMemo(() => {
-    const s = new Set(records.map(r => r.accountCode));
-    return [...s].sort();
-  }, [records]);
-
-  const filtered = useMemo(() => records.filter(r => {
-    if (selectedYear !== 'all' && !r.periode.startsWith(selectedYear + '.')) return false;
-    if (filterKlasifikasi.size > 0) {
-      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
-      if (!parts.some((k: string) => filterKlasifikasi.has(k))) return false;
+    for (const r of records) {
+      yearTotals.set(r.year, (yearTotals.get(r.year) ?? 0) + r.amount);
+      accSet.add(r.accountCode);
+      for (const k of r.klasifikasiParts) klasSet.add(k);
     }
-    if (filterAccount.size > 0 && !filterAccount.has(r.accountCode)) return false;
-    return true;
-  }), [records, selectedYear, filterKlasifikasi, filterAccount]);
 
-  const byYear = useMemo(() => {
-    const m = new Map<string, number>();
-    records.forEach(r => {
-      const yr = r.periode.split('.')[0];
-      m.set(yr, (m.get(yr) ?? 0) + r.amount);
+    const years    = [...yearTotals.keys()].sort();
+    const byYear   = years.map(yr => ({ yr, total: yearTotals.get(yr) ?? 0 }));
+    const allKlasifikasi = [...klasSet].sort();
+    const allAccounts    = [...accSet].sort();
+
+    return { years, byYear, allKlasifikasi, allAccounts };
+  }, [records]);
+
+  const { years, byYear, allKlasifikasi, allAccounts } = recordStats;
+
+  // ── Filter pass ────────────────────────────────────────────────────────────
+  const filtered = useMemo(() => {
+    const yearPrefix = selectedYear !== 'all' ? selectedYear + '.' : null;
+    return records.filter(r => {
+      if (yearPrefix && !r.periode.startsWith(yearPrefix)) return false;
+      if (filterKlasifikasi.size > 0 && !r.klasifikasiParts.some(k => filterKlasifikasi.has(k))) return false;
+      if (filterAccount.size > 0   && !filterAccount.has(r.accountCode)) return false;
+      return true;
     });
-    return years.map(yr => ({ yr, total: m.get(yr) ?? 0 }));
-  }, [records, years]);
+  }, [records, selectedYear, filterKlasifikasi, filterAccount]);
 
-  const byKlasifikasi = useMemo(() => {
-    const m = new Map<string, number>();
-    filtered.forEach(r => {
-      const raw = r.klasifikasi || '(Tanpa Klasifikasi)';
-      const parts = raw.split(';').map((p: string) => p.trim()).filter(Boolean);
-      const share = r.amount / parts.length; // always divide by full count
+  // ── Derived data — SINGLE PASS over filtered ───────────────────────────────
+  // Replaces: byKlasifikasi, byPeriode, top10Accounts, listingRows,
+  //           totalFiltered, agingData — all previously separate loops
+  const filteredStats = useMemo(() => {
+    const klasMap    = new Map<string, number>();
+    const periodeMap = new Map<string, number>();
+    const accMap     = new Map<string, number>();
+    const listMap    = new Map<string, { accountCode: string; klasifikasiParts: Set<string>; total: number; periodes: number }>();
+    let totalFiltered = 0;
+
+    for (const r of filtered) {
+      // total
+      totalFiltered += r.amount;
+
+      // byPeriode
+      periodeMap.set(r.periode, (periodeMap.get(r.periode) ?? 0) + r.amount);
+
+      // top10 accounts
+      accMap.set(r.accountCode, (accMap.get(r.accountCode) ?? 0) + r.amount);
+
+      // byKlasifikasi
       const activeParts = filterKlasifikasi.size > 0
-        ? parts.filter((k: string) => filterKlasifikasi.has(k))
-        : parts;
-      activeParts.forEach((k: string) => {
-        m.set(k, (m.get(k) ?? 0) + share);
-      });
-    });
-    return [...m.entries()]
+        ? r.klasifikasiParts.filter(k => filterKlasifikasi.has(k))
+        : r.klasifikasiParts;
+      const share = r.amount / r.klasifikasiParts.length;
+      for (const k of activeParts) klasMap.set(k, (klasMap.get(k) ?? 0) + share);
+
+      // listingRows
+      const ex = listMap.get(r.accountCode);
+      if (ex) {
+        for (const k of r.klasifikasiParts) ex.klasifikasiParts.add(k);
+        ex.total   += r.amount;
+        ex.periodes += 1;
+      } else {
+        listMap.set(r.accountCode, {
+          accountCode: r.accountCode,
+          klasifikasiParts: new Set(r.klasifikasiParts),
+          total: r.amount,
+          periodes: 1,
+        });
+      }
+    }
+
+    // byKlasifikasi sorted
+    const byKlasifikasi = [...klasMap.entries()]
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
       .map(([label, value], i) => ({ label, value, color: PALETTE[i % PALETTE.length] }));
-  }, [filtered, filterKlasifikasi]);
 
-  const byPeriode = useMemo(() => {
-    const m = new Map<string, number>();
-    filtered.forEach(r => m.set(r.periode, (m.get(r.periode) ?? 0) + r.amount));
-    return [...m.entries()]
+    // byPeriode sorted
+    const byPeriode = [...periodeMap.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([p, value]) => ({ label: periodeToLabel(p), value }));
-  }, [filtered]);
 
-  const top10Accounts = useMemo(() => {
-    const m = new Map<string, number>();
-    filtered.forEach(r => m.set(r.accountCode, (m.get(r.accountCode) ?? 0) + r.amount));
-    return [...m.entries()]
+    // top 10 accounts
+    const top10Accounts = [...accMap.entries()]
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
       .slice(0, 10)
       .map(([acc, val]) => ({ label: acc, value: val }));
-  }, [filtered]);
 
-  const listingRows = useMemo(() => {
-    const m = new Map<string, { accountCode: string; klasifikasi: string; klasifikasiParts: Set<string>; total: number; periodes: number }>();
-    filtered.forEach(r => {
-      const key = r.accountCode;
-      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
-      const ex = m.get(key) ?? { accountCode: r.accountCode, klasifikasi: '', klasifikasiParts: new Set<string>(), total: 0, periodes: 0 };
-      parts.forEach(p => ex.klasifikasiParts.add(p));
-      m.set(key, { ...ex, total: ex.total + r.amount, periodes: ex.periodes + 1 });
-    });
-    return [...m.values()]
+    // listingRows sorted
+    const listingRows = [...listMap.values()]
       .map(row => ({ ...row, klasifikasi: [...row.klasifikasiParts].join('; ') }))
       .sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
-  }, [filtered]);
 
-  const listingTotalPages = useMemo(
-    () => Math.ceil(listingRows.length / LIST_PAGE_SIZE),
-    [listingRows],
-  );
-  const listingPage = useMemo(
-    () => listingRows.slice(listPage * LIST_PAGE_SIZE, (listPage + 1) * LIST_PAGE_SIZE),
-    [listingRows, listPage],
-  );
-
-  const totalFiltered = useMemo(() => filtered.reduce((s, r) => s + r.amount, 0), [filtered]);
-  const maxAbsKlasi   = useMemo(() => byKlasifikasi.length > 0 ? Math.abs(byKlasifikasi[0].value) : 1, [byKlasifikasi]);
-  const maxAbsAccount = useMemo(() => top10Accounts.length > 0 ? Math.abs(top10Accounts[0].value) : 1, [top10Accounts]);
-  const donutTotal    = useMemo(() => byKlasifikasi.reduce((s, d) => s + Math.abs(d.value), 0), [byKlasifikasi]);
-
-  const { lastTwo, momGap, momPct } = useMemo(() => {
-    const lastTwo = byPeriode.slice(-2);
-    const momGap  = lastTwo.length === 2 ? lastTwo[1].value - lastTwo[0].value : null;
-    const momPct  = lastTwo.length === 2 && lastTwo[0].value !== 0
-      ? (momGap! / Math.abs(lastTwo[0].value)) * 100
-      : null;
-    return { lastTwo, momGap, momPct };
-  }, [byPeriode]);
-
-  // Precomputed account amounts for filter panel (avoids O(n×m) inline loop)
-  const accountAmountsByYear = useMemo(() => {
-    const m = new Map<string, number>();
-    records.forEach(r => {
-      if (selectedYear !== 'all' && !r.periode.startsWith(selectedYear + '.')) return;
-      m.set(r.accountCode, (m.get(r.accountCode) ?? 0) + r.amount);
-    });
-    return m;
-  }, [records, selectedYear]);
-
-  // Aging buckets precomputed (also fixes O(n) pSlice.includes → O(1) Set lookup)
-  const agingData = useMemo(() => {
-    const sortedPeriodes = [...new Map(filtered.map(r => [r.periode, 0])).keys()].sort();
+    // agingData — single pass over sorted periode keys
+    const sortedPeriodes = [...periodeMap.keys()].sort();
     const n = sortedPeriodes.length;
     const buckets: { label: string; value: number }[] = [];
     if (n > 0) {
@@ -627,27 +625,75 @@ export default function OverviewFluktuasiPage() {
         const start  = b * bSize;
         const end    = Math.min(start + bSize, n);
         const pSlice = sortedPeriodes.slice(start, end);
-        const pSet   = new Set(pSlice);
-        const sum    = filtered.filter(r => pSet.has(r.periode)).reduce((s, r) => s + r.amount, 0);
-        const lbl    = pSlice.length > 0
-          ? `${b + 1}. ${periodeToLabel(pSlice[0])}${pSlice.length > 1 ? '–' + periodeToLabel(pSlice[pSlice.length - 1]) : ''}`
-          : `Bucket ${b + 1}`;
+        if (pSlice.length === 0) continue;
+        const pSet = new Set(pSlice);
+        let sum = 0;
+        for (const [p, v] of periodeMap) if (pSet.has(p)) sum += v;
+        const lbl = `${b + 1}. ${periodeToLabel(pSlice[0])}${pSlice.length > 1 ? '–' + periodeToLabel(pSlice[pSlice.length - 1]) : ''}`;
         buckets.push({ label: lbl, value: sum });
       }
     }
     const maxAbsB = Math.max(...buckets.map(bk => Math.abs(bk.value)), 1);
-    return { buckets, maxAbsB };
-  }, [filtered]);
 
-  const toggleKlasifikasi = useCallback((k: string) => setFilterKlasifikasi(prev => {
-    const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n;
-  }), []);
-  const toggleAccount = useCallback((a: string) => setFilterAccount(prev => {
-    const n = new Set(prev); n.has(a) ? n.delete(a) : n.add(a); return n;
-  }), []);
+    // maxes & derived scalars
+    const maxAbsKlasi   = byKlasifikasi.length > 0 ? Math.abs(byKlasifikasi[0].value) : 1;
+    const maxAbsAccount = top10Accounts.length > 0 ? Math.abs(top10Accounts[0].value) : 1;
+    const donutTotal    = byKlasifikasi.reduce((s, d) => s + Math.abs(d.value), 0);
+
+    // MoM
+    const lastTwo = byPeriode.slice(-2);
+    const momGap  = lastTwo.length === 2 ? lastTwo[1].value - lastTwo[0].value : null;
+    const momPct  = lastTwo.length === 2 && lastTwo[0].value !== 0
+      ? (momGap! / Math.abs(lastTwo[0].value)) * 100 : null;
+
+    return {
+      byKlasifikasi, byPeriode, top10Accounts, listingRows,
+      totalFiltered, agingData: { buckets, maxAbsB },
+      maxAbsKlasi, maxAbsAccount, donutTotal,
+      lastTwo, momGap, momPct,
+    };
+  }, [filtered, filterKlasifikasi]);
+
+  const {
+    byKlasifikasi, byPeriode, top10Accounts, listingRows,
+    totalFiltered, agingData,
+    maxAbsKlasi, maxAbsAccount, donutTotal,
+    lastTwo, momGap, momPct,
+  } = filteredStats;
+
+  // Paginated listing (cheap slice — not in the large memo)
+  const listingTotalPages = Math.ceil(listingRows.length / LIST_PAGE_SIZE);
+  const listingPage = useMemo(
+    () => listingRows.slice(listPage * LIST_PAGE_SIZE, (listPage + 1) * LIST_PAGE_SIZE),
+    [listingRows, listPage],
+  );
+
+  // Account filter panel amounts — one small pass only when year filter changes
+  const accountAmountsByYear = useMemo(() => {
+    const m = new Map<string, number>();
+    const pref = selectedYear !== 'all' ? selectedYear + '.' : null;
+    for (const r of records) {
+      if (pref && !r.periode.startsWith(pref)) continue;
+      m.set(r.accountCode, (m.get(r.accountCode) ?? 0) + r.amount);
+    }
+    return m;
+  }, [records, selectedYear]);
+
+  const toggleKlasifikasi = useCallback((k: string) => {
+    startTransition(() => setFilterKlasifikasi(prev => {
+      const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n;
+    }));
+  }, [startTransition]);
+  const toggleAccount = useCallback((a: string) => {
+    startTransition(() => setFilterAccount(prev => {
+      const n = new Set(prev); n.has(a) ? n.delete(a) : n.add(a); return n;
+    }));
+  }, [startTransition]);
   const resetFilters = useCallback(() => {
-    setSelectedYear('all'); setFilterKlasifikasi(new Set()); setFilterAccount(new Set()); setListPage(0);
-  }, []);
+    startTransition(() => {
+      setSelectedYear('all'); setFilterKlasifikasi(new Set()); setFilterAccount(new Set()); setListPage(0);
+    });
+  }, [startTransition]);
 
   // ── Refs for GSAP page animations ─────────────────────────────────────────
   const yearBarRef  = useRef<HTMLDivElement>(null);
@@ -686,18 +732,8 @@ export default function OverviewFluktuasiPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records, loading]);
 
-  // Table rows stagger on page/filter change
-  useEffect(() => {
-    if (!tableRef.current) return;
-    const rows = tableRef.current.querySelectorAll('tbody tr');
-    animate(rows, {
-      opacity: [0, 1],
-      translateX: [-8, 0],
-      duration: 300,
-      delay: stagger(18, { start: 80 }),
-      ease: 'easeOutExpo',
-    });
-  }, [listPage, listingRows]);
+  // Table rows: simple CSS fade (no JS stagger on filter change — too expensive)
+  // The initial page-entry GSAP timeline already handles first-render animation.
 
   // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) return <PageSkeleton isMobileSidebarOpen={isMobileSidebarOpen} setMobileSidebar={setMobileSidebar} />;
@@ -753,7 +789,7 @@ export default function OverviewFluktuasiPage() {
             return (
               <button
                 key={yr}
-                onClick={() => { setSelectedYear(yr === selectedYear ? 'all' : yr); setListPage(0); }}
+                onClick={() => startTransition(() => { setSelectedYear(yr === selectedYear ? 'all' : yr); setListPage(0); })}
                 className="flex flex-col items-center rounded-lg transition-all duration-200 hover:shadow-md active:scale-95"
                 style={{
                   backgroundColor: isSelected ? '#2563eb' : isLatest ? '#eff6ff' : '#f8fafc',
@@ -863,7 +899,7 @@ export default function OverviewFluktuasiPage() {
                       const isSelected = selectedYear === yr;
                       return (
                         <div key={yr}
-                          onClick={() => { setSelectedYear(yr === selectedYear ? 'all' : yr); setListPage(0); }}
+                          onClick={() => startTransition(() => { setSelectedYear(yr === selectedYear ? 'all' : yr); setListPage(0); })}
                           className="flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm"
                           style={{
                             border:          isSelected ? '1.5px solid #2563eb' : '1px solid #e2e8f0',
