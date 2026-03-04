@@ -4020,6 +4020,26 @@ export default function FluktuasiOIPage() {
         </div>
       )}
 
+      {/* Processing overlay */}
+      {isProcessing && (
+        <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-[60]">
+          <div className="bg-white/90 backdrop-blur-sm border border-indigo-200/60 rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3 animate-fadeIn">
+            <div className="relative w-14 h-14">
+              <div className="absolute inset-0 rounded-full border-4 border-indigo-100" />
+              <div className="absolute inset-0 rounded-full border-4 border-t-indigo-600 border-r-indigo-300 border-b-transparent border-l-transparent animate-spin" />
+              <FileSpreadsheet className="absolute inset-0 m-auto w-6 h-6 text-indigo-600" />
+            </div>
+            <p className="text-slate-700 text-sm font-semibold tracking-wide">Memproses file Excel...</p>
+            <div className="flex gap-1.5">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce"
+                  style={{ animationDelay: `${i * 0.15}s` }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

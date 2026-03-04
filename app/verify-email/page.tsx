@@ -1,15 +1,39 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { CheckCircle, XCircle, Loader } from 'lucide-react';
+import { CheckCircle, XCircle, Mail } from 'lucide-react';
 import Link from 'next/link';
+import { gsap } from 'gsap';
 
 export default function VerifyEmailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
+
+  // ── Animation refs ────────────────────────────────────────────────────────
+  const headerRef = useRef<HTMLDivElement>(null);
+  const cardRef   = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+
+  // ── Page entrance animation ───────────────────────────────────────────────
+  useEffect(() => {
+    const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+    if (headerRef.current)
+      tl.fromTo(headerRef.current, { opacity: 0, y: -24 }, { opacity: 1, y: 0, duration: 0.55 }, 0);
+    if (cardRef.current)
+      tl.fromTo(cardRef.current, { opacity: 0, y: 32, scale: 0.97 }, { opacity: 1, y: 0, scale: 1, duration: 0.6 }, 0.12);
+  }, []);
+
+  // ── Status change animation ───────────────────────────────────────────────
+  useEffect(() => {
+    if (status === 'loading' || !statusRef.current) return;
+    gsap.fromTo(statusRef.current,
+      { opacity: 0, scale: 0.92, y: 18 },
+      { opacity: 1, scale: 1, y: 0, duration: 0.45, ease: 'back.out(1.5)' }
+    );
+  }, [status]);
 
   useEffect(() => {
     const token = searchParams.get('token');
@@ -58,7 +82,7 @@ export default function VerifyEmailPage() {
     <div className="min-h-screen bg-gradient-to-br from-red-50 to-gray-100 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* Logo & Header */}
-        <div className="text-center mb-8">
+        <div ref={headerRef} className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-red-600 rounded-2xl mb-4 shadow-lg">
             <div className="text-white font-bold text-2xl">SIG</div>
           </div>
@@ -71,21 +95,33 @@ export default function VerifyEmailPage() {
         </div>
 
         {/* Verification Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-200">
+        <div ref={cardRef} className="bg-white rounded-2xl shadow-xl p-8 border border-gray-200">
           {status === 'loading' && (
             <div className="text-center py-8">
-              <Loader className="w-16 h-16 text-red-600 animate-spin mx-auto mb-4" />
+              {/* Spinner ring matching other pages */}
+              <div className="relative w-16 h-16 mx-auto mb-5">
+                <div className="absolute inset-0 rounded-full border-4 border-red-100" />
+                <div className="absolute inset-0 rounded-full border-4 border-t-red-600 border-r-red-300 border-b-transparent border-l-transparent animate-spin" />
+                <Mail className="absolute inset-0 m-auto w-7 h-7 text-red-600" />
+              </div>
               <h2 className="text-xl font-bold text-gray-800 mb-2">
                 Memverifikasi Email...
               </h2>
-              <p className="text-gray-600">
+              <p className="text-gray-500 text-sm mb-4">
                 Mohon tunggu sebentar
               </p>
+              {/* Bouncing dots matching other pages */}
+              <div className="flex justify-center gap-1.5">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className="w-2 h-2 rounded-full bg-red-500 animate-bounce"
+                    style={{ animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </div>
             </div>
           )}
 
           {status === 'success' && (
-            <div className="text-center py-8">
+            <div ref={statusRef} className="text-center py-8">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <CheckCircle className="w-10 h-10 text-green-600" />
               </div>
@@ -108,7 +144,7 @@ export default function VerifyEmailPage() {
           )}
 
           {status === 'error' && (
-            <div className="text-center py-8">
+            <div ref={statusRef} className="text-center py-8">
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <XCircle className="w-10 h-10 text-red-600" />
               </div>

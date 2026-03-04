@@ -95,11 +95,16 @@ function LoadingSkeleton() {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    gsap.fromTo(el, { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power3.out' });
+    const cards = el.querySelectorAll('.sk-card');
+    if (cards.length > 0) {
+      gsap.fromTo(cards, { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power3.out', stagger: 0.09 });
+    } else {
+      gsap.fromTo(el, { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power3.out' });
+    }
   }, []);
   return (
     <div ref={ref} className="space-y-4 sm:space-y-6">
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6">
+      <div className="sk-card bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="space-y-2">
             <Skeleton className="h-6 w-56" />
@@ -120,7 +125,7 @@ function LoadingSkeleton() {
           ))}
         </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+      <div className="sk-card grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {[0, 1].map(i => (
           <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6 space-y-3">
             <div className="flex items-center gap-2">
@@ -134,7 +139,7 @@ function LoadingSkeleton() {
           </div>
         ))}
       </div>
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="sk-card bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-gray-200">
           <Skeleton className="h-5 w-56" />
         </div>
@@ -144,9 +149,22 @@ function LoadingSkeleton() {
           ))}
         </div>
       </div>
-      <div className="flex items-center justify-center gap-3 py-2">
-        <div className="w-5 h-5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-        <span className="text-sm text-gray-500 animate-pulse">Memuat data dari database…</span>
+      {/* Centered loading overlay */}
+      <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-10">
+        <div className="bg-white/90 backdrop-blur-sm border border-red-200/60 rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+          <div className="relative w-14 h-14">
+            <div className="absolute inset-0 rounded-full border-4 border-red-100" />
+            <div className="absolute inset-0 rounded-full border-4 border-t-red-600 border-r-red-300 border-b-transparent border-l-transparent animate-spin" />
+            <Package className="absolute inset-0 m-auto w-6 h-6 text-red-600" />
+          </div>
+          <p className="text-slate-700 text-sm font-semibold tracking-wide">Memuat data material...</p>
+          <div className="flex gap-1.5">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="w-2 h-2 rounded-full bg-red-500 animate-bounce"
+                style={{ animationDelay: `${i * 0.15}s` }} />
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

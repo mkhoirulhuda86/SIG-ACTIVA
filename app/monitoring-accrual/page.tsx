@@ -277,6 +277,7 @@ export default function MonitoringAccrualPage() {
 
   // ── Animation refs ──────────────────────────────────────────────
   const pageRef                   = useRef<HTMLDivElement>(null);
+  const skeletonRef               = useRef<HTMLDivElement>(null);
   const filterBarRef              = useRef<HTMLDivElement>(null);
   const metricCard1Ref            = useRef<HTMLDivElement>(null);
   const metricCard2Ref            = useRef<HTMLDivElement>(null);
@@ -446,6 +447,18 @@ export default function MonitoringAccrualPage() {
 
   // Realtime: refresh list when another user mutates accrual/realisasi data
   useRealtimeUpdates(['accrual'], () => { fetchAccrualData(); });
+
+  // ── Skeleton entrance animation (runs when loading === true) ──────────
+  useEffect(() => {
+    if (!loading || !skeletonRef.current) return;
+    const cards = skeletonRef.current.querySelectorAll('.sk-card');
+    if (!cards.length) return;
+    gsap.fromTo(cards,
+      { opacity: 0, y: 22 },
+      { opacity: 1, y: 0, duration: 0.5, ease: 'power3.out', stagger: 0.08 }
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   // ── Page entrance animation ─────────────────────────────────────────
   useEffect(() => {
@@ -3010,16 +3023,16 @@ export default function MonitoringAccrualPage() {
         <div className="p-4 sm:p-6 md:p-8">
           {/* Loading State */}
           {loading ? (
-            <div className="space-y-5">
+            <div ref={skeletonRef} className="space-y-5">
               {/* Filter bar skeleton */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 flex flex-wrap gap-3">
+              <div className="sk-card bg-white rounded-xl border border-gray-200 shadow-sm p-3 flex flex-wrap gap-3">
                 <Skeleton className="h-9 flex-1 min-w-[200px] rounded-lg" />
                 {[1,2,3,4].map(i => <Skeleton key={i} className="h-9 w-28 rounded-lg" />)}
               </div>
               {/* Metric card skeletons */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[1,2,3].map(i => (
-                  <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-3">
+                  <div key={i} className="sk-card bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-3">
                     <div className="flex items-center justify-between">
                       <Skeleton className="h-3.5 w-24 rounded" />
                       <Skeleton className="h-9 w-9 rounded-lg" />
@@ -3030,7 +3043,7 @@ export default function MonitoringAccrualPage() {
                 ))}
               </div>
               {/* Table skeleton */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="sk-card bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="bg-gray-50 border-b border-gray-200 px-4 py-3.5">
                   <div className="flex gap-3">{[1,2,3,4,5,6,7].map(i => <Skeleton key={i} className="h-4 flex-1 rounded" />)}</div>
                 </div>

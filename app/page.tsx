@@ -82,9 +82,22 @@ const CACHE_TTL = 90_000; // 90 seconds
 export default function DashboardPage() {
   const contentRef   = useRef<HTMLDivElement>(null);
   const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skeletonRef  = useRef<HTMLDivElement>(null);
   const materialRef  = useRef<HTMLDivElement>(null);
   const fluktuasiRef = useRef<HTMLDivElement>(null);
   const trendRef     = useRef<HTMLDivElement>(null);
+
+  /* ── GSAP: stagger skeleton cards in on initial load ────────────────── */
+  useEffect(() => {
+    if (!loading || !skeletonRef.current) return;
+    const cards = skeletonRef.current.querySelectorAll('.sk-card');
+    if (!cards.length) return;
+    gsap.fromTo(cards,
+      { opacity: 0, y: 22 },
+      { opacity: 1, y: 0, duration: 0.5, ease: 'power3.out', stagger: 0.09 }
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   /* ── GSAP: animate grid sections in on load ──────────────── */
   useEffect(() => {
@@ -351,9 +364,9 @@ export default function DashboardPage() {
 
           {/* ─── Loading skeleton ──────────────────────────────── */}
           {loading && (
-            <div className="space-y-4">
+            <div ref={skeletonRef} className="space-y-4">
               {/* Material bars skeleton */}
-              <Card>
+              <Card className="sk-card">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <Skeleton className="h-5 w-48" />
@@ -377,7 +390,7 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
               {/* Donut charts skeleton */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="sk-card grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {[0, 1].map(i => (
                   <Card key={i}>
                     <CardHeader className="pb-2"><Skeleton className="h-5 w-36" /></CardHeader>
@@ -396,7 +409,7 @@ export default function DashboardPage() {
                 ))}
               </div>
               {/* Bar charts skeleton */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="sk-card grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {[0, 1].map(i => (
                   <Card key={i}>
                     <CardHeader className="pb-2"><Skeleton className="h-5 w-48" /></CardHeader>
@@ -411,6 +424,23 @@ export default function DashboardPage() {
                     </CardContent>
                   </Card>
                 ))}
+              </div>
+              {/* Centered loading overlay */}
+              <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-10">
+                <div className="bg-white/90 backdrop-blur-sm border border-primary/20 rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+                  <div className="relative w-14 h-14">
+                    <div className="absolute inset-0 rounded-full border-4 border-primary/10" />
+                    <div className="absolute inset-0 rounded-full border-4 border-t-primary border-r-primary/40 border-b-transparent border-l-transparent animate-spin" />
+                    <BarChart2 className="absolute inset-0 m-auto w-6 h-6 text-primary" />
+                  </div>
+                  <p className="text-slate-700 text-sm font-semibold tracking-wide">Memuat data dashboard...</p>
+                  <div className="flex gap-1.5">
+                    {[0, 1, 2].map(i => (
+                      <div key={i} className="w-2 h-2 rounded-full bg-primary animate-bounce"
+                        style={{ animationDelay: `${i * 0.15}s` }} />
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           )}
