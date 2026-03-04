@@ -44,6 +44,8 @@ const ROLES = [
 export default function UserManagementPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Minimum loading time so skeleton is always visible
+  const loadStartRef = useRef(Date.now());
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -110,7 +112,12 @@ export default function UserManagementPage() {
         console.error('Error fetching users:', err);
       }
     } finally {
-      if (!ctrl.signal.aborted) setIsLoading(false);
+      if (!ctrl.signal.aborted) {
+        // Ensure skeleton is visible for at least 600ms
+        const elapsed = Date.now() - loadStartRef.current;
+        const delay = Math.max(0, 600 - elapsed);
+        setTimeout(() => setIsLoading(false), delay);
+      }
     }
   }, []);
 
@@ -435,46 +442,47 @@ export default function UserManagementPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
               {[1,2,3].map(i => (
                 <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex items-center gap-4">
-                  <Skeleton className="h-12 w-12 rounded-xl flex-shrink-0" />
+                  <Skeleton className="h-12 w-12 rounded-xl flex-shrink-0 bg-gray-200" />
                   <div className="space-y-2 flex-1">
-                    <Skeleton className="h-3 w-24 rounded" />
-                    <Skeleton className="h-7 w-16 rounded" />
+                    <Skeleton className="h-3 w-24 rounded bg-gray-200" />
+                    <Skeleton className="h-7 w-16 rounded bg-gray-300" />
                   </div>
                 </div>
               ))}
             </div>
             {/* Action button skeleton */}
             <div className="flex justify-end mb-4">
-              <Skeleton className="h-10 w-36 rounded-lg" />
+              <Skeleton className="h-10 w-36 rounded-lg bg-gray-200" />
             </div>
             {/* Table skeleton */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-              {/* Strip */}
+              {/* Red header strip */}
               <div className="h-11 bg-gradient-to-r from-red-500 to-red-600 flex items-center px-5 gap-2">
-                <Skeleton className="h-4 w-32 rounded bg-white/20" />
+                <Skeleton className="h-4 w-32 rounded bg-white/30" />
+                <Skeleton className="h-5 w-16 rounded-full bg-white/20 ml-auto" />
               </div>
               <div className="p-4 space-y-2.5">
                 {/* Header row */}
                 <div className="flex gap-3 pb-3 border-b border-gray-100">
                   {[2,3,2,2,1.5,1.5,1].map((w,i) => (
-                    <Skeleton key={i} className={`h-3 rounded flex-${w > 1 ? '['+w+'_'+w+'_0]' : '[1_1_0]'}`} style={{ flex: w }} />
+                    <Skeleton key={i} className="h-3 rounded bg-gray-200" style={{ flex: w }} />
                   ))}
                 </div>
                 {/* Data rows */}
-                {[...Array(6)].map((_,i) => (
-                  <div key={i} className="flex gap-3 items-center py-0.5">
+                {[...Array(7)].map((_,i) => (
+                  <div key={i} className="flex gap-3 items-center py-1">
                     <div className="flex items-center gap-2" style={{ flex: 2 }}>
-                      <Skeleton className="h-7 w-7 rounded-full flex-shrink-0" />
-                      <Skeleton className="h-4 flex-1 rounded" />
+                      <Skeleton className="h-7 w-7 rounded-full flex-shrink-0 bg-gray-300" />
+                      <Skeleton className="h-4 flex-1 rounded bg-gray-200" />
                     </div>
-                    <Skeleton className="h-4 rounded hidden sm:block" style={{ flex: 3 }} />
-                    <Skeleton className="h-4 rounded" style={{ flex: 2 }} />
-                    <Skeleton className="h-6 w-24 rounded-full" />
-                    <Skeleton className="h-6 w-16 rounded-full" />
-                    <Skeleton className="h-4 rounded hidden md:block" style={{ flex: 1.5 }} />
+                    <Skeleton className="h-4 rounded bg-gray-200 hidden sm:block" style={{ flex: 3 }} />
+                    <Skeleton className="h-4 rounded bg-gray-200" style={{ flex: 2 }} />
+                    <Skeleton className="h-6 w-20 rounded-full bg-gray-200" />
+                    <Skeleton className="h-6 w-14 rounded-full bg-gray-200" />
+                    <Skeleton className="h-4 rounded bg-gray-200 hidden md:block" style={{ flex: 1.5 }} />
                     <div className="flex gap-1 justify-center" style={{ flex: 1 }}>
-                      <Skeleton className="h-7 w-7 rounded-lg" />
-                      <Skeleton className="h-7 w-7 rounded-lg" />
+                      <Skeleton className="h-7 w-7 rounded-lg bg-gray-200" />
+                      <Skeleton className="h-7 w-7 rounded-lg bg-gray-200" />
                     </div>
                   </div>
                 ))}
