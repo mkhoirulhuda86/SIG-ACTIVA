@@ -3,7 +3,10 @@
 import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Download, Plus, MoreVertical, X, Edit2, Trash2, Upload, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, Download, Plus, MoreVertical, X, Edit2, Trash2, Upload, ChevronDown, ChevronRight, TrendingDown, Activity, DollarSign } from 'lucide-react';
+import { gsap } from 'gsap';
+import { animate } from 'animejs';
+import { Skeleton } from '../components/ui/skeleton';
 import dynamic from 'next/dynamic';
 import { exportToCSV } from '../utils/exportUtils';
 import { KODE_AKUN_KLASIFIKASI } from '../utils/accrualKlasifikasi';
@@ -260,6 +263,27 @@ export default function MonitoringAccrualPage() {
   const [jurnalHeaderInput, setJurnalHeaderInput] = useState('');
   const [jurnalLineInput, setJurnalLineInput] = useState('');
   const [jurnalPendingCallback, setJurnalPendingCallback] = useState<((h: string, l: string) => void) | null>(null);
+
+  // ── Animation refs ──────────────────────────────────────────────
+  const pageRef                   = useRef<HTMLDivElement>(null);
+  const filterBarRef              = useRef<HTMLDivElement>(null);
+  const metricCard1Ref            = useRef<HTMLDivElement>(null);
+  const metricCard2Ref            = useRef<HTMLDivElement>(null);
+  const metricCard3Ref            = useRef<HTMLDivElement>(null);
+  const tableContainerRef         = useRef<HTMLDivElement>(null);
+  const tableBodyRef              = useRef<HTMLTableSectionElement>(null);
+  const modalPanelRef             = useRef<HTMLDivElement>(null);
+  const realisasiModalPanelRef    = useRef<HTMLDivElement>(null);
+  const costCenterModalPanelRef   = useRef<HTMLDivElement>(null);
+  const jurnalHeaderModalPanelRef = useRef<HTMLDivElement>(null);
+  const importGlobalModalPanelRef = useRef<HTMLDivElement>(null);
+  const importExcelModalPanelRef  = useRef<HTMLDivElement>(null);
+
+  // ── Display states for animated metric counters ─────────────────
+  const [displaySaldo,    setDisplaySaldo]    = useState(0);
+  const [displayCount,    setDisplayCount]    = useState(0);
+  const [displayPeriodes, setDisplayPeriodes] = useState(0);
+
   // Portal dropdown Jurnal SAP (agar tidak tertutup header tabel)
   const [openJurnalRect, setOpenJurnalRect] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null);
   const [openJurnalItem, setOpenJurnalItem] = useState<Accrual | null>(null);
@@ -416,6 +440,61 @@ export default function MonitoringAccrualPage() {
   // Realtime: refresh list when another user mutates accrual/realisasi data
   useRealtimeUpdates(['accrual'], () => { fetchAccrualData(); });
 
+  // ── Page entrance animation ─────────────────────────────────────────
+  useEffect(() => {
+    if (loading) return;
+    const cards = [metricCard1Ref, metricCard2Ref, metricCard3Ref].map(r => r.current).filter(Boolean);
+    if (filterBarRef.current) {
+      gsap.fromTo(filterBarRef.current, { opacity: 0, y: -14 }, { opacity: 1, y: 0, duration: 0.48, ease: 'power3.out', delay: 0.05 });
+    }
+    if (cards.length) {
+      gsap.fromTo(cards, { opacity: 0, y: 30, scale: 0.97 }, { opacity: 1, y: 0, scale: 1, duration: 0.65, ease: 'power3.out', stagger: 0.09, delay: 0.12 });
+    }
+    if (tableContainerRef.current) {
+      gsap.fromTo(tableContainerRef.current, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out', delay: 0.22 });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // ── Animated metric counters and table rows animation are placed after useMemo declarations below ──
+
+  // ── Modal open animations ─────────────────────────────────────────────
+  useEffect(() => {
+    if (showModal && modalPanelRef.current) {
+      gsap.fromTo(modalPanelRef.current, { opacity: 0, scale: 0.93, y: 28 }, { opacity: 1, scale: 1, y: 0, duration: 0.36, ease: 'back.out(1.5)' });
+    }
+  }, [showModal]);
+
+  useEffect(() => {
+    if (showRealisasiModal && realisasiModalPanelRef.current) {
+      gsap.fromTo(realisasiModalPanelRef.current, { opacity: 0, scale: 0.93, y: 28 }, { opacity: 1, scale: 1, y: 0, duration: 0.36, ease: 'back.out(1.5)' });
+    }
+  }, [showRealisasiModal]);
+
+  useEffect(() => {
+    if (showCostCenterModal && costCenterModalPanelRef.current) {
+      gsap.fromTo(costCenterModalPanelRef.current, { opacity: 0, scale: 0.93, y: 28 }, { opacity: 1, scale: 1, y: 0, duration: 0.36, ease: 'back.out(1.5)' });
+    }
+  }, [showCostCenterModal]);
+
+  useEffect(() => {
+    if (showJurnalHeaderModal && jurnalHeaderModalPanelRef.current) {
+      gsap.fromTo(jurnalHeaderModalPanelRef.current, { opacity: 0, scale: 0.93, y: 20 }, { opacity: 1, scale: 1, y: 0, duration: 0.3, ease: 'back.out(1.5)' });
+    }
+  }, [showJurnalHeaderModal]);
+
+  useEffect(() => {
+    if (showImportGlobalModal && importGlobalModalPanelRef.current) {
+      gsap.fromTo(importGlobalModalPanelRef.current, { opacity: 0, scale: 0.93, y: 28 }, { opacity: 1, scale: 1, y: 0, duration: 0.36, ease: 'back.out(1.5)' });
+    }
+  }, [showImportGlobalModal]);
+
+  useEffect(() => {
+    if (showImportExcelModal && importExcelModalPanelRef.current) {
+      gsap.fromTo(importExcelModalPanelRef.current, { opacity: 0, scale: 0.93, y: 28 }, { opacity: 1, scale: 1, y: 0, duration: 0.36, ease: 'back.out(1.5)' });
+    }
+  }, [showImportExcelModal]);
+
   // Format currency: tanda negatif langsung di depan angka (Rp -11.045.599.003) agar tidak membingungkan
   const formatCurrency = useCallback((amount: number) => {
     const isNegative = amount < 0;
@@ -493,6 +572,26 @@ export default function MonitoringAccrualPage() {
       return sum + (saldoAwal + accrual - realisasi);
     }, 0);
   }, [accrualData, itemTotalsCache]);
+
+  // ── Animated metric counters (placed here after useMemo) ─────────────
+  useEffect(() => {
+    if (loading) return;
+    const proxy1 = { value: 0 };
+    animate(proxy1, { value: Math.abs(totalSaldo), duration: 1300, ease: 'easeOutExpo', onUpdate: () => setDisplaySaldo(proxy1.value) } as any);
+    const proxy2 = { value: 0 };
+    animate(proxy2, { value: accrualData.length, duration: 900, ease: 'easeOutExpo', onUpdate: () => setDisplayCount(Math.round(proxy2.value)) } as any);
+    const proxy3 = { value: 0 };
+    animate(proxy3, { value: totalPeriodes, duration: 1050, ease: 'easeOutExpo', onUpdate: () => setDisplayPeriodes(Math.round(proxy3.value)) } as any);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, totalSaldo, accrualData.length, totalPeriodes]);
+
+  // ── Table rows animation (placed here after useMemo) ─────────────────
+  useEffect(() => {
+    if (!tableBodyRef.current) return;
+    const rows = tableBodyRef.current.querySelectorAll('tr');
+    if (!rows.length) return;
+    gsap.fromTo(rows, { opacity: 0, x: -10 }, { opacity: 1, x: 0, duration: 0.26, ease: 'expo.out', stagger: 0.018 });
+  }, [groupedByKodeAkun]);
 
   const handleExport = () => {
     const headers = ['kdAkr', 'namaAkun', 'vendor', 'deskripsi', 'amount', 'accrDate', 'status'];
@@ -2861,7 +2960,7 @@ export default function MonitoringAccrualPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-red-50/20">
       {/* Mobile Sidebar Overlay */}
       {isMobileSidebarOpen && (
         <div 
@@ -2878,7 +2977,7 @@ export default function MonitoringAccrualPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 bg-gray-50 lg:ml-64 overflow-x-hidden">
+      <div className="flex-1 bg-transparent lg:ml-64 overflow-x-hidden">
         {/* Content area - no z-index needed as overlay is conditionally rendered */}
         
         {/* Header */}
@@ -2889,16 +2988,63 @@ export default function MonitoringAccrualPage() {
         />
 
         {/* Content Area */}
-        <div className="p-4 sm:p-6 md:p-8 bg-gray-50">
+        <div className="p-4 sm:p-6 md:p-8">
           {/* Loading State */}
           {loading ? (
-            <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
+            <div className="space-y-5">
+              {/* Filter bar skeleton */}
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 flex flex-wrap gap-3">
+                <Skeleton className="h-9 flex-1 min-w-[200px] rounded-lg" />
+                {[1,2,3,4].map(i => <Skeleton key={i} className="h-9 w-28 rounded-lg" />)}
+              </div>
+              {/* Metric card skeletons */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {[1,2,3].map(i => (
+                  <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Skeleton className="h-3.5 w-24 rounded" />
+                      <Skeleton className="h-9 w-9 rounded-lg" />
+                    </div>
+                    <Skeleton className="h-7 w-40 rounded" />
+                    <Skeleton className="h-2.5 w-28 rounded" />
+                  </div>
+                ))}
+              </div>
+              {/* Table skeleton */}
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="bg-gray-50 border-b border-gray-200 px-4 py-3.5">
+                  <div className="flex gap-3">{[1,2,3,4,5,6,7].map(i => <Skeleton key={i} className="h-4 flex-1 rounded" />)}</div>
+                </div>
+                {[...Array(9)].map((_,i) => (
+                  <div key={i} className={`border-b border-gray-100 px-4 py-3.5 flex gap-3 items-center ${i % 3 === 0 ? 'bg-blue-50/40' : ''}`}>
+                    <Skeleton className="h-4 w-4 rounded" />
+                    <Skeleton className="h-4 w-6 rounded" />
+                    {[...Array(8)].map((_,j) => <Skeleton key={j} className="h-4 flex-1 rounded" style={{ opacity: Math.max(0.2, 1 - j * 0.1) }} />)}
+                  </div>
+                ))}
+              </div>
+              {/* Centered loading overlay */}
+              <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-10">
+                <div className="bg-white/90 backdrop-blur-sm border border-red-200/60 rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+                  <div className="relative w-14 h-14">
+                    <div className="absolute inset-0 rounded-full border-4 border-red-100" />
+                    <div className="absolute inset-0 rounded-full border-4 border-t-red-600 border-r-red-300 border-b-transparent border-l-transparent animate-spin" />
+                    <Activity className="absolute inset-0 m-auto w-6 h-6 text-red-600" />
+                  </div>
+                  <p className="text-slate-700 text-sm font-semibold tracking-wide">Memuat data accrual...</p>
+                  <div className="flex gap-1.5">
+                    {[0,1,2].map(i => (
+                      <div key={i} className="w-2 h-2 rounded-full bg-red-500 animate-bounce"
+                        style={{ animationDelay: `${i * 0.15}s` }} />
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <>
               {/* Filter Bar */}
-              <div className="bg-white rounded-lg border border-gray-200 p-3 sm:p-4 mb-4 sm:mb-6">
+              <div ref={filterBarRef} className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 sm:p-4 mb-4 sm:mb-6">
                 <div className="flex flex-wrap items-center gap-2 sm:gap-4">
                   {/* Search */}
                   <div className="relative w-full sm:flex-1 sm:min-w-[250px]">
@@ -2908,7 +3054,7 @@ export default function MonitoringAccrualPage() {
                       placeholder="Cari berdasarkan..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all duration-200"
                     />
                   </div>
 
@@ -2916,7 +3062,7 @@ export default function MonitoringAccrualPage() {
                   <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:ml-auto">
                     <button 
                       onClick={() => setShowImportExcelModal(true)}
-                      className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center"
+                      className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-all duration-200 text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center active:scale-95 hover:shadow-md hover:shadow-red-500/20"
                     >
                       <Upload size={16} className="sm:w-[18px] sm:h-[18px]" />
                       <span className="hidden sm:inline">Import Excel Accrual</span>
@@ -2966,7 +3112,7 @@ export default function MonitoringAccrualPage() {
                     {canEdit && (
                       <button 
                         onClick={() => setShowModal(true)}
-                        className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium w-full sm:w-auto justify-center"
+                        className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-all duration-200 text-xs sm:text-sm font-medium w-full sm:w-auto justify-center active:scale-95 hover:shadow-md hover:shadow-red-500/20"
                       >
                         <Plus size={16} className="sm:w-[18px] sm:h-[18px]" />
                         <span className="hidden sm:inline">Tambah Data Accrual</span>
@@ -2979,24 +3125,45 @@ export default function MonitoringAccrualPage() {
 
           {/* Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
-            <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
-              <p className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2">Saldo</p>
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-800">
-                {formatCurrency(Math.abs(totalSaldo))}
+            <div ref={metricCard1Ref} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6 relative overflow-hidden group hover:shadow-md transition-all duration-300 cursor-default">
+              <div className="absolute top-0 right-0 w-28 h-28 bg-red-500/5 rounded-full -translate-y-10 translate-x-10 group-hover:scale-110 transition-transform duration-500" />
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs sm:text-sm text-gray-500 font-medium uppercase tracking-wide">Outstanding Saldo</p>
+                <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center group-hover:bg-red-100 transition-colors duration-200">
+                  <TrendingDown size={18} className="text-red-600" />
+                </div>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-800 tabular-nums">
+                {formatCurrency(Math.abs(displaySaldo))}
               </h3>
+              <p className="text-xs text-gray-400 mt-1.5">Total saldo outstanding accrual</p>
             </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
-              <p className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2">Jumlah Accrual</p>
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-800">{accrualData.length}</h3>
+            <div ref={metricCard2Ref} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6 relative overflow-hidden group hover:shadow-md transition-all duration-300 cursor-default">
+              <div className="absolute top-0 right-0 w-28 h-28 bg-blue-500/5 rounded-full -translate-y-10 translate-x-10 group-hover:scale-110 transition-transform duration-500" />
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs sm:text-sm text-gray-500 font-medium uppercase tracking-wide">Jumlah Accrual</p>
+                <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors duration-200">
+                  <Activity size={18} className="text-blue-600" />
+                </div>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-800 tabular-nums">{displayCount}</h3>
+              <p className="text-xs text-gray-400 mt-1.5">Total item accrual tercatat</p>
             </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
-              <p className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2">Total Periode</p>
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-800">{totalPeriodes}</h3>
+            <div ref={metricCard3Ref} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6 relative overflow-hidden group hover:shadow-md transition-all duration-300 cursor-default">
+              <div className="absolute top-0 right-0 w-28 h-28 bg-green-500/5 rounded-full -translate-y-10 translate-x-10 group-hover:scale-110 transition-transform duration-500" />
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs sm:text-sm text-gray-500 font-medium uppercase tracking-wide">Total Periode</p>
+                <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center group-hover:bg-green-100 transition-colors duration-200">
+                  <DollarSign size={18} className="text-green-600" />
+                </div>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-800 tabular-nums">{displayPeriodes}</h3>
+              <p className="text-xs text-gray-400 mt-1.5">Jumlah periode aktif</p>
             </div>
           </div>
 
           {/* Table */}
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden" style={{ maxWidth: '100%' }}>
+          <div ref={tableContainerRef} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden" style={{ maxWidth: '100%' }}>
             <style jsx>{`
               .custom-scrollbar::-webkit-scrollbar {
                 height: 10px;
@@ -3017,6 +3184,13 @@ export default function MonitoringAccrualPage() {
                 min-height: calc(100vh - 320px);
                 max-height: calc(100vh - 260px);
                 overflow: auto;
+              }
+              @keyframes slideDown {
+                from { opacity: 0; transform: translateY(-6px); }
+                to   { opacity: 1; transform: translateY(0); }
+              }
+              .animate-slide-down {
+                animation: slideDown 0.22s ease-out forwards;
               }
             `}</style>
             <div
@@ -3101,7 +3275,7 @@ export default function MonitoringAccrualPage() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody ref={tableBodyRef} className="divide-y divide-gray-200">
                   {Object.entries(groupedByKodeAkun).map(([kodeAkun, vendorGroups]) => {
                     const isKodeAkunExpanded = expandedKodeAkun.has(kodeAkun);
                     const allItems = Object.values(vendorGroups).flat();
@@ -3326,7 +3500,7 @@ export default function MonitoringAccrualPage() {
 
                           return (
                             <React.Fragment key={vendorKey}>
-                              <tr className="bg-green-50 font-semibold">
+                              <tr className="bg-green-50 font-semibold animate-slide-down">
                                 {canEdit && <td className="px-2 py-4 bg-green-50" />}
                                 <td className="px-4 py-4 text-center bg-green-50">
                                   <button
@@ -3380,7 +3554,7 @@ export default function MonitoringAccrualPage() {
                           const isExpanded = expandedRows.has(item.id);
                           return (
                             <React.Fragment key={item.id}>
-                              <tr className="bg-white hover:bg-gray-50 transition-colors">
+                              <tr className="bg-white hover:bg-gray-50 transition-colors animate-slide-down">
                                 {canEdit && (
                                   <td className="px-2 py-4 text-center bg-white">
                                     <input
@@ -3484,7 +3658,7 @@ export default function MonitoringAccrualPage() {
                         
                         {/* Expanded Row - Periode Details */}
                         {isExpanded && item.periodes && item.periodes.length > 0 && (
-                          <tr className="bg-gray-50">
+                          <tr className="bg-gray-50 animate-slide-down">
                             <td colSpan={canEdit ? 20 : 19} className="px-4 py-4 bg-gray-50">
                               <div className="ml-8">
                                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Detail Periode</h4>
@@ -3575,7 +3749,7 @@ export default function MonitoringAccrualPage() {
       {/* Modal Form Tambah Data Accrual */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden">
+          <div ref={modalPanelRef} className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden">
             {/* Modal Header */}
             <div className="sticky top-0 bg-gradient-to-r from-red-600 to-red-700 px-6 py-5 flex items-center justify-between">
               <h2 className="text-xl font-bold text-white">{editingId ? 'Edit Data Accrual' : 'Tambah Data Accrual'}</h2>
@@ -3906,7 +4080,7 @@ export default function MonitoringAccrualPage() {
       {/* Modal Input Realisasi */}
       {showRealisasiModal && selectedPeriode && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden">
+          <div ref={realisasiModalPanelRef} className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden">
             {/* Modal Header */}
             <div className="sticky top-0 bg-gradient-to-r from-red-600 to-red-700 px-6 py-5 flex items-center justify-between">
               <div>
@@ -4157,9 +4331,12 @@ export default function MonitoringAccrualPage() {
                   )}
                 </div>
                 {loadingRealisasiData ? (
-                  <div className="p-8 text-center">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
-                    <p className="text-gray-500 text-sm mt-2">Memuat history realisasi...</p>
+                  <div className="p-8 flex flex-col items-center gap-3">
+                    <div className="relative w-10 h-10">
+                      <div className="absolute inset-0 rounded-full border-[3px] border-red-100" />
+                      <div className="absolute inset-0 rounded-full border-[3px] border-t-red-600 border-r-red-300 border-b-transparent border-l-transparent animate-spin" />
+                    </div>
+                    <p className="text-gray-500 text-sm">Memuat history realisasi...</p>
                   </div>
                 ) : realisasiData.length === 0 ? (
                   <div className="p-8 text-center text-gray-500 text-sm">
@@ -4390,7 +4567,7 @@ export default function MonitoringAccrualPage() {
       {/* Modal Rincian Accrual per Cost Center */}
       {showCostCenterModal && costCenterModalPeriode && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
+          <div ref={costCenterModalPanelRef} className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
             {/* Header */}
             <div className="sticky top-0 bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-5 flex items-center justify-between flex-shrink-0">
               <div>
@@ -4630,9 +4807,12 @@ export default function MonitoringAccrualPage() {
                 </div>
 
                 {loadingCostCenterData ? (
-                  <div className="p-8 text-center">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
-                    <p className="text-gray-500 text-sm mt-2">Memuat rincian...</p>
+                  <div className="p-8 flex flex-col items-center gap-3">
+                    <div className="relative w-10 h-10">
+                      <div className="absolute inset-0 rounded-full border-[3px] border-amber-100" />
+                      <div className="absolute inset-0 rounded-full border-[3px] border-t-amber-500 border-r-amber-300 border-b-transparent border-l-transparent animate-spin" />
+                    </div>
+                    <p className="text-gray-500 text-sm">Memuat rincian...</p>
                   </div>
                 ) : costCenterData.length === 0 ? (
                   <div className="p-6 text-center">
@@ -4845,7 +5025,7 @@ export default function MonitoringAccrualPage() {
       {/* Modal Import Realisasi Global */}
       {showImportGlobalModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden">
+          <div ref={importGlobalModalPanelRef} className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden">
             {/* Modal Header */}
             <div className="sticky top-0 bg-gradient-to-r from-red-600 to-red-700 px-6 py-5 flex items-center justify-between">
               <h2 className="text-xl font-bold text-white">Import Realisasi Global</h2>
@@ -4930,21 +5110,31 @@ export default function MonitoringAccrualPage() {
       {/* Loading Overlay untuk proses export/import */}
       {(uploadingExcel || uploadingGlobalExcel || uploadingImportExcel || submitting || uploadingCostCenterFile) && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 sm:p-8 shadow-2xl flex flex-col items-center space-y-4 max-w-sm mx-4">
-            <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-4 border-red-600 border-t-transparent"></div>
+          <div className="bg-white/95 backdrop-blur-sm border border-red-200/60 rounded-2xl shadow-2xl px-8 py-7 flex flex-col items-center gap-4 max-w-sm mx-4">
+            <div className="relative w-16 h-16">
+              <div className="absolute inset-0 rounded-full border-4 border-red-100" />
+              <div className="absolute inset-0 rounded-full border-4 border-t-red-600 border-r-red-300 border-b-transparent border-l-transparent animate-spin" />
+              <Activity className="absolute inset-0 m-auto w-7 h-7 text-red-600" />
+            </div>
             <div className="text-center">
-              <p className="text-base sm:text-lg font-semibold text-gray-800">
-                {uploadingImportExcel 
-                  ? 'Mengimport file Excel...' 
-                  : uploadingExcel || uploadingGlobalExcel 
-                    ? 'Memproses file...' 
+              <p className="text-base font-semibold text-gray-800">
+                {uploadingImportExcel
+                  ? 'Mengimport file Excel...'
+                  : uploadingExcel || uploadingGlobalExcel
+                    ? 'Memproses file...'
                     : 'Menyimpan data...'}
               </p>
-              <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                {uploadingImportExcel 
-                  ? 'Mohon tunggu, proses mungkin memakan waktu untuk file besar...' 
+              <p className="text-xs text-gray-500 mt-1">
+                {uploadingImportExcel
+                  ? 'Mohon tunggu, proses mungkin memakan waktu...'
                   : 'Mohon tunggu sebentar'}
               </p>
+            </div>
+            <div className="flex gap-1.5">
+              {[0,1,2].map(i => (
+                <div key={i} className="w-2 h-2 rounded-full bg-red-500 animate-bounce"
+                  style={{ animationDelay: `${i * 0.15}s` }} />
+              ))}
             </div>
           </div>
         </div>
@@ -4953,7 +5143,7 @@ export default function MonitoringAccrualPage() {
       {/* Modal Import Excel Accrual */}
       {showImportExcelModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden">
+          <div ref={importExcelModalPanelRef} className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden">
             {/* Modal Header */}
             <div className="sticky top-0 bg-gradient-to-r from-red-600 to-red-700 px-6 py-5 flex items-center justify-between">
               <h2 className="text-xl font-bold text-white">Import Data Accrual dari Excel</h2>
@@ -5094,7 +5284,7 @@ export default function MonitoringAccrualPage() {
       {/* Modal Header Text dan Line Text untuk Jurnal Realisasi */}
       {showJurnalHeaderModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+          <div ref={jurnalHeaderModalPanelRef} className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
             <div className="px-6 py-4 bg-gradient-to-r from-green-600 to-green-700 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-white">Teks Jurnal Realisasi</h2>
