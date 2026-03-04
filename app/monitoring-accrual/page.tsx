@@ -5110,10 +5110,6 @@ export default function MonitoringAccrualPage() {
                   ))}
                 </div>
               </div>
-              <div className="border-t border-gray-100 pt-2">
-                <p className="text-[10px] font-semibold text-gray-500 px-1 mb-1">Detail</p>
-                <button onClick={() => { handleDownloadJurnalDetail(openKodeAkunDropdown.key); setOpenKodeAkunDropdown(null); }} className="w-full text-[10px] bg-purple-500 hover:bg-purple-600 text-white px-2 py-1.5 rounded transition-colors">Download Detail (TXT)</button>
-              </div>
             </div>
           </div>
         </>
