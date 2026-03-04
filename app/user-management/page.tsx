@@ -5,14 +5,81 @@ import dynamic from 'next/dynamic';
 import { Users, Plus, Edit2, Trash2, Shield, Mail, User, X, Eye, EyeOff, CheckCircle, XCircle, UserCheck, UserX, Crown } from 'lucide-react';
 import { gsap } from 'gsap';
 import { animate, stagger } from 'animejs';
-import AuthGuard from '../components/AuthGuard';
-import { Skeleton } from '../components/ui/skeleton';
 import { Badge } from '../components/ui/badge';
 import { Separator } from '../components/ui/separator';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 
 const Sidebar = dynamic(() => import('../components/Sidebar'), { ssr: false });
 const Header  = dynamic(() => import('../components/Header'),  { ssr: false });
+
+/* ─── Loading Skeleton ─────────────────────────────────────────────────────── */
+function PageSkeleton({ isMobileSidebarOpen, setMobileSidebar }: { isMobileSidebarOpen: boolean; setMobileSidebar: (v: boolean) => void }) {
+  const skeletonRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!skeletonRef.current) return;
+    const cards = skeletonRef.current.querySelectorAll('.sk-card');
+    gsap.fromTo(cards, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.08, ease: 'power3.out' });
+  }, []);
+  return (
+    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-red-50/30">
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+        <Sidebar onClose={() => setMobileSidebar(false)} />
+      </div>
+      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen overflow-hidden">
+        <Header title="User Management" subtitle="Memuat data…" onMenuClick={() => setMobileSidebar(true)} />
+        <div ref={skeletonRef} className="flex-1 p-4 sm:p-6 md:p-8">
+          {/* Stat cards */}
+          <div className="sk-card grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+            {[1,2,3].map(i => (
+              <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex items-center gap-4">
+                <div className="h-12 w-12 rounded-xl flex-shrink-0 bg-gray-200 animate-pulse" />
+                <div className="space-y-2 flex-1">
+                  <div className="h-3 w-24 rounded bg-gray-200 animate-pulse" />
+                  <div className="h-7 w-16 rounded bg-gray-300 animate-pulse" />
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Action bar */}
+          <div className="sk-card flex justify-end mb-4">
+            <div className="h-10 w-36 rounded-lg bg-gray-200 animate-pulse" />
+          </div>
+          {/* Table card */}
+          <div className="sk-card bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="h-11 bg-gradient-to-r from-red-500 to-red-600 flex items-center px-5 gap-2">
+              <div className="h-4 w-32 rounded bg-white/30 animate-pulse" />
+              <div className="h-5 w-16 rounded-full bg-white/20 animate-pulse ml-auto" />
+            </div>
+            <div className="p-4 space-y-2.5">
+              <div className="flex gap-3 pb-3 border-b border-gray-100">
+                {[2,3,2,2,1.5,1.5,1].map((w,i) => (
+                  <div key={i} className="h-3 rounded bg-gray-200 animate-pulse" style={{ flex: w }} />
+                ))}
+              </div>
+              {[...Array(7)].map((_,i) => (
+                <div key={i} className="flex gap-3 items-center py-1">
+                  <div className="flex items-center gap-2" style={{ flex: 2 }}>
+                    <div className="h-7 w-7 rounded-full flex-shrink-0 bg-gray-300 animate-pulse" />
+                    <div className="h-4 flex-1 rounded bg-gray-200 animate-pulse" />
+                  </div>
+                  <div className="h-4 rounded bg-gray-200 animate-pulse hidden sm:block" style={{ flex: 3 }} />
+                  <div className="h-4 rounded bg-gray-200 animate-pulse" style={{ flex: 2 }} />
+                  <div className="h-6 w-20 rounded-full bg-gray-200 animate-pulse" />
+                  <div className="h-6 w-14 rounded-full bg-gray-200 animate-pulse" />
+                  <div className="h-4 rounded bg-gray-200 animate-pulse hidden md:block" style={{ flex: 1.5 }} />
+                  <div className="flex gap-1 justify-center" style={{ flex: 1 }}>
+                    <div className="h-7 w-7 rounded-lg bg-gray-200 animate-pulse" />
+                    <div className="h-7 w-7 rounded-lg bg-gray-200 animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface User {
   id: number;
@@ -431,65 +498,12 @@ export default function UserManagementPage() {
     </div>
   );
 
-  // ── Single return — skeleton vs content inside one AuthGuard ───────
-  return (
-    <AuthGuard>
-      {shell(
-        isLoading ? (
-          /* ── Skeleton ─────────────────────────────────────────── */
-          <div className="flex-1 p-4 sm:p-6 md:p-8">
-            {/* Stat cards skeleton */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-              {[1,2,3].map(i => (
-                <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex items-center gap-4">
-                  <Skeleton className="h-12 w-12 rounded-xl flex-shrink-0 bg-gray-200" />
-                  <div className="space-y-2 flex-1">
-                    <Skeleton className="h-3 w-24 rounded bg-gray-200" />
-                    <Skeleton className="h-7 w-16 rounded bg-gray-300" />
-                  </div>
-                </div>
-              ))}
-            </div>
-            {/* Action button skeleton */}
-            <div className="flex justify-end mb-4">
-              <Skeleton className="h-10 w-36 rounded-lg bg-gray-200" />
-            </div>
-            {/* Table skeleton */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-              {/* Red header strip */}
-              <div className="h-11 bg-gradient-to-r from-red-500 to-red-600 flex items-center px-5 gap-2">
-                <Skeleton className="h-4 w-32 rounded bg-white/30" />
-                <Skeleton className="h-5 w-16 rounded-full bg-white/20 ml-auto" />
-              </div>
-              <div className="p-4 space-y-2.5">
-                {/* Header row */}
-                <div className="flex gap-3 pb-3 border-b border-gray-100">
-                  {[2,3,2,2,1.5,1.5,1].map((w,i) => (
-                    <Skeleton key={i} className="h-3 rounded bg-gray-200" style={{ flex: w }} />
-                  ))}
-                </div>
-                {/* Data rows */}
-                {[...Array(7)].map((_,i) => (
-                  <div key={i} className="flex gap-3 items-center py-1">
-                    <div className="flex items-center gap-2" style={{ flex: 2 }}>
-                      <Skeleton className="h-7 w-7 rounded-full flex-shrink-0 bg-gray-300" />
-                      <Skeleton className="h-4 flex-1 rounded bg-gray-200" />
-                    </div>
-                    <Skeleton className="h-4 rounded bg-gray-200 hidden sm:block" style={{ flex: 3 }} />
-                    <Skeleton className="h-4 rounded bg-gray-200" style={{ flex: 2 }} />
-                    <Skeleton className="h-6 w-20 rounded-full bg-gray-200" />
-                    <Skeleton className="h-6 w-14 rounded-full bg-gray-200" />
-                    <Skeleton className="h-4 rounded bg-gray-200 hidden md:block" style={{ flex: 1.5 }} />
-                    <div className="flex gap-1 justify-center" style={{ flex: 1 }}>
-                      <Skeleton className="h-7 w-7 rounded-lg bg-gray-200" />
-                      <Skeleton className="h-7 w-7 rounded-lg bg-gray-200" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : (
+  // ── Early return for skeleton (same pattern as overview-fluktuasi) ────────
+  if (isLoading) return (
+    <PageSkeleton isMobileSidebarOpen={isMobileSidebarOpen} setMobileSidebar={setIsMobileSidebarOpen} />
+  );
+
+  return shell(
           /* ── Main content ──────────────────────────────────────── */
           <div ref={pageRef} className="flex-1 p-3 sm:p-4 md:p-8">
             <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
@@ -853,8 +867,5 @@ export default function UserManagementPage() {
           </div>
         )}
       </div>
-        )
-      )}
-    </AuthGuard>
   );
 }
