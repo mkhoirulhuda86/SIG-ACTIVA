@@ -649,6 +649,56 @@ export default function OverviewFluktuasiPage() {
     setSelectedYear('all'); setFilterKlasifikasi(new Set()); setFilterAccount(new Set()); setListPage(0);
   }, []);
 
+  // ── Refs for GSAP page animations ─────────────────────────────────────────
+  const yearBarRef  = useRef<HTMLDivElement>(null);
+  const row1Ref     = useRef<HTMLDivElement>(null);
+  const row2Ref     = useRef<HTMLDivElement>(null);
+  const tableRef    = useRef<HTMLDivElement>(null);
+
+  // Animated total counter display
+  const [displayTotal, setDisplayTotal] = useState(0);
+  useEffect(() => {
+    const proxy = { v: 0 };
+    animate(proxy, {
+      v: Math.abs(totalFiltered),
+      duration: 1400,
+      ease: 'easeOutExpo',
+      onUpdate: () => setDisplayTotal(proxy.v),
+    });
+  }, [totalFiltered]);
+
+  // Page-enter GSAP animations (runs whenever data loads)
+  useEffect(() => {
+    if (loading || records.length === 0) return;
+    const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+    if (yearBarRef.current)
+      tl.fromTo(yearBarRef.current, { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.45 }, 0);
+    if (row1Ref.current) {
+      const cards = row1Ref.current.querySelectorAll('.anim-card');
+      tl.fromTo(cards, { opacity: 0, y: 28, scale: 0.97 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, stagger: 0.1 }, 0.1);
+    }
+    if (row2Ref.current) {
+      const cards = row2Ref.current.querySelectorAll('.anim-card');
+      tl.fromTo(cards, { opacity: 0, y: 28, scale: 0.97 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, stagger: 0.1 }, 0.3);
+    }
+    if (tableRef.current)
+      tl.fromTo(tableRef.current, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.55 }, 0.45);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, loading]);
+
+  // Table rows stagger on page/filter change
+  useEffect(() => {
+    if (!tableRef.current) return;
+    const rows = tableRef.current.querySelectorAll('tbody tr');
+    animate(rows, {
+      opacity: [0, 1],
+      translateX: [-8, 0],
+      duration: 300,
+      delay: stagger(18, { start: 80 }),
+      ease: 'easeOutExpo',
+    });
+  }, [listPage, listingRows]);
+
   // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) return <PageSkeleton isMobileSidebarOpen={isMobileSidebarOpen} setMobileSidebar={setMobileSidebar} />;
 
@@ -672,55 +722,6 @@ export default function OverviewFluktuasiPage() {
       </div>
     </div>
   );
-
-  // ── Refs for GSAP page animations ─────────────────────────────────────────
-  const yearBarRef  = useRef<HTMLDivElement>(null);
-  const row1Ref     = useRef<HTMLDivElement>(null);
-  const row2Ref     = useRef<HTMLDivElement>(null);
-  const tableRef    = useRef<HTMLDivElement>(null);
-
-  // Animated total counter display
-  const [displayTotal, setDisplayTotal] = useState(0);
-  useEffect(() => {
-    const proxy = { v: 0 };
-    animate(proxy, {
-      v: Math.abs(totalFiltered),
-      duration: 1400,
-      ease: 'easeOutExpo',
-      onUpdate: () => setDisplayTotal(proxy.v),
-    });
-  }, [totalFiltered]);
-
-  // Page-enter GSAP animations (runs whenever filtered data changes)
-  useEffect(() => {
-    const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
-    if (yearBarRef.current)
-      tl.fromTo(yearBarRef.current, { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.45 }, 0);
-    if (row1Ref.current) {
-      const cards = row1Ref.current.querySelectorAll('.anim-card');
-      tl.fromTo(cards, { opacity: 0, y: 28, scale: 0.97 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, stagger: 0.1 }, 0.1);
-    }
-    if (row2Ref.current) {
-      const cards = row2Ref.current.querySelectorAll('.anim-card');
-      tl.fromTo(cards, { opacity: 0, y: 28, scale: 0.97 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, stagger: 0.1 }, 0.3);
-    }
-    if (tableRef.current)
-      tl.fromTo(tableRef.current, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.55 }, 0.45);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records]);
-
-  // Table rows stagger on page/filter change
-  useEffect(() => {
-    if (!tableRef.current) return;
-    const rows = tableRef.current.querySelectorAll('tbody tr');
-    animate(rows, {
-      opacity: [0, 1],
-      translateX: [-8, 0],
-      duration: 300,
-      delay: stagger(18, { start: 80 }),
-      ease: 'easeOutExpo',
-    });
-  }, [listPage, listingRows]);
 
   // ── Full Dashboard ─────────────────────────────────────────────────────────
   return (
