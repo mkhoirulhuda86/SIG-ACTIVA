@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
 
   // React Optimizations
-  reactStrictMode: true,
+  reactStrictMode: false,
 
   // Image Optimization
   images: {
