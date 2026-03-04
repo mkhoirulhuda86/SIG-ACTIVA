@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from 'react';
 import dynamic from 'next/dynamic';
 import { RotateCcw, Search, TrendingUp, Layers, Filter, List, BarChart3 } from 'lucide-react';
 import { gsap } from 'gsap';
@@ -36,13 +36,20 @@ const fmtCompact = (n: number): string => {
   return sign + Math.round(a).toLocaleString('id-ID');
 };
 
-const fmtFull = (n: number): string =>
-  new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(n);
+// Cached formatter — avoids allocating a new Intl instance on every call
+const _fmtFull = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 });
+const fmtFull = (n: number): string => _fmtFull.format(n);
 
+// Cached periode label map to avoid repeated string splits
+const _periodeCache = new Map<string, string>();
 const periodeToLabel = (p: string): string => {
+  const cached = _periodeCache.get(p);
+  if (cached) return cached;
   const [yr, mo] = p.split('.');
   const m = parseInt(mo) - 1;
-  return `${MONTHS_ID[m] ?? mo} ${yr}`;
+  const label = `${MONTHS_ID[m] ?? mo} ${yr}`;
+  _periodeCache.set(p, label);
+  return label;
 };
 
 const PALETTE = [
@@ -52,15 +59,24 @@ const PALETTE = [
   '#be123c','#065f46','#1e40af','#92400e','#4338ca',
 ];
 
+// Order matters: more-specific prefixes first
 const SUB_GROUP_PREFIXES: { prefix: string; label: string; color: string }[] = [
+  { prefix: '7156', label: '71400000', color: '#16a34a' },
   { prefix: '713',  label: '71300000', color: '#2563eb' },
   { prefix: '714',  label: '71400000', color: '#16a34a' },
-  { prefix: '7156', label: '71400000', color: '#16a34a' },
   { prefix: '715',  label: '71510000', color: '#d97706' },
   { prefix: '716',  label: '71600000', color: '#7c3aed' },
 ];
-const subGroupForCode = (code: string) =>
-  SUB_GROUP_PREFIXES.find(g => code.startsWith(g.prefix));
+// Pre-built cache: code prefix → sub-group (O(1) lookup per code)
+const _subGroupCache = new Map<string, { prefix: string; label: string; color: string } | null>();
+const subGroupForCode = (code: string) => {
+  const key = code.slice(0, 6); // longest prefix is 4 chars, so 6 is safe
+  const cached = _subGroupCache.get(key);
+  if (cached !== undefined) return cached ?? undefined;
+  const found = SUB_GROUP_PREFIXES.find(g => code.startsWith(g.prefix)) ?? null;
+  _subGroupCache.set(key, found);
+  return found ?? undefined;
+};
 
 // --- Animated Counter Hook --------------------------------------------------
 function useAnimatedCounter(target: number, deps: unknown[] = []) {
@@ -312,17 +328,23 @@ function PageSkeleton() {
   );
 }
 
+// --- Pre-processed record type ----------------------------------------------
+type ProcessedRecord = AkunPeriodeRecord & { _parts: string[] };
+
 // --- Main Component ----------------------------------------------------------
 export default function DetailAkunFluktuasiPage() {
-  const [records, setRecords]                   = useState<AkunPeriodeRecord[]>([]);
+  const [records, setRecords]                   = useState<ProcessedRecord[]>([]);
   const [loading, setLoading]                   = useState(true);
   const [isMobileSidebarOpen, setMobileSidebar] = useState(false);
 
   // Filters
   const [selectedYear,      setSelectedYear]      = useState<string>('all');
-  const [searchAkun,        setSearchAkun]        = useState('');
+  const [searchAkunRaw,     setSearchAkunRaw]     = useState('');
   const [filterAkun,        setFilterAkun]        = useState<Set<string>>(new Set());
   const [filterKlasifikasi, setFilterKlasifikasi] = useState<Set<string>>(new Set());
+
+  // Debounce search input to avoid re-filtering on every keystroke
+  const searchAkun = useDeferredValue(searchAkunRaw);
 
   // Listing
   const [listPage, setListPage] = useState(0);
@@ -340,9 +362,20 @@ export default function DetailAkunFluktuasiPage() {
   const tableBodyRef = useRef<HTMLTableSectionElement>(null);
 
   useEffect(() => {
-    fetch('/api/fluktuasi/akun-periodes')
+    // slim=1: skip remark/uploadedBy/fileName/createdAt/updatedAt — smaller payload
+    fetch('/api/fluktuasi/akun-periodes?slim=1')
       .then(r => r.json())
-      .then(data => { if (data.success && Array.isArray(data.data)) setRecords(data.data); })
+      .then(data => {
+        if (data.success && Array.isArray(data.data)) {
+          // Pre-process once: cache klasifikasi parts to avoid repeated splits later
+          const processed: ProcessedRecord[] = data.data.map((r: AkunPeriodeRecord) => ({
+            ...r,
+            _parts: (r.klasifikasi || '(Tanpa Klasifikasi)')
+              .split(';').map((p: string) => p.trim()).filter(Boolean),
+          }));
+          setRecords(processed);
+        }
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
@@ -373,13 +406,13 @@ export default function DetailAkunFluktuasiPage() {
   // ── Animate akun filter items when search or selection changes ───────────
   useEffect(() => {
     if (!akunListRef.current) return;
-    const items = akunListRef.current.querySelectorAll('.akun-item');
+    const items = Array.from(akunListRef.current.querySelectorAll('.akun-item')).slice(0, 40);
     if (!items.length) return;
     animate(items, {
       opacity: [0, 1],
       translateX: [10, 0],
-      duration: 260,
-      delay: stagger(22),
+      duration: 240,
+      delay: stagger(18),
       ease: 'easeOutExpo',
     });
   }, [filterAkun, searchAkun]);
@@ -387,13 +420,13 @@ export default function DetailAkunFluktuasiPage() {
   // ── Animate klasifikasi items ────────────────────────────────────────────
   useEffect(() => {
     if (!klasListRef.current) return;
-    const items = klasListRef.current.querySelectorAll('.klas-item');
+    const items = Array.from(klasListRef.current.querySelectorAll('.klas-item')).slice(0, 30);
     if (!items.length) return;
     animate(items, {
       opacity: [0, 1],
       translateX: [8, 0],
-      duration: 240,
-      delay: stagger(20),
+      duration: 220,
+      delay: stagger(16),
       ease: 'easeOutExpo',
     });
   }, [filterKlasifikasi]);
@@ -401,13 +434,14 @@ export default function DetailAkunFluktuasiPage() {
   // ── Animate table rows on page/filter change ─────────────────────────────
   useEffect(() => {
     if (!tableBodyRef.current) return;
-    const rows = tableBodyRef.current.querySelectorAll('tr');
+    // Only animate visible rows, cap at 30 to avoid jank on large pages
+    const rows = Array.from(tableBodyRef.current.querySelectorAll('tr')).slice(0, 30);
     if (!rows.length) return;
     animate(rows, {
       opacity: [0, 1],
-      translateY: [8, 0],
-      duration: 250,
-      delay: stagger(16),
+      translateY: [6, 0],
+      duration: 220,
+      delay: stagger(12),
       ease: 'easeOutExpo',
     });
   }, [listPage, filterAkun, filterKlasifikasi, selectedYear]);
@@ -431,10 +465,8 @@ export default function DetailAkunFluktuasiPage() {
 
   const allKlasifikasi = useMemo(() => {
     const s = new Set<string>();
-    records.forEach(r => {
-      const raw = r.klasifikasi || '(Tanpa Klasifikasi)';
-      raw.split(';').map((p: string) => p.trim()).filter(Boolean).forEach((k: string) => s.add(k));
-    });
+    // Use pre-processed _parts — no split needed here
+    records.forEach(r => r._parts.forEach(k => s.add(k)));
     return [...s].sort();
   }, [records]);
 
@@ -445,10 +477,8 @@ export default function DetailAkunFluktuasiPage() {
   const filtered = useMemo(() => records.filter(r => {
     if (selectedYear !== 'all' && !r.periode.startsWith(selectedYear + '.')) return false;
     if (filterAkun.size > 0 && !filterAkun.has(r.accountCode)) return false;
-    if (filterKlasifikasi.size > 0) {
-      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
-      if (!parts.some((k: string) => filterKlasifikasi.has(k))) return false;
-    }
+    // Use pre-cached _parts — no split on every filter pass
+    if (filterKlasifikasi.size > 0 && !r._parts.some(k => filterKlasifikasi.has(k))) return false;
     return true;
   }), [records, selectedYear, filterAkun, filterKlasifikasi]);
 
@@ -495,12 +525,10 @@ export default function DetailAkunFluktuasiPage() {
   const klasifikasiTotalsMap = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach(r => {
-      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
-      const share = r.amount / parts.length;
-      const activeParts = filterKlasifikasi.size > 0
-        ? parts.filter((k: string) => filterKlasifikasi.has(k))
-        : parts;
-      activeParts.forEach((k: string) => m.set(k, (m.get(k) ?? 0) + share));
+      const { _parts, amount } = r;
+      const share = amount / _parts.length;
+      const active = filterKlasifikasi.size > 0 ? _parts.filter(k => filterKlasifikasi.has(k)) : _parts;
+      active.forEach(k => m.set(k, (m.get(k) ?? 0) + share));
     });
     return [...m.entries()]
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
@@ -513,13 +541,14 @@ export default function DetailAkunFluktuasiPage() {
   );
 
   const listingRows = useMemo(() => {
-    const m = new Map<string, { accountCode: string; klasifikasi: string; klasifikasiParts: Set<string>; total: number; periodes: number }>();
-    filtered.forEach(r => {
-      const key = r.accountCode;
-      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
-      const ex = m.get(key) ?? { accountCode: r.accountCode, klasifikasi: '', klasifikasiParts: new Set<string>(), total: 0, periodes: 0 };
-      parts.forEach(p => ex.klasifikasiParts.add(p));
-      m.set(key, { ...ex, total: ex.total + r.amount, periodes: ex.periodes + 1 });
+    type Row = { accountCode: string; klasifikasiParts: Set<string>; total: number; periodes: number };
+    const m = new Map<string, Row>();
+    filtered.forEach(({ accountCode, amount, _parts }) => {
+      let ex = m.get(accountCode);
+      if (!ex) { ex = { accountCode, klasifikasiParts: new Set(), total: 0, periodes: 0 }; m.set(accountCode, ex); }
+      _parts.forEach(p => ex!.klasifikasiParts.add(p));
+      ex.total += amount;
+      ex.periodes++;
     });
     return [...m.values()]
       .map(row => ({ ...row, klasifikasi: [...row.klasifikasiParts].join('; ') }))
@@ -536,8 +565,10 @@ export default function DetailAkunFluktuasiPage() {
   );
 
   const latestPeriode = useMemo(() => {
-    const all = [...new Set(records.map(r => r.periode))].sort();
-    return all.length > 0 ? periodeToLabel(all[all.length - 1]) : '-';
+    // Single-pass max instead of sort()
+    let max = '';
+    records.forEach(r => { if (r.periode > max) max = r.periode; });
+    return max ? periodeToLabel(max) : '-';
   }, [records]);
 
   const resetFilters = useCallback(() => {
@@ -549,7 +580,7 @@ export default function DetailAkunFluktuasiPage() {
       });
     }
     setSelectedYear('all');
-    setSearchAkun('');
+    setSearchAkunRaw('');
     setFilterAkun(new Set());
     setFilterKlasifikasi(new Set());
     setListPage(0);
@@ -849,8 +880,8 @@ export default function DetailAkunFluktuasiPage() {
                   <Input
                     type="text"
                     placeholder="Cari kode akun..."
-                    value={searchAkun}
-                    onChange={e => setSearchAkun(e.target.value)}
+                    value={searchAkunRaw}
+                    onChange={e => setSearchAkunRaw(e.target.value)}
                     className="pl-7 h-7 text-[10px] border-slate-200 bg-slate-50/80 focus:bg-white focus:border-blue-400 transition-colors duration-200"
                   />
                 </div>
