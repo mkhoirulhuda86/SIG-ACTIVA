@@ -1,9 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lock, User, Eye, EyeOff, Mail, UserPlus } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, Mail, UserPlus, ArrowRight, Loader2, Info, XCircle } from 'lucide-react';
 import Link from 'next/link';
+import { gsap } from 'gsap';
+import { animate, stagger, random } from 'animejs';
+import { Input } from '@/app/components/ui/input';
+import { Label } from '@/app/components/ui/label';
+import { Card, CardContent } from '@/app/components/ui/card';
+import { cn } from '@/lib/utils';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -19,6 +25,135 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  /* ── Refs ─────────────────────────────────────────────────── */
+  const bgRef      = useRef<HTMLDivElement>(null);
+  const cardRef    = useRef<HTMLDivElement>(null);
+  const logoRef    = useRef<HTMLDivElement>(null);
+  const titleRef   = useRef<HTMLHeadingElement>(null);
+  const formRef    = useRef<HTMLFormElement>(null);
+  const btnRef     = useRef<HTMLButtonElement>(null);
+  const infoRef    = useRef<HTMLDivElement>(null);
+  const errorRef   = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  /* ── Entrance animations ──────────────────────────────────── */
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+      tl.from(bgRef.current, { opacity: 0, duration: 0.4 });
+      tl.fromTo(
+        logoRef.current,
+        { scale: 0, rotate: -20, opacity: 0 },
+        { scale: 1, rotate: 0, opacity: 1, duration: 0.65, ease: 'back.out(2)' },
+        '-=0.15'
+      );
+      tl.fromTo(
+        cardRef.current,
+        { y: 56, opacity: 0, scale: 0.94 },
+        { y: 0, opacity: 1, scale: 1, duration: 0.65 },
+        '-=0.35'
+      );
+    });
+
+    /* Typewriter on heading */
+    const titleEl = titleRef.current;
+    if (titleEl) {
+      const text = 'Daftar Akun Baru';
+      titleEl.innerHTML = text
+        .split('')
+        .map(l => l === ' ' ? '<span style="display:inline-block">&nbsp;</span>' : `<span style="display:inline-block;opacity:0">${l}</span>`)
+        .join('');
+      animate('#register-title span', {
+        opacity: [0, 1],
+        translateY: [10, 0],
+        duration: 380,
+        delay: stagger(45, { start: 600 }),
+        ease: 'outExpo',
+      });
+    }
+
+    /* Floating particles */
+    const container = bgRef.current;
+    if (container) {
+      for (let i = 0; i < 14; i++) {
+        const el = document.createElement('div');
+        const size = Math.random() * 10 + 5;
+        el.style.cssText = `position:absolute;border-radius:50%;pointer-events:none;
+          width:${size}px;height:${size}px;
+          background:${Math.random() > 0.5 ? 'hsl(0 84% 80% / 0.25)' : 'hsl(221 83% 75% / 0.2)'};
+          left:${Math.random() * 100}%;top:${Math.random() * 100}%;`;
+        container.appendChild(el);
+        animate(el, {
+          translateX: () => random(-80, 80),
+          translateY: () => random(-80, 80),
+          opacity: [{ to: 0 }, { to: 0.7 }, { to: 0 }],
+          scale:   [{ to: 0 }, { to: 1   }, { to: 0 }],
+          duration: () => random(4000, 8000),
+          delay:    () => random(0, 3000),
+          loop: true,
+          ease: 'inOutSine',
+        });
+      }
+    }
+
+    /* Form fields stagger */
+    setTimeout(() => {
+      if (!formRef.current) return;
+      animate(formRef.current.querySelectorAll('.form-field'), {
+        opacity: [0, 1],
+        translateY: [18, 0],
+        duration: 440,
+        delay: stagger(70, { start: 350 }),
+        ease: 'outExpo',
+      });
+    }, 100);
+
+    /* Info box entrance */
+    setTimeout(() => {
+      if (!infoRef.current) return;
+      gsap.fromTo(infoRef.current,
+        { x: -10, opacity: 0 },
+        { x: 0, opacity: 1, duration: 0.5, ease: 'power3.out' }
+      );
+    }, 900);
+
+    return () => ctx.revert();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ── Animate error box in ─────────────────────────────────── */
+  useEffect(() => {
+    if (error && errorRef.current) {
+      gsap.fromTo(errorRef.current,
+        { opacity: 0, y: -8, scale: 0.97 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.3, ease: 'back.out(1.5)' }
+      );
+    }
+  }, [error]);
+
+  /* ── Loading overlay animation ────────────────────────────── */
+  useEffect(() => {
+    if (!overlayRef.current) return;
+    if (isLoading) {
+      gsap.fromTo(overlayRef.current,
+        { opacity: 0, backdropFilter: 'blur(0px)' },
+        { opacity: 1, duration: 0.3, ease: 'power2.out' }
+      );
+    } else {
+      gsap.to(overlayRef.current, { opacity: 0, duration: 0.25, ease: 'power2.in' });
+    }
+  }, [isLoading]);
+
+  /* ── Shake card on error ──────────────────────────────────── */
+  const shakeCard = () => {
+    if (!cardRef.current) return;
+    animate(cardRef.current, {
+      translateX: [0, -8, 8, -6, 6, 0],
+      duration: 420,
+      ease: 'inOutSine',
+    });
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({
       ...formData,
@@ -33,16 +168,19 @@ export default function RegisterPage() {
     // Validasi password match
     if (formData.password !== formData.confirmPassword) {
       setError('Password tidak cocok');
+      shakeCard();
       return;
     }
 
     // Validasi panjang password
     if (formData.password.length < 6) {
       setError('Password minimal 6 karakter');
+      shakeCard();
       return;
     }
 
     setIsLoading(true);
+    if (btnRef.current) gsap.to(btnRef.current, { scale: 0.97, duration: 0.15 });
 
     try {
       const response = await fetch('/api/auth/register', {
@@ -61,215 +199,253 @@ export default function RegisterPage() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // Redirect ke login dengan pesan sukses
-        router.push('/login?registered=true&needVerification=true');
+        // Animate card out then redirect
+        gsap.to(cardRef.current, {
+          scale: 1.02, opacity: 0, y: -20, duration: 0.4, ease: 'power3.in',
+          onComplete: () => router.push('/login?registered=true&needVerification=true'),
+        });
       } else {
         setError(data.error || 'Registrasi gagal');
+        shakeCard();
         setIsLoading(false);
+        if (btnRef.current) gsap.to(btnRef.current, { scale: 1, duration: 0.15 });
       }
     } catch (err) {
       console.error('Registration error:', err);
       setError('Terjadi kesalahan. Silakan coba lagi.');
+      shakeCard();
       setIsLoading(false);
+      if (btnRef.current) gsap.to(btnRef.current, { scale: 1, duration: 0.15 });
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-gray-100 flex items-center justify-center px-4 py-8">
+    <div className="min-h-screen flex items-center justify-center px-4 py-8 overflow-hidden">
+      {/* Background */}
+      <div ref={bgRef} className="fixed inset-0 -z-10 gradient-mesh overflow-hidden" />
+
+      {/* Decorative rings */}
+      <div className="fixed inset-0 -z-10 pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full border border-primary/5 animate-spin-slow" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full border border-primary/8 animate-spin-slow [animation-direction:reverse] [animation-duration:12s]" />
+      </div>
+
+      {/* Loading overlay */}
+      <div
+        ref={overlayRef}
+        className={cn(
+          'fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-white/60 backdrop-blur-sm pointer-events-none',
+          isLoading ? 'opacity-100' : 'opacity-0'
+        )}
+        style={{ transition: 'none' }}
+      >
+        <div className="relative flex items-center justify-center w-16 h-16">
+          {/* Outer spinning ring */}
+          <span className="absolute inset-0 rounded-full border-4 border-primary/20" />
+          <span className="absolute inset-0 rounded-full border-4 border-transparent border-t-primary animate-spin" />
+          {/* Inner pulsing dot */}
+          <span className="w-5 h-5 rounded-full bg-primary animate-pulse" />
+        </div>
+        <p className="text-sm font-semibold text-primary tracking-wide animate-pulse">Mendaftarkan akun…</p>
+        {/* Skeleton preview strips */}
+        <div className="flex flex-col gap-2 mt-2 w-48">
+          <div className="h-2 rounded-full bg-primary/15 animate-pulse" />
+          <div className="h-2 rounded-full bg-primary/10 animate-pulse w-3/4" />
+          <div className="h-2 rounded-full bg-primary/10 animate-pulse w-1/2" />
+        </div>
+      </div>
+
       <div className="w-full max-w-md">
         {/* Logo & Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-32 h-32 mb-4">
-            <img src="/logo aplikasi.png" alt="SIG ACTIVA Logo" className="w-32 h-32 object-contain" />
+        <div ref={logoRef} className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-28 h-28 mb-4 drop-shadow-xl">
+            <img src="/logo aplikasi.png" alt="SIG ACTIVA Logo" className="w-28 h-28 object-contain" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            SIG ACTIVA
-          </h1>
-          <p className="text-gray-600">
-            Sistem Informasi Akuntansi PT Semen Indonesia Grup
+          <h1 className="text-2xl font-extrabold text-foreground tracking-tight">SIG ACTIVA</h1>
+          <p className="text-xs text-muted-foreground mt-1 max-w-[240px] mx-auto leading-snug">
+            Sistem Informasi Akuntansi<br />PT Semen Indonesia Grup
           </p>
         </div>
 
         {/* Register Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-200">
-          <div className="flex items-center gap-2 mb-6">
-            <UserPlus size={28} className="text-red-600" />
-            <h2 className="text-2xl font-bold text-gray-800">
-              Daftar Akun Baru
-            </h2>
-          </div>
-
-          <form onSubmit={handleRegister} className="space-y-4">
-            {/* Name Input */}
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                Nama Lengkap
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User size={20} className="text-gray-400" />
-                </div>
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  value={formData.name}
-                  onChange={handleChange}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all"
-                  style={{ color: '#000000', backgroundColor: '#ffffff' }}
-                  placeholder="Masukkan nama lengkap"
-                  required
-                />
-              </div>
+        <Card ref={cardRef as any} className="shadow-2xl border-0 bg-white/80 backdrop-blur-xl">
+          <CardContent className="p-6 sm:p-8">
+            <div className="flex items-center gap-2 mb-5">
+              <UserPlus size={22} className="text-primary" />
+              <h2
+                id="register-title"
+                ref={titleRef}
+                className="text-xl font-bold text-foreground"
+              >
+                Daftar Akun Baru
+              </h2>
             </div>
 
-            {/* Email Input */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail size={20} className="text-gray-400" />
-                </div>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all"
-                  style={{ color: '#000000', backgroundColor: '#ffffff' }}
-                  placeholder="nama@email.com"
-                  required
-                />
-              </div>
-            </div>
+            <form ref={formRef} onSubmit={handleRegister} className="space-y-4">
 
-            {/* Username Input */}
-            <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
-                Username
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User size={20} className="text-gray-400" />
+              {/* Name Input */}
+              <div className="form-field space-y-1.5" style={{ opacity: 0 }}>
+                <Label htmlFor="name">Nama Lengkap</Label>
+                <div className="relative">
+                  <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <Input
+                    id="name"
+                    name="name"
+                    type="text"
+                    value={formData.name}
+                    onChange={handleChange}
+                    className="pl-9 h-11 bg-white border-border focus-visible:ring-primary text-foreground"
+                    placeholder="Masukkan nama lengkap"
+                    required
+                  />
                 </div>
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  value={formData.username}
-                  onChange={handleChange}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all"
-                  style={{ color: '#000000', backgroundColor: '#ffffff' }}
-                  placeholder="Masukkan username"
-                  required
-                />
               </div>
-            </div>
 
-            {/* Role Info */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-800">
-                <span className="font-semibold">Catatan:</span> Role akun Anda akan ditentukan oleh Admin System setelah registrasi. Secara default, Anda akan mendapatkan role <span className="font-semibold">Staff Accounting</span>.
+              {/* Email Input */}
+              <div className="form-field space-y-1.5" style={{ opacity: 0 }}>
+                <Label htmlFor="email">Email</Label>
+                <div className="relative">
+                  <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    className="pl-9 h-11 bg-white border-border focus-visible:ring-primary text-foreground"
+                    placeholder="nama@email.com"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Username Input */}
+              <div className="form-field space-y-1.5" style={{ opacity: 0 }}>
+                <Label htmlFor="username">Username</Label>
+                <div className="relative">
+                  <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <Input
+                    id="username"
+                    name="username"
+                    type="text"
+                    value={formData.username}
+                    onChange={handleChange}
+                    className="pl-9 h-11 bg-white border-border focus-visible:ring-primary text-foreground"
+                    placeholder="Masukkan username"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Role Info */}
+              <div ref={infoRef} className="form-field rounded-lg border border-blue-200 bg-blue-50/80 p-3 flex gap-2 items-start" style={{ opacity: 0 }}>
+                <Info size={14} className="shrink-0 mt-0.5 text-blue-600" />
+                <p className="text-xs text-blue-800 leading-relaxed">
+                  <span className="font-semibold">Catatan:</span> Role akun Anda akan ditentukan oleh Admin System setelah registrasi. Secara default, Anda akan mendapatkan role{' '}
+                  <span className="font-semibold">Staff Accounting</span>.
+                </p>
+              </div>
+
+              {/* Password Input */}
+              <div className="form-field space-y-1.5" style={{ opacity: 0 }}>
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={formData.password}
+                    onChange={handleChange}
+                    className="pl-9 pr-10 h-11 bg-white border-border focus-visible:ring-primary text-foreground"
+                    placeholder="Minimal 6 karakter"
+                    required
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowPassword(p => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirm Password Input */}
+              <div className="form-field space-y-1.5" style={{ opacity: 0 }}>
+                <Label htmlFor="confirmPassword">Konfirmasi Password</Label>
+                <div className="relative">
+                  <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <Input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    className="pl-9 pr-10 h-11 bg-white border-border focus-visible:ring-primary text-foreground"
+                    placeholder="Ulangi password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowConfirmPassword(p => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div
+                  ref={errorRef}
+                  className="form-field rounded-lg px-3 py-2.5 text-xs border bg-destructive/5 border-destructive/20 text-destructive flex gap-2 items-start"
+                >
+                  <XCircle size={13} className="shrink-0 mt-0.5" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {/* Submit Button */}
+              <button
+                ref={btnRef}
+                type="submit"
+                disabled={isLoading}
+                className={cn(
+                  'form-field w-full h-11 flex items-center justify-center gap-2 rounded-lg font-semibold text-sm text-white transition-colors will-change-transform',
+                  'bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-primary/25'
+                )}
+                style={{ opacity: 0 }}
+              >
+                {isLoading ? (
+                  <><Loader2 size={15} className="animate-spin" /> Memproses...</>
+                ) : (
+                  <>Daftar <ArrowRight size={15} /></>
+                )}
+              </button>
+            </form>
+
+            {/* Login Link */}
+            <div className="mt-5 pt-5 border-t border-border">
+              <p className="text-center text-xs text-muted-foreground">
+                Sudah punya akun?{' '}
+                <Link
+                  href="/login"
+                  className="text-primary hover:underline font-semibold"
+                >
+                  Login di sini
+                </Link>
               </p>
             </div>
-
-            {/* Password Input */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock size={20} className="text-gray-400" />
-                </div>
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={formData.password}
-                  onChange={handleChange}
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all"
-                  style={{ color: '#000000', backgroundColor: '#ffffff' }}
-                  placeholder="Minimal 6 karakter"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Confirm Password Input */}
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                Konfirmasi Password
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock size={20} className="text-gray-400" />
-                </div>
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all"
-                  style={{ color: '#000000', backgroundColor: '#ffffff' }}
-                  placeholder="Ulangi password"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                >
-                  {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
-
-            {/* Register Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
-            >
-              {isLoading ? 'Memproses...' : 'Daftar'}
-            </button>
-          </form>
-
-          {/* Login Link */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <p className="text-center text-sm text-gray-600">
-              Sudah punya akun?{' '}
-              <Link 
-                href="/login" 
-                className="text-red-600 hover:text-red-700 font-semibold"
-              >
-                Login di sini
-              </Link>
-            </p>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Footer */}
-        <p className="text-center text-sm text-gray-500 mt-6">
-          © 2026 SIG ACTIVA - PT Semen Indonesia Grup. All rights reserved.
+        <p className="text-center text-[11px] text-muted-foreground mt-5">
+          © 2026 SIG ACTIVA — PT Semen Indonesia Grup. All rights reserved.
         </p>
       </div>
     </div>
