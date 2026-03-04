@@ -910,6 +910,9 @@ export default function FluktuasiOIPage() {
   const modalBackdropRef = useRef<HTMLDivElement>(null);
   const modalFormBodyRef = useRef<HTMLDivElement>(null);
   const dbStatsRef       = useRef<HTMLDivElement>(null);
+  const chatBackdropRef  = useRef<HTMLDivElement>(null);
+  const chatModalRef     = useRef<HTMLDivElement>(null);
+  const kaTableRef       = useRef<HTMLDivElement>(null);
 
   // ── Per-account row hydration (lazy DB fetch) ──────────────────────────────
   const fetchingAccountsRef = useRef<Set<string>>(new Set());
@@ -2084,6 +2087,43 @@ export default function FluktuasiOIPage() {
     btn?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
   }, [activeSheetIdx]);
 
+  // ── GSAP sheet-tab switch: slide table content in from the side ────────────
+  const prevSheetIdxRef = useRef(-1);
+  useEffect(() => {
+    if (!kaTableRef.current) return;
+    const prev = prevSheetIdxRef.current;
+    prevSheetIdxRef.current = activeSheetIdx;
+    if (prev < 0) return; // first mount, skip
+    const dir = activeSheetIdx > prev ? 1 : -1;
+    gsap.fromTo(
+      kaTableRef.current,
+      { opacity: 0, x: dir * 28 },
+      { opacity: 1, x: 0, duration: 0.22, ease: 'power2.out' },
+    );
+  }, [activeSheetIdx]);
+
+  // ── GSAP chat modal entrance (fires whenever chat opens) ─────────────
+  const chatWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (!chat?.open) { chatWasOpenRef.current = false; return; }
+    if (chatWasOpenRef.current) return; // already animated
+    chatWasOpenRef.current = true;
+    // backdrop fade-in
+    if (chatBackdropRef.current) {
+      gsap.fromTo(chatBackdropRef.current,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.25, ease: 'power1.out' },
+      );
+    }
+    // card scale + slide up
+    if (chatModalRef.current) {
+      gsap.fromTo(chatModalRef.current,
+        { opacity: 0, scale: 0.88, y: 36 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.4, ease: 'back.out(1.4)', delay: 0.05 },
+      );
+    }
+  }, [chat?.open]);
+
   // ── GSAP page entrance animation ─────────────────────────────────────────
   useEffect(() => {
     if (!pageContentRef.current) return;
@@ -2105,21 +2145,33 @@ export default function FluktuasiOIPage() {
     if (!keywordBodyRef.current) return;
     const rows = Array.from(keywordBodyRef.current.querySelectorAll('tr.js-kw-row')) as HTMLElement[];
     if (rows.length === 0) return;
-    gsap.fromTo(rows,
-      { opacity: 0, x: -18 },
-      { opacity: 1, x: 0, duration: 0.35, ease: 'power3.out', stagger: 0.035 }
-    );
+    if (rows.length <= 20) {
+      gsap.fromTo(rows,
+        { opacity: 0, x: -18 },
+        { opacity: 1, x: 0, duration: 0.3, ease: 'power3.out', stagger: 0.03 }
+      );
+    } else {
+      // For large sets just do a single quick fade — stagger would take too long
+      gsap.fromTo(rows, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'power1.out' });
+    }
   }, [keywordPage, keywordFilter, keywordSearch]);
 
-  // ── GSAP rekap rows stagger (fires on page/data change) ──────────────────
+  // ── GSAP rekap rows fade (fires on page/data change) ─────────────────────
+  // NOTE: stagger removed — with REKAP_PAGE_SIZE=200 a 0.012s stagger means
+  // the last row starts 2.4 s after page turn, making the table feel very slow.
   useEffect(() => {
     if (!rekapBodyRef.current) return;
     const rows = Array.from(rekapBodyRef.current.querySelectorAll('tr.js-rekap-row')) as HTMLElement[];
     if (rows.length === 0) return;
-    gsap.fromTo(rows,
-      { opacity: 0, y: 10 },
-      { opacity: 1, y: 0, duration: 0.25, ease: 'power2.out', stagger: 0.012 }
-    );
+    if (rows.length <= 25) {
+      gsap.fromTo(rows,
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.22, ease: 'power2.out', stagger: 0.01 }
+      );
+    } else {
+      // Single batch fade — instant table appearance for large pages
+      gsap.fromTo(rows, { opacity: 0 }, { opacity: 1, duration: 0.18, ease: 'power1.out' });
+    }
   }, [rekapPage]);
 
   // ── Modal entrance: GSAP backdrop + container, anime.js form fields ────────
@@ -2199,6 +2251,40 @@ export default function FluktuasiOIPage() {
     () => parseNaturalKeyword(naturalInput),
     [naturalInput],
   );
+
+  // ── Pre-compute template reasons for rekap rows ───────────────────────────
+  // Keyed by index into rekapDisplayRowsLive so AI state changes (aiReasons/
+  // aiLoading) don't trigger expensive buildTemplateReason re-runs.
+  const rekapTemplateReasons = useMemo(() => {
+    if (!rekapSheetData) return new Map<number, { mom: string; yoy: string }>();
+    const { accountColIdx, amountCols, momCurrIdx, momPrevIdx, yoyCurrIdx, yoyPrevIdx } = rekapSheetData;
+    const effMC = momSel?.curr ?? momCurrIdx;
+    const effMP = momSel?.prev ?? momPrevIdx;
+    const effYC = yoySel?.curr ?? yoyCurrIdx;
+    const effYP = yoySel?.prev ?? yoyPrevIdx;
+    // Compute descColIdx (same logic as in the render IIFE)
+    const amtColSet = new Set(amountCols.map((ac) => ac.colIdx));
+    const firstAmtIdx = amountCols.length > 0 ? Math.min(...amountCols.map((ac) => ac.colIdx)) : Infinity;
+    const descColIdx = rekapSheetData.headers
+      .map((_, ci) => ci)
+      .find((ci) => {
+        if (ci === accountColIdx || amtColSet.has(ci) || ci >= firstAmtIdx) return false;
+        return rekapSheetData.rows.some((r) => String(r.values[ci] ?? '').trim() !== '');
+      }) ?? -1;
+    const map = new Map<number, { mom: string; yoy: string }>();
+    rekapDisplayRowsLive.forEach((row, idx) => {
+      if (row.type !== 'detail') return;
+      const descVal = descColIdx >= 0 ? String(row.values[descColIdx] ?? '') : '';
+      const mom = Math.abs(row.gapMoM) !== 0
+        ? buildTemplateReason(row.gapMoM, row.pctMoM, descVal, 'mom', amountCols, row.values, effMC, effMP)
+        : '';
+      const yoy = Math.abs(row.gapYoY) !== 0
+        ? buildTemplateReason(row.gapYoY, row.pctYoY, descVal, 'yoy', amountCols, row.values, effYC, effYP)
+        : '';
+      map.set(idx, { mom, yoy });
+    });
+    return map;
+  }, [rekapDisplayRowsLive, rekapSheetData, momSel, yoySel]);
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -2796,7 +2882,7 @@ export default function FluktuasiOIPage() {
               </div>
 
               {activeSheet && (
-                <>
+                <div ref={kaTableRef}>
                   <div className="px-4 py-2 border-b border-gray-100 text-xs text-gray-500 flex flex-wrap items-center gap-3">
                     <span>Kode Akun: <span className="font-semibold text-gray-800">{activeSheet.sheetName}</span></span>
                     <span><span className="font-semibold text-gray-800">{kaRows.length}</span> baris</span>
@@ -2853,7 +2939,7 @@ export default function FluktuasiOIPage() {
                       </tbody>
                     </table>
                   </div>
-                </>
+                </div>
               )}
             </div>
           )}
@@ -2888,12 +2974,12 @@ export default function FluktuasiOIPage() {
             // ── AI reason cell renderer ──────────────────────────────────────
             const ReasonCell = ({
               ri, globalRi, row, side, baseReason, isSpecial, s,
-              descVal,
+              descVal, templateReason,
             }: {
               ri: number; globalRi: number; row: RekapSheetRow;
               side: 'mom' | 'yoy'; baseReason: string; isSpecial: boolean;
               s: { bg: string; text: string; weight: string; border: string };
-              descVal: string;
+              descVal: string; templateReason: string;
             }) => {
               const key       = `${globalRi}-${side}`;
               const bothKey   = `${globalRi}-both`;
@@ -2903,12 +2989,8 @@ export default function FluktuasiOIPage() {
               const hasOverride = side in (aiReasons[globalRi] ?? {});
               const aiError   = aiErrors[key];
               const gapVal    = side === 'mom' ? row.gapMoM : row.gapYoY;
-              const pctVal    = side === 'mom' ? row.pctMoM : row.pctYoY;
-              const effCI     = side === 'mom' ? (momSel?.curr ?? momCurrIdx) : (yoySel?.curr ?? yoyCurrIdx);
-              const effPI     = side === 'mom' ? (momSel?.prev ?? momPrevIdx) : (yoySel?.prev ?? yoyPrevIdx);
-              const template  = !isSpecial && Math.abs(gapVal) !== 0
-                ? buildTemplateReason(gapVal, pctVal, descVal, side, amountCols, row.values, effCI, effPI)
-                : '';
+              // template comes pre-computed from rekapTemplateReasons memo — no rebuild on every render
+              const template  = isSpecial ? '' : templateReason;
               // hasOverride = user/AI has explicitly set a value (including empty string)
               const displayed = hasOverride ? (aiText ?? '') : template;
               const bgEven    = ri % 2 === 0 ? '#f0f3ff' : '#e8ecff';
@@ -3285,7 +3367,8 @@ export default function FluktuasiOIPage() {
                             </td>
                             {/* Reason MoM */}
                             {ReasonCell({ ri, globalRi, row, side: 'mom',
-                              baseReason: row.reasonMoM, isSpecial: hideReason, s, descVal })}
+                              baseReason: row.reasonMoM, isSpecial: hideReason, s, descVal,
+                              templateReason: rekapTemplateReasons.get(globalRi)?.mom ?? '' })}
                             {/* GAP YoY */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
                               style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
@@ -3300,7 +3383,8 @@ export default function FluktuasiOIPage() {
                             </td>
                             {/* Reason YoY */}
                             {ReasonCell({ ri, globalRi, row, side: 'yoy',
-                              baseReason: row.reasonYoY, isSpecial: hideReason, s, descVal })}
+                              baseReason: row.reasonYoY, isSpecial: hideReason, s, descVal,
+                              templateReason: rekapTemplateReasons.get(globalRi)?.yoy ?? '' })}
                           </tr>
                         );
                       })}
@@ -3316,9 +3400,9 @@ export default function FluktuasiOIPage() {
 
       {/* ── AI Chat Modal ─────────────────────────────────────────────── */}
       {chat?.open && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+        <div ref={chatBackdropRef} className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setChat(p => p ? { ...p, open: false } : p); }}>
-          <div className="bg-white rounded-xl shadow-2xl flex flex-col" style={{ width: '700px', height: '82vh', maxWidth: '96vw' }}>
+          <div ref={chatModalRef} className="bg-white rounded-xl shadow-2xl flex flex-col" style={{ width: '700px', height: '82vh', maxWidth: '96vw' }}>
             {/* Header */}
             <div className="px-4 py-3 border-b flex items-center gap-3 flex-shrink-0"
               style={{ background: 'linear-gradient(to right,#1F3864,#2e4d8a)' }}>

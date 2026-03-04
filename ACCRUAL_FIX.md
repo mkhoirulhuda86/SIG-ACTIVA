@@ -15,7 +15,7 @@ Ada beberapa potensi masalah dalam logika perhitungan accrual:
 ## Solusi yang Diterapkan
 
 ### 1. Perbaikan Logika `hasRealisasi`
-**Sebelum:**
+**Sebelum:**lah aku ngubah nilai di accrual tiap periode kok amount di per item nya juga ikut berubah
 ```typescript
 const hasRealisasi = (p.totalRealisasi || 0) > 0;
 ```

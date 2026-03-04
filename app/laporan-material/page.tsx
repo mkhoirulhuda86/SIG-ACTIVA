@@ -335,58 +335,67 @@ export default function LaporanMaterialPage() {
 
   const filteredData = useMemo(() => {
     if (importedData.length === 0) return [];
+
+    const showAll = selectedSelisih === 'all';
+
     return importedData.filter(item => {
+      // ── Search ────────────────────────────────────────────────────────
       const matchesSearch = searchTerm === '' ||
         item.materialId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.materialName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.location?.toLowerCase().includes(searchTerm.toLowerCase());
+
+      // ── Selisih filter ────────────────────────────────────────────────
+      // "all"        → tampilkan semua data tanpa syarat selisih
+      // "ada selisih" → hanya row yang punya selisih > 5 % di stok awal/akhir
       let matchesSelisih = true;
-      if (selectedSelisih === 'ada selisih') {
+      if (!showAll) {
         const sp1 = (item.stokAwal?.opr || 0) !== 0 ? Math.abs((item.stokAwal?.selisih || 0) / (item.stokAwal?.opr || 0)) * 100 : 0;
         const sp2 = (item.stokAkhir?.opr || 0) !== 0 ? Math.abs((item.stokAkhir?.selisih || 0) / (item.stokAkhir?.opr || 0)) * 100 : 0;
         matchesSelisih = sp1 > 5 || sp2 > 5;
       }
-      if (selectedSelisih === 'all') {
-        const matchesLokasi = selectedLokasi === 'All' || item.location === selectedLokasi;
-        let matchesFasilitas = true;
-        if (selectedFasilitas !== 'all') {
-          const ll = (item.location || '').toLowerCase();
-          if (selectedFasilitas === 'pabrik') matchesFasilitas = ll.includes('pl') || ll.includes('cp');
-          else if (selectedFasilitas === 'gudang') matchesFasilitas = !ll.includes('pl') && !ll.includes('cp');
-        }
-        let matchesKategori = true;
-        if (selectedKategori !== 'all') {
-          if (selectedKategori === 'stok awal')  matchesKategori = Math.abs(item.stokAwal?.selisih  || 0) >= 1;
-          else if (selectedKategori === 'produksi')   matchesKategori = Math.abs(item.produksi?.selisih   || 0) >= 1;
-          else if (selectedKategori === 'rilis')       matchesKategori = Math.abs(item.rilis?.selisih      || 0) >= 1;
-          else if (selectedKategori === 'stok akhir') matchesKategori = Math.abs(item.stokAkhir?.selisih  || 0) >= 1;
-        } else {
-          matchesKategori = (Math.abs(item.stokAwal?.selisih||0)>=1||Math.abs(item.produksi?.selisih||0)>=1||Math.abs(item.rilis?.selisih||0)>=1||Math.abs(item.stokAkhir?.selisih||0)>=1);
-        }
-        return matchesSearch && matchesLokasi && matchesFasilitas && matchesKategori;
-      }
+
+      // ── Lokasi filter ─────────────────────────────────────────────────
+      // Ketika "ada selisih": lokasi juga mensyaratkan ada selisih di row
       let matchesLokasi = true;
       if (selectedLokasi !== 'All') {
-        const hasS = (Math.abs(item.stokAwal?.selisih||0)>=1&&(item.stokAwal?.opr||0)!==0)||(Math.abs(item.produksi?.selisih||0)>=1&&(item.produksi?.opr||0)!==0)||(Math.abs(item.rilis?.selisih||0)>=1&&(item.rilis?.opr||0)!==0)||(Math.abs(item.stokAkhir?.selisih||0)>=1&&(item.stokAkhir?.opr||0)!==0);
-        matchesLokasi = item.location === selectedLokasi && hasS;
+        if (showAll) {
+          matchesLokasi = item.location === selectedLokasi;
+        } else {
+          const hasS = (Math.abs(item.stokAwal?.selisih||0)>=1&&(item.stokAwal?.opr||0)!==0)||(Math.abs(item.produksi?.selisih||0)>=1&&(item.produksi?.opr||0)!==0)||(Math.abs(item.rilis?.selisih||0)>=1&&(item.rilis?.opr||0)!==0)||(Math.abs(item.stokAkhir?.selisih||0)>=1&&(item.stokAkhir?.opr||0)!==0);
+          matchesLokasi = item.location === selectedLokasi && hasS;
+        }
       }
+
+      // ── Fasilitas filter ───────────────────────────────────────────────
       let matchesFasilitas = true;
       if (selectedFasilitas !== 'all') {
         const ll = (item.location || '').toLowerCase();
-        const hasS = (Math.abs(item.stokAwal?.selisih||0)>=1&&(item.stokAwal?.opr||0)!==0)||(Math.abs(item.produksi?.selisih||0)>=1&&(item.produksi?.opr||0)!==0)||(Math.abs(item.rilis?.selisih||0)>=1&&(item.rilis?.opr||0)!==0)||(Math.abs(item.stokAkhir?.selisih||0)>=1&&(item.stokAkhir?.opr||0)!==0);
-        if (selectedFasilitas === 'pabrik') matchesFasilitas = (ll.includes('pl')||ll.includes('cp')) && hasS;
-        else if (selectedFasilitas === 'gudang') matchesFasilitas = (!ll.includes('pl')&&!ll.includes('cp')) && hasS;
+        const isPabrik = ll.includes('pl') || ll.includes('cp');
+        if (showAll) {
+          matchesFasilitas = selectedFasilitas === 'pabrik' ? isPabrik : !isPabrik;
+        } else {
+          const hasS = (Math.abs(item.stokAwal?.selisih||0)>=1&&(item.stokAwal?.opr||0)!==0)||(Math.abs(item.produksi?.selisih||0)>=1&&(item.produksi?.opr||0)!==0)||(Math.abs(item.rilis?.selisih||0)>=1&&(item.rilis?.opr||0)!==0)||(Math.abs(item.stokAkhir?.selisih||0)>=1&&(item.stokAkhir?.opr||0)!==0);
+          matchesFasilitas = (selectedFasilitas === 'pabrik' ? isPabrik : !isPabrik) && hasS;
+        }
       }
+
+      // ── Kategori filter ────────────────────────────────────────────────
+      // Ketika selisih=all & kategori=all → tidak ada syarat selisih sama sekali
       let matchesKategori = true;
       if (selectedKategori !== 'all') {
-        if (selectedKategori === 'stok awal')  matchesKategori = Math.abs(item.stokAwal?.selisih||0)>=1&&(item.stokAwal?.opr||0)!==0;
-        else if (selectedKategori === 'produksi')   matchesKategori = Math.abs(item.produksi?.selisih||0)>=1&&(item.produksi?.opr||0)!==0;
-        else if (selectedKategori === 'rilis')       matchesKategori = Math.abs(item.rilis?.selisih||0)>=1&&(item.rilis?.opr||0)!==0;
-        else if (selectedKategori === 'stok akhir') matchesKategori = Math.abs(item.stokAkhir?.selisih||0)>=1&&(item.stokAkhir?.opr||0)!==0;
-      } else {
-        matchesKategori = ((Math.abs(item.stokAwal?.selisih||0)>=1&&(item.stokAwal?.opr||0)!==0)||(Math.abs(item.produksi?.selisih||0)>=1&&(item.produksi?.opr||0)!==0)||(Math.abs(item.rilis?.selisih||0)>=1&&(item.rilis?.opr||0)!==0)||(Math.abs(item.stokAkhir?.selisih||0)>=1&&(item.stokAkhir?.opr||0)!==0));
+        // Filter kategori spesifik: cek ada selisih di kategori tersebut
+        if (selectedKategori === 'stok awal')   matchesKategori = Math.abs(item.stokAwal?.selisih||0)  >= 1 && (showAll || (item.stokAwal?.opr||0)  !== 0);
+        else if (selectedKategori === 'produksi')    matchesKategori = Math.abs(item.produksi?.selisih||0)   >= 1 && (showAll || (item.produksi?.opr||0)   !== 0);
+        else if (selectedKategori === 'rilis')        matchesKategori = Math.abs(item.rilis?.selisih||0)      >= 1 && (showAll || (item.rilis?.opr||0)       !== 0);
+        else if (selectedKategori === 'stok akhir')  matchesKategori = Math.abs(item.stokAkhir?.selisih||0)  >= 1 && (showAll || (item.stokAkhir?.opr||0)  !== 0);
+      } else if (!showAll) {
+        // kategori=all + selisih=ada selisih → setidaknya satu kategori harus punya selisih
+        matchesKategori = (Math.abs(item.stokAwal?.selisih||0)>=1&&(item.stokAwal?.opr||0)!==0)||(Math.abs(item.produksi?.selisih||0)>=1&&(item.produksi?.opr||0)!==0)||(Math.abs(item.rilis?.selisih||0)>=1&&(item.rilis?.opr||0)!==0)||(Math.abs(item.stokAkhir?.selisih||0)>=1&&(item.stokAkhir?.opr||0)!==0);
       }
-      return matchesSearch && matchesLokasi && matchesFasilitas && matchesKategori && matchesSelisih;
+      // kategori=all + selisih=all → matchesKategori tetap true, semua data tampil
+
+      return matchesSearch && matchesSelisih && matchesLokasi && matchesFasilitas && matchesKategori;
     });
   }, [importedData, searchTerm, selectedLokasi, selectedFasilitas, selectedKategori, selectedSelisih]);
 
