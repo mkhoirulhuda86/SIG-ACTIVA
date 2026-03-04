@@ -89,12 +89,12 @@ function DonutChart({ data, total }: { data: { label: string; value: number; col
   useEffect(() => {
     const paths = svgRef.current?.querySelectorAll('path[data-slice]');
     if (!paths || paths.length === 0) return;
+    // Use only opacity — SVG paths cannot use CSS scale via anime.js
     animate(paths, {
       opacity: [0, 1],
-      scale: [0.6, 1],
-      duration: 700,
-      delay: stagger(55),
-      ease: 'easeOutBack',
+      duration: 600,
+      delay: stagger(50),
+      ease: 'easeOutQuad',
     });
   }, [data]);
 
@@ -140,7 +140,7 @@ function DonutChart({ data, total }: { data: { label: string; value: number; col
           data-slice="true"
           d={arcPath(cx, cy, R, r, s.startAngle, s.sweep)}
           fill={s.color}
-          style={{ transformOrigin: `${cx}px ${cy}px`, opacity: 0 }}
+          style={{ opacity: 0 }}
         />
       ))}
       <circle cx={cx} cy={cy} r={r} fill="white" />
@@ -163,10 +163,12 @@ function TrendChart({ data }: { data: { label: string; value: number }[] }) {
     const line = polylineRef.current;
     const area = polygonRef.current;
     if (!line || !area) return;
-    const totalLen = (line.getTotalLength ? line.getTotalLength() : 800);
-    gsap.set(line, { strokeDasharray: totalLen, strokeDashoffset: totalLen, opacity: 1 });
+    let totalLen = 800;
+    try { totalLen = line.getTotalLength(); } catch { /* fallback */ }
+    // Use GSAP attr for SVG properties to avoid CSS/SVG mismatch
+    gsap.set(line, { attr: { 'stroke-dasharray': totalLen, 'stroke-dashoffset': totalLen }, opacity: 1 });
     gsap.set(area, { opacity: 0 });
-    gsap.to(line,  { strokeDashoffset: 0, duration: 1.4, ease: 'power3.out', delay: 0.1 });
+    gsap.to(line,  { attr: { 'stroke-dashoffset': 0 }, duration: 1.4, ease: 'power3.out', delay: 0.1 });
     gsap.to(area,  { opacity: 1, duration: 0.8, delay: 0.8, ease: 'power2.out' });
   }, [data]);
 
@@ -210,7 +212,7 @@ function TrendChart({ data }: { data: { label: string; value: number }[] }) {
         );
       })}
       <polygon ref={polygonRef} points={areaPoints} fill="url(#trendGradAkun)" style={{ opacity: 0 }} />
-      <polyline ref={polylineRef} points={pts} fill="none" stroke="#2563eb" strokeWidth={2.2} strokeLinejoin="round" style={{ opacity: 0 }} />
+      <polyline ref={polylineRef} points={pts} fill="none" stroke="#2563eb" strokeWidth={2.2} strokeLinejoin="round" strokeDasharray="9999" strokeDashoffset="9999" style={{ opacity: 0 }} />
       {data.map((d, i) => {
         const showDot   = data.length <= 30;
         const showLabel = i % step === 0 || i === data.length - 1;
