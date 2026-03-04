@@ -12,8 +12,8 @@ import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 const Sidebar = dynamic(() => import('../components/Sidebar'), { ssr: false });
 const Header  = dynamic(() => import('../components/Header'),  { ssr: false });
 
-/* ─── Loading Skeleton ─────────────────────────────────────────────────────── */
-function PageSkeleton({ isMobileSidebarOpen, setMobileSidebar }: { isMobileSidebarOpen: boolean; setMobileSidebar: (v: boolean) => void }) {
+/* ─── Loading Skeleton (inner content only — no sidebar/header wrapper) ─────── */
+function SkeletonContent() {
   const skeletonRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!skeletonRef.current) return;
@@ -21,12 +21,6 @@ function PageSkeleton({ isMobileSidebarOpen, setMobileSidebar }: { isMobileSideb
     gsap.fromTo(cards, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.08, ease: 'power3.out' });
   }, []);
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-red-50/30">
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-        <Sidebar onClose={() => setMobileSidebar(false)} />
-      </div>
-      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen overflow-hidden">
-        <Header title="User Management" subtitle="Memuat data…" onMenuClick={() => setMobileSidebar(true)} />
         <div ref={skeletonRef} className="flex-1 p-4 sm:p-6 md:p-8">
           {/* Stat cards */}
           <div className="sk-card grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
@@ -76,8 +70,6 @@ function PageSkeleton({ isMobileSidebarOpen, setMobileSidebar }: { isMobileSideb
             </div>
           </div>
         </div>
-      </div>
-    </div>
   );
 }
 
@@ -478,8 +470,8 @@ export default function UserManagementPage() {
     return colors[role] || 'bg-gray-100 text-gray-700 border-gray-200';
   };
 
-  // ── Shell helper ──────────────────────────────────────────────────
-  const shell = (content: React.ReactNode) => (
+  // ── Shell — Sidebar is ALWAYS mounted here so it never re-animates ──────────
+  return (
     <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-red-50/30">
       {isMobileSidebarOpen && (
         <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setIsMobileSidebarOpen(false)} />
@@ -490,20 +482,10 @@ export default function UserManagementPage() {
       <div className="flex-1 lg:ml-64 flex flex-col min-h-screen overflow-hidden">
         <Header
           title="User Management"
-          subtitle="Kelola pengguna dan hak akses sistem"
+          subtitle={isLoading ? 'Memuat data…' : 'Kelola pengguna dan hak akses sistem'}
           onMenuClick={() => setIsMobileSidebarOpen(true)}
         />
-        {content}
-      </div>
-    </div>
-  );
-
-  // ── Early return for skeleton (same pattern as overview-fluktuasi) ────────
-  if (isLoading) return (
-    <PageSkeleton isMobileSidebarOpen={isMobileSidebarOpen} setMobileSidebar={setIsMobileSidebarOpen} />
-  );
-
-  return shell(
+        {isLoading ? <SkeletonContent /> : (
           /* ── Main content ──────────────────────────────────────── */
           <div ref={pageRef} className="flex-1 p-3 sm:p-4 md:p-8">
             <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
@@ -866,6 +848,9 @@ export default function UserManagementPage() {
             </div>
           </div>
         )}
+          </div>
+        )}
       </div>
+    </div>
   );
 }
