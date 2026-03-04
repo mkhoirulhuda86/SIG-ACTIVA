@@ -299,7 +299,11 @@ export default function MonitoringAccrualPage() {
   const [openJurnalRect, setOpenJurnalRect] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null);
   const [openJurnalItem, setOpenJurnalItem] = useState<Accrual | null>(null);
   // State untuk dropdown jurnal per kode akun
-  const [openKodeAkunDropdown, setOpenKodeAkunDropdown] = useState<string | null>(null);
+  const [openKodeAkunDropdown, setOpenKodeAkunDropdown] = useState<{
+    key: string;
+    items: Accrual[];
+    rect: { top: number; right: number };
+  } | null>(null);
   // Portal dropdown untuk jurnal group cost element (agar tidak terclip overflow-hidden)
   const [openGroupDropdown, setOpenGroupDropdown] = useState<{
     key: string;
@@ -3368,10 +3372,16 @@ export default function MonitoringAccrualPage() {
                           </td>
                           <td className="px-4 py-3.5">
                             <div className="flex items-center justify-center gap-1">
-                              <div className="relative">
+                              <div>
                                 <button
-                                  onClick={() => {
-                                    setOpenKodeAkunDropdown(openKodeAkunDropdown === kodeAkun ? null : kodeAkun);
+                                  onClick={(e) => {
+                                    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                    const items = Object.values(vendorGroups).flat();
+                                    if (openKodeAkunDropdown?.key === kodeAkun) {
+                                      setOpenKodeAkunDropdown(null);
+                                    } else {
+                                      setOpenKodeAkunDropdown({ key: kodeAkun, items, rect: { top: rect.bottom, right: window.innerWidth - rect.right } });
+                                    }
                                   }}
                                   className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded transition-colors flex items-center gap-1"
                                   title="Download Jurnal SAP Kode Akun"
@@ -3379,120 +3389,6 @@ export default function MonitoringAccrualPage() {
                                   <Download size={12} />
                                   <ChevronDown size={10} />
                                 </button>
-                                {openKodeAkunDropdown === kodeAkun && (
-                                  <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                                    <div className="p-2 space-y-1">
-                                      <div className="text-xs font-semibold text-gray-700 mb-2">Pilih Jenis:</div>
-                                      
-                                      <div className="space-y-1">
-                                        <div className="text-xs font-medium text-gray-600">Accrual:</div>
-                                        <div className="flex gap-1">
-                                          <button
-                                            onClick={() => {
-                                              const allItems = Object.values(vendorGroups).flat();
-                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '2000', 'accrual', ht, lt));
-                                              setOpenKodeAkunDropdown(null);
-                                            }}
-                                            className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded transition-colors"
-                                          >
-                                            Excel 2000
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              const allItems = Object.values(vendorGroups).flat();
-                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '7000', 'accrual', ht, lt));
-                                              setOpenKodeAkunDropdown(null);
-                                            }}
-                                            className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded transition-colors"
-                                          >
-                                            Excel 7000
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              const allItems = Object.values(vendorGroups).flat();
-                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '2000', 'accrual', ht, lt));
-                                              setOpenKodeAkunDropdown(null);
-                                            }}
-                                            className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded transition-colors"
-                                          >
-                                            TXT 2000
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              const allItems = Object.values(vendorGroups).flat();
-                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '7000', 'accrual', ht, lt));
-                                              setOpenKodeAkunDropdown(null);
-                                            }}
-                                            className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded transition-colors"
-                                          >
-                                            TXT 7000
-                                          </button>
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="space-y-1 pt-2 border-t border-gray-200">
-                                        <div className="text-xs font-medium text-gray-600">Realisasi:</div>
-                                        <div className="flex gap-1">
-                                          <button
-                                            onClick={() => {
-                                              const allItems = Object.values(vendorGroups).flat();
-                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '2000', 'realisasi', ht, lt));
-                                              setOpenKodeAkunDropdown(null);
-                                            }}
-                                            className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded transition-colors"
-                                          >
-                                            Excel 2000
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              const allItems = Object.values(vendorGroups).flat();
-                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'excel', '7000', 'realisasi', ht, lt));
-                                              setOpenKodeAkunDropdown(null);
-                                            }}
-                                            className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded transition-colors"
-                                          >
-                                            Excel 7000
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              const allItems = Object.values(vendorGroups).flat();
-                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '2000', 'realisasi', ht, lt));
-                                              setOpenKodeAkunDropdown(null);
-                                            }}
-                                            className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded transition-colors"
-                                          >
-                                            TXT 2000
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              const allItems = Object.values(vendorGroups).flat();
-                                              promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerKodeAkun(kodeAkun, allItems, 'txt', '7000', 'realisasi', ht, lt));
-                                              setOpenKodeAkunDropdown(null);
-                                            }}
-                                            className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded transition-colors"
-                                          >
-                                            TXT 7000
-                                          </button>
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="space-y-1 pt-2 border-t border-gray-200">
-                                        <div className="text-xs font-medium text-gray-600">Detail per Cost Center:</div>
-                                        <div className="flex gap-1">
-                                          <button
-                                            onClick={() => {
-                                              handleDownloadJurnalDetail(kodeAkun);
-                                              setOpenKodeAkunDropdown(null);
-                                            }}
-                                            className="text-xs bg-purple-500 hover:bg-purple-600 text-white px-2 py-1 rounded transition-colors flex-1"
-                                          >
-                                            Download Detail (TXT)
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
                               </div>
                             </div>
                           </td>
@@ -5259,6 +5155,48 @@ export default function MonitoringAccrualPage() {
               <div className="font-medium">Download TXT</div>
               <div className="text-[10px] text-gray-500">{openCostCenterGroupDropdown.items.length} entri rincian</div>
             </button>
+          </div>
+        </>
+      )}
+      {openKodeAkunDropdown && (
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setOpenKodeAkunDropdown(null)} />
+          <div
+            className="fixed z-[9999] w-52 bg-white border border-gray-200 rounded-xl shadow-2xl"
+            style={{ top: openKodeAkunDropdown.rect.top + 4, right: openKodeAkunDropdown.rect.right }}
+          >
+            <div className="px-3 py-2 border-b border-gray-100">
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Pilih Jenis Jurnal</p>
+              <p className="text-[10px] text-gray-400">{openKodeAkunDropdown.key}</p>
+            </div>
+            <div className="p-2 space-y-2">
+              <div>
+                <p className="text-[10px] font-semibold text-gray-500 px-1 mb-1">Accrual</p>
+                <div className="grid grid-cols-2 gap-1">
+                  {(['2000','7000'] as const).map(doc => (
+                    <React.Fragment key={doc}>
+                      <button onClick={() => { promptJurnalTexts((ht,lt) => handleDownloadJurnalSAPPerKodeAkun(openKodeAkunDropdown.key, openKodeAkunDropdown.items,'excel',doc,'accrual',ht,lt)); setOpenKodeAkunDropdown(null); }} className="text-[10px] bg-blue-500 hover:bg-blue-600 text-white px-2 py-1.5 rounded transition-colors">Excel {doc}</button>
+                      <button onClick={() => { promptJurnalTexts((ht,lt) => handleDownloadJurnalSAPPerKodeAkun(openKodeAkunDropdown.key, openKodeAkunDropdown.items,'txt',doc,'accrual',ht,lt)); setOpenKodeAkunDropdown(null); }} className="text-[10px] bg-gray-500 hover:bg-gray-600 text-white px-2 py-1.5 rounded transition-colors">TXT {doc}</button>
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+              <div className="border-t border-gray-100 pt-2">
+                <p className="text-[10px] font-semibold text-gray-500 px-1 mb-1">Realisasi</p>
+                <div className="grid grid-cols-2 gap-1">
+                  {(['2000','7000'] as const).map(doc => (
+                    <React.Fragment key={doc}>
+                      <button onClick={() => { promptJurnalTexts((ht,lt) => handleDownloadJurnalSAPPerKodeAkun(openKodeAkunDropdown.key, openKodeAkunDropdown.items,'excel',doc,'realisasi',ht,lt)); setOpenKodeAkunDropdown(null); }} className="text-[10px] bg-green-500 hover:bg-green-600 text-white px-2 py-1.5 rounded transition-colors">Excel {doc}</button>
+                      <button onClick={() => { promptJurnalTexts((ht,lt) => handleDownloadJurnalSAPPerKodeAkun(openKodeAkunDropdown.key, openKodeAkunDropdown.items,'txt',doc,'realisasi',ht,lt)); setOpenKodeAkunDropdown(null); }} className="text-[10px] bg-gray-500 hover:bg-gray-600 text-white px-2 py-1.5 rounded transition-colors">TXT {doc}</button>
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+              <div className="border-t border-gray-100 pt-2">
+                <p className="text-[10px] font-semibold text-gray-500 px-1 mb-1">Detail</p>
+                <button onClick={() => { handleDownloadJurnalDetail(openKodeAkunDropdown.key); setOpenKodeAkunDropdown(null); }} className="w-full text-[10px] bg-purple-500 hover:bg-purple-600 text-white px-2 py-1.5 rounded transition-colors">Download Detail (TXT)</button>
+              </div>
+            </div>
           </div>
         </>
       )}
