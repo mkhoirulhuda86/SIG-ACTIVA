@@ -40,8 +40,6 @@ const SUB_GROUPS: SubGroup[] = [
 const PREFIX_OVERRIDES: { prefix: string; code: string }[] = [
   { prefix: '7156', code: '71400000' }, // 7156xxxx masuk 71400000
 ];
-const KNOWN_PREFIXES = SUB_GROUPS.map(g => g.prefix);
-const PREFIX_TO_GROUP = new Map(SUB_GROUPS.map(g => [g.prefix, g]));
 
 // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const MONTHS_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
@@ -55,8 +53,9 @@ const fmtCompact = (n: number): string => {
   return sign + Math.round(a).toLocaleString('id-ID');
 };
 
-const fmtFull = (n: number): string =>
-  new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(n);
+// Cached formatter — avoids allocating a new Intl instance on every call
+const _fmtFull = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 });
+const fmtFull = (n: number): string => _fmtFull.format(n);
 
 const periodeToLabel = (p: string): string => {
   const [yr, mo] = p.split('.');
@@ -71,6 +70,12 @@ const KLASI_PALETTE = [
 ];
 
 // â”€â”€â”€ Donut Chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Pre-processed record: group + parts cached at load time
+type ProcessedRecord = AkunPeriodeRecord & {
+  _group: SubGroup;
+  _parts: string[];
+};
+
 function DonutChart({ data, total }: { data: { label: string; value: number; color: string }[]; total: number }) {
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -253,7 +258,7 @@ function TrendChart({ data }: { data: { label: string; value: number }[] }) {
 
 // â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function SubAkunFluktuasiPage() {
-  const [records, setRecords]                   = useState<AkunPeriodeRecord[]>([]);
+  const [records, setRecords]                   = useState<ProcessedRecord[]>([]);
   const [loading, setLoading]                   = useState(true);
   const [isMobileSidebarOpen, setMobileSidebar] = useState(false);
 
@@ -265,6 +270,9 @@ export default function SubAkunFluktuasiPage() {
   // Listing
   const [listPage, setListPage] = useState(0);
   const LIST_PAGE_SIZE = 50;
+
+  // Per-code group cache — persists across renders, cleared on fresh data load
+  const groupCache = useRef(new Map<string, SubGroup>());
 
   // Animation refs
   const pageRef          = useRef<HTMLDivElement>(null);
@@ -331,170 +339,132 @@ export default function SubAkunFluktuasiPage() {
   }, [loading]);
 
   useEffect(() => {
-    fetch('/api/fluktuasi/akun-periodes')
+    const ctrl = new AbortController();
+    fetch('/api/fluktuasi/akun-periodes', { signal: ctrl.signal })
       .then(r => r.json())
-      .then(data => { if (data.success && Array.isArray(data.data)) setRecords(data.data); })
-      .catch(console.error)
+      .then(data => {
+        if (!data.success || !Array.isArray(data.data)) return;
+        // Build group cache and pre-process records in one pass
+        groupCache.current.clear();
+        const resolveGroupFn = (code: string): SubGroup => {
+          const cached = groupCache.current.get(code);
+          if (cached) return cached;
+          let result: SubGroup | undefined;
+          for (const ov of PREFIX_OVERRIDES) {
+            if (code.startsWith(ov.prefix)) {
+              result = SUB_GROUPS.find(s => s.code === ov.code);
+              if (result) break;
+            }
+          }
+          if (!result) {
+            for (const g of SUB_GROUPS) {
+              if (code.startsWith(g.prefix)) { result = g; break; }
+            }
+          }
+          if (!result) {
+            const idx = code.charCodeAt(0) % KLASI_PALETTE.length;
+            result = { code, prefix: code, label: code, color: KLASI_PALETTE[idx] };
+          }
+          groupCache.current.set(code, result);
+          return result;
+        };
+        const processed: ProcessedRecord[] = (data.data as AkunPeriodeRecord[]).map(r => ({
+          ...r,
+          _group: resolveGroupFn(r.accountCode),
+          _parts: (r.klasifikasi || '(Tanpa Klasifikasi)')
+            .split(';').map((p: string) => p.trim()).filter(Boolean),
+        }));
+        setRecords(processed);
+      })
+      .catch((e: unknown) => { if ((e as Error).name !== 'AbortError') console.error(e); })
       .finally(() => setLoading(false));
+    return () => ctrl.abort();
   }, []);
 
   // â”€â”€ Derived â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const years = useMemo(() => {
-    const s = new Set(records.map(r => r.periode.split('.')[0]));
-    return [...s].sort();
-  }, [records]);
-
-  // Resolve which SubGroup an accountCode belongs to (by prefix), or build an ad-hoc group
-  const resolveGroup = useCallback((code: string): SubGroup => {
-    // Check specific overrides first (more specific wins)
-    for (const ov of PREFIX_OVERRIDES) {
-      if (code.startsWith(ov.prefix)) {
-        const g = SUB_GROUPS.find(s => s.code === ov.code);
-        if (g) return g;
-      }
-    }
-    for (const g of SUB_GROUPS) {
-      if (code.startsWith(g.prefix)) return g;
-    }
-    // Account doesn't belong to any known sub-akun → own group
-    const idx = code.charCodeAt(0) % KLASI_PALETTE.length;
-    return { code, prefix: code, label: code, color: KLASI_PALETTE[idx] };
-  }, []);
-
-  // All effective groups visible in data (4 fixed + any extras not matching a prefix)
-  const visibleGroups = useMemo((): SubGroup[] => {
-    const known = new Set(KNOWN_PREFIXES);
-    const extras: SubGroup[] = [];
+  // O(n) scan: years, allKlasifikasi, latestPeriode, visibleGroups — all from records
+  const { years, allKlasifikasi, latestPeriode, visibleGroups } = useMemo(() => {
+    const yearSet    = new Set<string>();
+    const klasiSet   = new Set<string>();
     const extraCodes = new Set<string>();
-    records.forEach(r => {
-      const matched = SUB_GROUPS.some(g => r.accountCode.startsWith(g.prefix));
-      if (!matched && !extraCodes.has(r.accountCode)) {
+    const extras: SubGroup[] = [];
+    let latest = '';
+    for (const r of records) {
+      yearSet.add(r.periode.split('.')[0]);
+      if (r.periode > latest) latest = r.periode;
+      r._parts.forEach(k => klasiSet.add(k));
+      if (!SUB_GROUPS.some(g => r.accountCode.startsWith(g.prefix)) && !extraCodes.has(r.accountCode)) {
         extraCodes.add(r.accountCode);
-        extras.push(resolveGroup(r.accountCode));
+        extras.push(r._group);
       }
-    });
-    return [...SUB_GROUPS, ...extras.sort((a, b) => a.code.localeCompare(b.code))];
-  }, [records, resolveGroup]);
-
-  // All klasifikasi (split by ";")
-  const allKlasifikasi = useMemo(() => {
-    const s = new Set<string>();
-    records.forEach(r => {
-      const raw = r.klasifikasi || '(Tanpa Klasifikasi)';
-      raw.split(';').map((p: string) => p.trim()).filter(Boolean).forEach((k: string) => s.add(k));
-    });
-    return [...s].sort();
+    }
+    return {
+      years:          [...yearSet].sort(),
+      allKlasifikasi: [...klasiSet].sort(),
+      latestPeriode:  latest ? periodeToLabel(latest) : '-',
+      visibleGroups:  [...SUB_GROUPS, ...extras.sort((a, b) => a.code.localeCompare(b.code))],
+    };
   }, [records]);
 
-  // Filtered records (filter by sub-akun group code, not raw accountCode)
-  const filtered = useMemo(() => records.filter(r => {
-    if (selectedYear !== 'all' && !r.periode.startsWith(selectedYear + '.')) return false;
-    if (filterSubAkun.size > 0) {
-      const grp = resolveGroup(r.accountCode);
-      if (!filterSubAkun.has(grp.code)) return false;
+  // Single-pass derived: filter + all aggregations in one loop
+  const derived = useMemo(() => {
+    const groupTotals   = new Map<string, number>();
+    visibleGroups.forEach(g => groupTotals.set(g.code, 0));
+    const periodeTotals = new Map<string, number>();
+    const klasiTotals   = new Map<string, number>();
+    type ListEntry = { subGroup: SubGroup; klasifikasiParts: Set<string>; total: number; periodes: number };
+    const listMap = new Map<string, ListEntry>();
+    let total = 0;
+
+    for (const r of records) {
+      if (selectedYear !== 'all' && !r.periode.startsWith(selectedYear + '.')) continue;
+      if (filterSubAkun.size > 0 && !filterSubAkun.has(r._group.code)) continue;
+      if (filterKlasifikasi.size > 0 && !r._parts.some(k => filterKlasifikasi.has(k))) continue;
+
+      total += r.amount;
+      groupTotals.set(r._group.code, (groupTotals.get(r._group.code) ?? 0) + r.amount);
+      periodeTotals.set(r.periode, (periodeTotals.get(r.periode) ?? 0) + r.amount);
+
+      const share = r.amount / r._parts.length;
+      const activeParts = filterKlasifikasi.size > 0 ? r._parts.filter(k => filterKlasifikasi.has(k)) : r._parts;
+      activeParts.forEach(k => klasiTotals.set(k, (klasiTotals.get(k) ?? 0) + share));
+
+      const ex = listMap.get(r._group.code) ?? { subGroup: r._group, klasifikasiParts: new Set<string>(), total: 0, periodes: 0 };
+      r._parts.forEach(p => ex.klasifikasiParts.add(p));
+      ex.total += r.amount;
+      ex.periodes++;
+      listMap.set(r._group.code, ex);
     }
-    if (filterKlasifikasi.size > 0) {
-      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
-      if (!parts.some((k: string) => filterKlasifikasi.has(k))) return false;
-    }
-    return true;
-  }), [records, selectedYear, filterSubAkun, filterKlasifikasi, resolveGroup]);
 
-  const totalFiltered = useMemo(() => filtered.reduce((s, r) => s + r.amount, 0), [filtered]);
-
-  // Single-pass aggregation by sub-akun group
-  const filteredByGroup = useMemo(() => {
-    const m = new Map<string, number>();
-    visibleGroups.forEach(g => m.set(g.code, 0));
-    filtered.forEach(r => {
-      const grp = resolveGroup(r.accountCode);
-      m.set(grp.code, (m.get(grp.code) ?? 0) + r.amount);
-    });
-    return m;
-  }, [filtered, visibleGroups, resolveGroup]);
-
-  // Donut data: per sub group
-  const donutData = useMemo(() => visibleGroups.map(g => ({
-    label: g.label,
-    value: filteredByGroup.get(g.code) ?? 0,
-    color: g.color,
-  })).filter(d => d.value !== 0), [filteredByGroup, visibleGroups]);
-  const donutTotal = useMemo(() => donutData.reduce((s, d) => s + Math.abs(d.value), 0), [donutData]);
-
-  // Trend per periode
-  const byPeriode = useMemo(() => {
-    const m = new Map<string, number>();
-    filtered.forEach(r => m.set(r.periode, (m.get(r.periode) ?? 0) + r.amount));
-    return [...m.entries()]
+    const filteredByGroup = groupTotals;
+    const donutData = visibleGroups
+      .map(g => ({ label: g.label, value: filteredByGroup.get(g.code) ?? 0, color: g.color }))
+      .filter(d => d.value !== 0);
+    const donutTotal = donutData.reduce((s, d) => s + Math.abs(d.value), 0);
+    const byPeriode = [...periodeTotals.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([p, value]) => ({ label: periodeToLabel(p), value }));
-  }, [filtered]);
-
-  // Sub-akun totals
-  const subAkunTotals = useMemo(() =>
-    visibleGroups.map(g => ({
-      group: g,
-      total: filteredByGroup.get(g.code) ?? 0,
-    })).sort((a, b) => Math.abs(b.total) - Math.abs(a.total)),
-  [filteredByGroup, visibleGroups]);
-
-  // Klasifikasi totals (split by ";" — always divide by full parts count, only accumulate active parts)
-  const klasifikasiTotals = useMemo(() => {
-    const m = new Map<string, number>();
-    filtered.forEach(r => {
-      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
-      const share = r.amount / parts.length; // always divide by full count
-      const activeParts = filterKlasifikasi.size > 0
-        ? parts.filter((k: string) => filterKlasifikasi.has(k))
-        : parts;
-      activeParts.forEach((k: string) => m.set(k, (m.get(k) ?? 0) + share));
-    });
-    return [...m.entries()]
+    const subAkunTotals = visibleGroups
+      .map(g => ({ group: g, total: filteredByGroup.get(g.code) ?? 0 }))
+      .sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
+    const klasifikasiTotals = [...klasiTotals.entries()]
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
       .map(([label, value], i) => ({ label, value, color: KLASI_PALETTE[i % KLASI_PALETTE.length] }));
-  }, [filtered, filterKlasifikasi]);
-
-  // Listing rows — grouped by sub-akun code only, collect all unique klasifikasi parts
-  const listingRows = useMemo(() => {
-    const m = new Map<string, {
-      subGroup: SubGroup;
-      klasifikasi: string;
-      klasifikasiParts: Set<string>;
-      total: number;
-      periodes: number;
-    }>();
-    filtered.forEach(r => {
-      const sg   = resolveGroup(r.accountCode);
-      const key  = sg.code;
-      const parts = (r.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((p: string) => p.trim()).filter(Boolean);
-      const ex   = m.get(key) ?? { subGroup: sg, klasifikasi: '', klasifikasiParts: new Set<string>(), total: 0, periodes: 0 };
-      parts.forEach(p => ex.klasifikasiParts.add(p));
-      m.set(key, { ...ex, total: ex.total + r.amount, periodes: ex.periodes + 1 });
-    });
-    return [...m.values()]
+    const listingRows = [...listMap.values()]
       .map(row => ({ ...row, klasifikasi: [...row.klasifikasiParts].join('; ') }))
       .sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
-  }, [filtered, resolveGroup]);
+    const klasifikasiMap = new Map(klasifikasiTotals.map(d => [d.label, d]));
 
-  const listingTotalPages = useMemo(
-    () => Math.ceil(listingRows.length / LIST_PAGE_SIZE),
-    [listingRows],
-  );
+    return { total, filteredByGroup, donutData, donutTotal, byPeriode, subAkunTotals, klasifikasiTotals, listingRows, klasifikasiMap };
+  }, [records, selectedYear, filterSubAkun, filterKlasifikasi, visibleGroups]);
+
+  const { total: totalFiltered, filteredByGroup, donutData, donutTotal, byPeriode,
+          subAkunTotals, klasifikasiTotals, listingRows, klasifikasiMap } = derived;
+
+  const listingTotalPages = Math.ceil(listingRows.length / LIST_PAGE_SIZE);
   const listingPage = useMemo(
     () => listingRows.slice(listPage * LIST_PAGE_SIZE, (listPage + 1) * LIST_PAGE_SIZE),
     [listingRows, listPage],
-  );
-
-  // Latest periode label for subtitle
-  const latestPeriode = useMemo(() => {
-    const all = [...new Set(records.map(r => r.periode))].sort();
-    return all.length > 0 ? periodeToLabel(all[all.length - 1]) : '-';
-  }, [records]);
-
-  // Precomputed lookup maps for filter panel — avoids O(n×m) inline calls in JSX
-  const klasifikasiMap = useMemo(
-    () => new Map(klasifikasiTotals.map(d => [d.label, d])),
-    [klasifikasiTotals],
   );
 
   const resetFilters = useCallback(() => {
@@ -972,7 +942,7 @@ export default function SubAkunFluktuasiPage() {
                     style={{ color: totalFiltered >= 0 ? '#16a34a' : '#dc2626' }}>
                     {fmtFull(totalFiltered)}
                   </td>
-                  <td className="px-3 py-1.5 text-right text-slate-400 text-xs">{filtered.length} records</td>
+                  <td className="px-3 py-1.5 text-right text-slate-400 text-xs">{listingRows.reduce((s, r) => s + r.periodes, 0)} records</td>
                 </tr>
               </tfoot>
             )}
