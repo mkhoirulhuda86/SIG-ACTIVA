@@ -3,7 +3,7 @@
 import { toast } from 'sonner';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { gsap } from 'gsap';
-import { Search, Download, Plus, Edit, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock, Upload, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { Search, Download, Plus, Edit, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock, Upload, FileSpreadsheet, RefreshCw, AlertTriangle } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { exportToCSV } from '../utils/exportUtils';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
@@ -85,6 +85,17 @@ export default function MonitoringPrepaidPage() {
   const importFileRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deletingSelected, setDeletingSelected] = useState(false);
+
+  // Custom confirm dialog
+  const [confirmDialog, setConfirmDialog] = useState<{
+    message: string;
+    subMessage?: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  const showConfirm = useCallback((message: string, subMessage: string, onConfirm: () => void) => {
+    setConfirmDialog({ message, subMessage, onConfirm });
+  }, []);
 
   // Animation refs
   const pageRef       = useRef<HTMLDivElement>(null);
@@ -562,27 +573,31 @@ export default function MonitoringPrepaidPage() {
 
   const handleDeleteSelected = useCallback(async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Yakin hapus ${selectedIds.size} data prepaid terpilih?`)) return;
-
-    setDeletingSelected(true);
-    try {
-      const ids = Array.from(selectedIds).join(',');
-      const response = await fetch(`/api/prepaid?ids=${ids}`, { method: 'DELETE' });
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Gagal menghapus');
+    showConfirm(
+      `Hapus ${selectedIds.size} data prepaid?`,
+      'Data yang dihapus tidak dapat dikembalikan.',
+      async () => {
+        setDeletingSelected(true);
+        try {
+          const ids = Array.from(selectedIds).join(',');
+          const response = await fetch(`/api/prepaid?ids=${ids}`, { method: 'DELETE' });
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || 'Gagal menghapus');
+          }
+          const data = await response.json();
+          setSelectedIds(new Set());
+          fetchPrepaidData();
+          toast.success(data.count != null ? `${data.count} data berhasil dihapus.` : 'Data berhasil dihapus.');
+        } catch (error) {
+          console.error('Error bulk delete:', error);
+          toast.error('Gagal menghapus data terpilih');
+        } finally {
+          setDeletingSelected(false);
+        }
       }
-      const data = await response.json();
-      setSelectedIds(new Set());
-      fetchPrepaidData();
-      toast.success(data.count != null ? `${data.count} data berhasil dihapus.` : 'Data berhasil dihapus.');
-    } catch (error) {
-      console.error('Error bulk delete:', error);
-      toast.error('Gagal menghapus data terpilih');
-    } finally {
-      setDeletingSelected(false);
-    }
-  }, [selectedIds]);
+    );
+  }, [selectedIds, showConfirm]);
 
   const handleEdit = (item: Prepaid) => {
     setEditData(item);
@@ -590,26 +605,25 @@ export default function MonitoringPrepaidPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus data prepaid ini?')) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/prepaid?id=${id}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        toast.success('Data prepaid berhasil dihapus!');
-        fetchPrepaidData();
-      } else {
-        toast.error('Gagal menghapus data prepaid');
+  const handleDelete = (id: number) => {
+    showConfirm(
+      'Hapus data prepaid ini?',
+      'Data yang dihapus tidak dapat dikembalikan.',
+      async () => {
+        try {
+          const response = await fetch(`/api/prepaid?id=${id}`, { method: 'DELETE' });
+          if (response.ok) {
+            toast.success('Data prepaid berhasil dihapus!');
+            fetchPrepaidData();
+          } else {
+            toast.error('Gagal menghapus data prepaid');
+          }
+        } catch (error) {
+          console.error('Error deleting prepaid:', error);
+          toast.error('Terjadi kesalahan saat menghapus data');
+        }
       }
-    } catch (error) {
-      console.error('Error deleting prepaid:', error);
-      toast.error('Terjadi kesalahan saat menghapus data');
-    }
+    );
   };
 
   const handleExportSingle = (item: Prepaid) => {
@@ -1146,6 +1160,50 @@ export default function MonitoringPrepaidPage() {
                   <div key={i} className="w-2 h-2 rounded-full bg-red-500 animate-bounce"
                     style={{ animationDelay: `${i * 0.15}s` }} />
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Custom Confirm Dialog ──────────────────────────────────── */}
+        {confirmDialog && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60]"
+            onClick={() => setConfirmDialog(null)}>
+            <div
+              className="bg-white rounded-2xl shadow-2xl border border-red-100 p-6 mx-4 max-w-sm w-full"
+              style={{ transform: 'scale(0.88)', opacity: 0 }}
+              ref={(el) => {
+                if (el) {
+                  gsap.to(el, { scale: 1, opacity: 1, duration: 0.28, ease: 'back.out(1.5)' });
+                }
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-red-600" />
+                </div>
+                <h3 className="text-base font-bold text-slate-800">{confirmDialog.message}</h3>
+              </div>
+              {confirmDialog.subMessage && (
+                <p className="text-sm text-slate-500 mb-5 leading-relaxed pl-[52px]">
+                  {confirmDialog.subMessage}
+                </p>
+              )}
+              <div className="flex gap-2 justify-end mt-5">
+                <button
+                  onClick={() => setConfirmDialog(null)}
+                  className="px-4 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-slate-600 hover:bg-slate-50 transition-all active:scale-95"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
+                  className="px-4 py-2 text-xs font-semibold rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 transition-all shadow-sm active:scale-95"
+                >
+                  <Trash2 className="w-3.5 h-3.5 inline-block mr-1.5 -mt-0.5" />
+                  Hapus
+                </button>
               </div>
             </div>
           </div>
