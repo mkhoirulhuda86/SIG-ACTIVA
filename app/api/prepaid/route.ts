@@ -2,16 +2,46 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
 
-// GET - Mengambil semua data prepaid
+const BULAN_MAP: Record<string, number> = {
+  'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
+  'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11,
+};
+
+// GET - Mengambil semua data prepaid (no periodes payload) OR periodes for one item
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const type = searchParams.get('type');
+    const type       = searchParams.get('type');
+    const singleId   = searchParams.get('id');
+    const withPeriodes = searchParams.get('periodes') === '1';
 
-    let whereClause: any = {};
-    if (type && type !== 'All') {
-      whereClause.type = type;
+    // ── On-demand periodes fetch for one item ──────────────────────
+    if (singleId && withPeriodes) {
+      const id = parseInt(singleId);
+      if (isNaN(id)) return NextResponse.json([], { status: 400 });
+
+      const item = await prisma.prepaid.findUnique({
+        where: { id },
+        select: {
+          pembagianType: true,
+          periodes: {
+            select: { id: true, periodeKe: true, bulan: true, tahun: true, amountPrepaid: true, isAmortized: true, amortizedDate: true },
+            orderBy: { periodeKe: 'asc' },
+          },
+        },
+      });
+
+      const res = NextResponse.json(item?.periodes ?? []);
+      res.headers.set('Cache-Control', 'private, no-store');
+      return res;
     }
+
+    // ── Main list – periodes fetched server-side for calculation only, NOT sent to client ──
+    let whereClause: any = {};
+    if (type && type !== 'All') whereClause.type = type;
+
+    const today      = new Date();
+    const todayFirst = new Date(today.getFullYear(), today.getMonth(), 1);
 
     const prepaids = await prisma.prepaid.findMany({
       where: whereClause,
@@ -33,65 +63,46 @@ export async function GET(request: NextRequest) {
         type: true,
         headerText: true,
         costCenter: true,
+        // Fetch periodes only to compute amortisasi — not sent to client
         periodes: {
-          select: {
-            id: true,
-            periodeKe: true,
-            bulan: true,
-            tahun: true,
-            amountPrepaid: true,
-            isAmortized: true,
-            amortizedDate: true
-          },
-          orderBy: {
-            periodeKe: 'asc'
-          }
-        }
+          select: { bulan: true, amountPrepaid: true },
+          orderBy: { periodeKe: 'asc' },
+        },
       },
-      orderBy: {
-        startDate: 'desc'
-      }
+      orderBy: { startDate: 'desc' },
     });
-
-    // Hitung remaining untuk setiap prepaid
-    const bulanMap: Record<string, number> = {
-      'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
-      'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11
-    };
-    const today = new Date();
-    const todayFirst = new Date(today.getFullYear(), today.getMonth(), 1);
 
     const prepaidsWithRemaining = prepaids.map((prepaid: any) => {
       let amortizedAmount = 0;
 
       if (prepaid.pembagianType === 'otomatis') {
-        // Auto: hitung hanya periode yang bulannya sudah lewat atau bulan ini
         amortizedAmount = prepaid.periodes.reduce((sum: number, p: any) => {
-          const parts = p.bulan.split(' ');
-          const periodeMonth = bulanMap[parts[0]] ?? 0;
-          const periodeYear = parseInt(parts[1]);
-          const periodeDate = new Date(periodeYear, periodeMonth, 1);
+          const parts       = p.bulan.split(' ');
+          const periodeMonth = BULAN_MAP[parts[0]] ?? 0;
+          const periodeYear  = parseInt(parts[1]);
+          const periodeDate  = new Date(periodeYear, periodeMonth, 1);
           return periodeDate <= todayFirst ? sum + p.amountPrepaid : sum;
         }, 0);
       } else {
-        // Manual: sum semua amountPrepaid yang sudah diinput user
         amortizedAmount = prepaid.periodes.reduce((sum: number, p: any) => sum + p.amountPrepaid, 0);
       }
-      
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { periodes: _periodes, ...rest } = prepaid; // strip periodes from response
       return {
-        ...prepaid,
+        ...rest,
         totalAmortisasi: amortizedAmount,
-        remaining: prepaid.totalAmount - amortizedAmount
+        remaining: prepaid.totalAmount - amortizedAmount,
       };
     });
 
-    return NextResponse.json(prepaidsWithRemaining);
+    const res = NextResponse.json(prepaidsWithRemaining);
+    // Light caching: browser can use stale data for 10s while revalidating
+    res.headers.set('Cache-Control', 'private, max-age=10, stale-while-revalidate=30');
+    return res;
   } catch (error) {
     console.error('Error fetching prepaid data:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch prepaid data' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch prepaid data' }, { status: 500 });
   }
 }
 

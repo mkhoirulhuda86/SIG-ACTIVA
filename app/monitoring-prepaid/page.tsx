@@ -1,7 +1,7 @@
-﻿'use client';
+'use client';
 
 import { toast } from 'sonner';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { gsap } from 'gsap';
 import { Search, Download, Plus, Edit, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock, Upload, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -9,7 +9,6 @@ import { exportToCSV } from '../utils/exportUtils';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
-import { Separator } from '../components/ui/separator';
 
 // Lazy load components
 const Sidebar = dynamic(() => import('../components/Sidebar'), { ssr: false });
@@ -24,6 +23,14 @@ const loadExcelJS = async () => {
   }
   return ExcelJS;
 };
+
+// -- Module-level constants (not recreated on every render) --------------
+const BULAN_MAP: Record<string, number> = {
+  'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
+  'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11,
+};
+const formatCurrency = (amount: number) =>
+  `Rp ${Math.round(amount).toLocaleString('id-ID')}`;
 
 interface PrepaidPeriode {
   id: number;
@@ -55,21 +62,23 @@ interface Prepaid {
   type: string;
   headerText?: string;
   costCenter?: string;
-  periodes: PrepaidPeriode[];
+  // periodes now lazy-loaded on expand ? stored in periodesCache
 }
 
 export default function MonitoringPrepaidPage() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [prepaidData, setPrepaidData] = useState<Prepaid[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editMode, setEditMode] = useState<'create' | 'edit'>('create');
   const [editData, setEditData] = useState<Prepaid | null>(null);
-  const [openDropdown, setOpenDropdown] = useState<number | null>(null);
   const [userRole, setUserRole] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [periodesCache, setPeriodesCache] = useState<Record<number, PrepaidPeriode[]>>({});
+  const [periodesLoading, setPeriodesLoading] = useState<Set<number>>(new Set());
   const [editingPeriode, setEditingPeriode] = useState<{ prepaidId: number; periodeId: number; amount: string } | null>(null);
   const [savingPeriode, setSavingPeriode] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
@@ -85,20 +94,27 @@ export default function MonitoringPrepaidPage() {
   const tableBodyRef  = useRef<HTMLTableSectionElement>(null);
   const addBtnRef     = useRef<HTMLButtonElement>(null);
 
-  const bulanMap: Record<string, number> = {
-    'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
-    'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11
-  };
-
-  const toggleRow = (id: number) => {
+  // -- Lazy-load periodes on row expand (cached) ------------------------------
+  const toggleRow = useCallback(async (id: number) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  };
+    // Only fetch if not yet cached
+    if (!periodesCache[id]) {
+      setPeriodesLoading(prev => { const n = new Set(prev); n.add(id); return n; });
+      try {
+        const res = await fetch(`/api/prepaid?id=${id}&periodes=1`);
+        const data: PrepaidPeriode[] = await res.json();
+        setPeriodesCache(prev => ({ ...prev, [id]: data }));
+      } finally {
+        setPeriodesLoading(prev => { const n = new Set(prev); n.delete(id); return n; });
+      }
+    }
+  }, [periodesCache]);
 
-  const handleSavePeriodeAmount = async (periodeId: number, amount: number) => {
+  const handleSavePeriodeAmount = async (periodeId: number, amount: number, prepaidId: number) => {
     setSavingPeriode(true);
     try {
       const res = await fetch('/api/prepaid/periode', {
@@ -107,7 +123,12 @@ export default function MonitoringPrepaidPage() {
         body: JSON.stringify({ periodeId, amountPrepaid: amount })
       });
       if (res.ok) {
-        await fetchPrepaidData();
+        // Refresh only this item's periodes (targeted update, no full refetch)
+        const res2 = await fetch(`/api/prepaid?id=${prepaidId}&periodes=1`);
+        const periodes: PrepaidPeriode[] = await res2.json();
+        setPeriodesCache(prev => ({ ...prev, [prepaidId]: periodes }));
+        // Lightweight full-list refresh to update Saldo / metrics
+        fetchPrepaidData();
         setEditingPeriode(null);
       } else {
         toast.error('Gagal menyimpan amortisasi');
@@ -129,25 +150,13 @@ export default function MonitoringPrepaidPage() {
   // Fetch data dari API
   useEffect(() => {
     fetchPrepaidData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = () => {
-      if (openDropdown !== null) {
-        setOpenDropdown(null);
-      }
-    };
-
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [openDropdown]);
-
-  const fetchPrepaidData = async () => {
+  const fetchPrepaidData = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/prepaid');
-      
       if (response.ok) {
         const data = await response.json();
         setPrepaidData(data);
@@ -159,12 +168,12 @@ export default function MonitoringPrepaidPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Realtime: refresh when another user adds/updates/deletes prepaid
   useRealtimeUpdates(['prepaid'], () => { fetchPrepaidData(); });
 
-  // â”€â”€â”€ Page entrance animation (runs once data finishes loading) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Page entrance animation (runs once data finishes loading) ──────────────
   useEffect(() => {
     if (loading) return;
     const cards = [metricRef.current, filterBarRef.current, tableCardRef.current].filter(Boolean);
@@ -181,18 +190,18 @@ export default function MonitoringPrepaidPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
-  // â”€â”€â”€ Animate table rows when filtered data changes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Animate table rows when filtered data changes ───────────────────────────
   useEffect(() => {
     if (!tableBodyRef.current) return;
     const rows = tableBodyRef.current.querySelectorAll('tr.data-row');
     if (!rows.length) return;
     gsap.fromTo(rows,
       { opacity: 0, x: -12 },
-      { opacity: 1, x: 0, duration: 0.26, ease: 'expo.out', stagger: 0.018 }
+      { opacity: 1, x: 0, duration: 0.26, ease: 'expo.out', stagger: rows.length > 30 ? 0 : 0.018 }
     );
-  }, [prepaidData, searchTerm]);
+  }, [prepaidData, debouncedSearch]);
 
-  // â”€â”€â”€ Metric number counter animation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Metric number counter animation ────────────────────────────────────────
   useEffect(() => {
     if (loading || !metricRef.current) return;
     const els = metricRef.current.querySelectorAll('[data-metric]');
@@ -204,20 +213,27 @@ export default function MonitoringPrepaidPage() {
   }, [loading]);
 
 
-  // Calculate totals
-  const totalPrepaidValue = prepaidData.reduce((sum, item) => sum + item.totalAmount, 0);
-  const totalRemaining = prepaidData.reduce((sum, item) => sum + item.remaining, 0);
-  const activeItems = prepaidData.length;
+  // --- Debounce search input (300 ms) -------------------------------------
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
-  // Filter data
-  const filteredData = prepaidData.filter(item => {
-    const matchesSearch = searchTerm === '' || 
-      item.kdAkr.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.namaAkun.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.vendor.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    return matchesSearch;
-  });
+  // --- Memoized derived data ----------------------------------------------
+  const { totalPrepaidValue, totalRemaining, activeItems } = useMemo(() => ({
+    totalPrepaidValue: prepaidData.reduce((s, i) => s + i.totalAmount, 0),
+    totalRemaining:    prepaidData.reduce((s, i) => s + i.remaining, 0),
+    activeItems:       prepaidData.length,
+  }), [prepaidData]);
+
+  const filteredData = useMemo(() =>
+    prepaidData.filter(item =>
+      debouncedSearch === '' ||
+      item.kdAkr.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      item.namaAkun.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      item.vendor.toLowerCase().includes(debouncedSearch.toLowerCase())
+    ),
+  [prepaidData, debouncedSearch]);
 
   const handleDownloadGlobalReport = async () => {
     try {
@@ -655,7 +671,7 @@ export default function MonitoringPrepaidPage() {
 
       // Derive posting date from period month
       const parts = periode.bulan.split(' ');
-      const pm = bulanMap[parts[0]] ?? 0;
+      const pm = BULAN_MAP[parts[0]] ?? 0;
       const py = parseInt(parts[1]);
       const lastDay = new Date(py, pm + 1, 0).getDate();
       const docDate = `${py}${String(pm + 1).padStart(2, '0')}${String(lastDay).padStart(2, '0')}`;
@@ -668,7 +684,7 @@ export default function MonitoringPrepaidPage() {
         }
       };
 
-      // Entry 1: DEBIT â€“ Kode Akun Biaya (positive)
+      // Entry 1: DEBIT – Kode Akun Biaya (positive)
       const row1 = worksheet.getRow(3);
       row1.height = 15;
       row1.getCell(1).value = '';
@@ -693,7 +709,7 @@ export default function MonitoringPrepaidPage() {
       row1.getCell(19).value = 'G';
       applyRowStyle(row1);
 
-      // Entry 2: KREDIT â€“ Kode Akun Prepaid (negative)
+      // Entry 2: KREDIT – Kode Akun Prepaid (negative)
       const row2 = worksheet.getRow(4);
       row2.height = 15;
       row2.getCell(1).value = '';
@@ -737,16 +753,16 @@ export default function MonitoringPrepaidPage() {
   const handleDownloadJurnalSAPTxtPeriode = (item: Prepaid, periode: PrepaidPeriode, amount: number) => {
     if (!amount || amount <= 0) return;
     const parts = periode.bulan.split(' ');
-    const pm = bulanMap[parts[0]] ?? 0;
+    const pm = BULAN_MAP[parts[0]] ?? 0;
     const py = parseInt(parts[1]);
     const lastDay = new Date(py, pm + 1, 0).getDate();
     const docDate = `${py}${String(pm + 1).padStart(2, '0')}${String(lastDay).padStart(2, '0')}`;
 
     const rows: string[][] = [
-      // Entry 1: DEBIT â€“ Kode Akun Biaya (positive)
+      // Entry 1: DEBIT – Kode Akun Biaya (positive)
       ['', item.companyCode || '', 'SA', docDate, docDate, 'IDR', '', item.headerText || '', '',
         item.namaAkun, amount.toString(), item.headerText || '', '', '', '', '', '', '', 'G'],
-      // Entry 2: KREDIT â€“ Kode Akun Prepaid (negative)
+      // Entry 2: KREDIT – Kode Akun Prepaid (negative)
       ['', item.companyCode || '', 'SA', docDate, docDate, 'IDR', '', item.headerText || '', '',
         item.kdAkr, (-amount).toString(), item.headerText || '', '', item.alokasi || '', '', '', '', '', 'G'],
     ];
@@ -825,7 +841,6 @@ export default function MonitoringPrepaidPage() {
     setEditData(item);
     setEditMode('edit');
     setIsFormOpen(true);
-    setOpenDropdown(null);
   };
 
   const handleDelete = async (id: number) => {
@@ -848,23 +863,17 @@ export default function MonitoringPrepaidPage() {
       console.error('Error deleting prepaid:', error);
       toast.error('Terjadi kesalahan saat menghapus data');
     }
-    setOpenDropdown(null);
   };
 
   const handleExportSingle = (item: Prepaid) => {
     const headers = ['companyCode', 'noPo', 'alokasi', 'kdAkr', 'namaAkun', 'deskripsi', 'klasifikasi', 'totalAmount', 'startDate', 'period', 'remaining'];
     exportToCSV([item], `Prepaid_${item.kdAkr}.csv`, headers);
-    setOpenDropdown(null);
   };
 
   const handleAddNew = () => {
     setEditData(null);
     setEditMode('create');
     setIsFormOpen(true);
-  };
-
-  const formatCurrency = (amount: number) => {
-    return `Rp ${Math.round(amount).toLocaleString('id-ID')}`;
   };
 
   return (
@@ -892,7 +901,7 @@ export default function MonitoringPrepaidPage() {
           subtitle="Monitoring dan input data prepaid dengan laporan SAP"
         />
 
-        {/* â”€â”€ Loading Skeleton â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Loading Skeleton ─────────────────────────────────────── */}
         {loading ? (
           <div className="flex-1 p-4 sm:p-6">
             {/* Metric skeletons */}
@@ -955,7 +964,7 @@ export default function MonitoringPrepaidPage() {
         ) : (
           <div ref={pageRef} className="flex-1 p-4 sm:p-6" style={{ opacity: 0 }}>
 
-            {/* â”€â”€ Metric Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            {/* ── Metric Cards ─────────────────────────────────────── */}
             <div ref={metricRef} className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
               {[
                 { label: 'Total Prepaid Value', value: formatCurrency(totalPrepaidValue), dot: 'bg-red-500', sub: 'Seluruh nilai prepaid aktif' },
@@ -977,7 +986,7 @@ export default function MonitoringPrepaidPage() {
               ))}
             </div>
 
-            {/* â”€â”€ Filter / Action Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            {/* ── Filter / Action Bar ───────────────────────────────── */}
             <div ref={filterBarRef} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-5" style={{ opacity: 0 }}>
               <div className="flex flex-wrap items-center gap-2">
                 {/* Search */}
@@ -1051,7 +1060,7 @@ export default function MonitoringPrepaidPage() {
               </div>
             </div>
 
-            {/* â”€â”€ Data Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            {/* ── Data Table ────────────────────────────────────────── */}
             <div ref={tableCardRef} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-shadow hover:shadow-md" style={{ opacity: 0 }}>
               <style jsx>{`
                 .custom-scrollbar::-webkit-scrollbar { height: 8px; width: 8px; }
@@ -1120,6 +1129,8 @@ export default function MonitoringPrepaidPage() {
                       const totalAmortisasi = item.totalAmortisasi ?? (item.totalAmount - item.remaining);
                       const saldo = item.totalAmount - totalAmortisasi;
                       const isExpanded = expandedRows.has(item.id);
+                      const periodes = periodesCache[item.id] ?? [];
+                      const isPeriodeLoading = periodesLoading.has(item.id);
                       const today = new Date();
                       const todayFirst = new Date(today.getFullYear(), today.getMonth(), 1);
 
@@ -1149,7 +1160,7 @@ export default function MonitoringPrepaidPage() {
                             <td className="px-3 py-2.5 text-xs">
                               {item.klasifikasi
                                 ? <Badge variant="outline" className="text-[8px] px-1.5 py-0 h-4 text-slate-500 border-slate-200">{item.klasifikasi}</Badge>
-                                : <span className="text-slate-300 text-xs">â€”</span>}
+                                : <span className="text-slate-300 text-xs">—</span>}
                             </td>
                             <td className="px-3 py-2.5 text-right font-semibold text-xs text-slate-800 whitespace-nowrap font-mono">{formatCurrency(item.totalAmount)}</td>
                             <td className="px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{startDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
@@ -1194,16 +1205,22 @@ export default function MonitoringPrepaidPage() {
                             </td>
                           </tr>
 
-                          {/* â”€â”€ Expanded Detail Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+                          {/* ── Expanded Detail Row ─────────────────── */}
                           {isExpanded && (
                             <tr>
                               <td colSpan={17} className="px-0 py-0 bg-gradient-to-r from-red-50/80 to-slate-50 border-b border-red-100">
                                 <div className="expand-detail px-6 pt-3 pb-4">
                                   <div className="flex items-center gap-2 mb-3">
                                     <span className="w-1 h-4 rounded-full bg-red-500 inline-block" />
-                                    <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Detail Amortisasi â€” {item.kdAkr}</p>
-                                    <Badge variant="outline" className="text-[8px] px-1.5 h-4 text-slate-400 border-slate-200">{item.periodes.length} periode</Badge>
+                                    <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Detail Amortisasi — {item.kdAkr}</p>
+                                    <Badge variant="outline" className="text-[8px] px-1.5 h-4 text-slate-400 border-slate-200">{periodes.length} periode</Badge>
                                   </div>
+                                  {isPeriodeLoading ? (
+                                    <div className="flex items-center gap-2 py-4 text-xs text-slate-400">
+                                      <div className="w-4 h-4 rounded-full border-2 border-t-red-500 border-red-200 animate-spin" />
+                                      Memuat detail periode...
+                                    </div>
+                                  ) : (
                                   <div className="overflow-x-auto custom-scrollbar rounded-lg border border-red-100">
                                     <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
                                       <thead>
@@ -1224,9 +1241,9 @@ export default function MonitoringPrepaidPage() {
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {item.periodes.map((p) => {
+                                        {periodes.map((p) => {
                                           const parts = p.bulan.split(' ');
-                                          const pm = bulanMap[parts[0]] ?? 0;
+                                          const pm = BULAN_MAP[parts[0]] ?? 0;
                                           const py = parseInt(parts[1]);
                                           const periodeDate = new Date(py, pm, 1);
                                           const isPast = periodeDate <= todayFirst;
@@ -1248,7 +1265,7 @@ export default function MonitoringPrepaidPage() {
                                                     value={editingPeriode!.amount}
                                                     onChange={(e) => setEditingPeriode(prev => prev ? { ...prev, amount: e.target.value } : null)}
                                                     onKeyDown={(e) => {
-                                                      if (e.key === 'Enter') handleSavePeriodeAmount(p.id, parseFloat(editingPeriode!.amount) || 0);
+                                                      if (e.key === 'Enter') handleSavePeriodeAmount(p.id, parseFloat(editingPeriode!.amount) || 0, item.id);
                                                       if (e.key === 'Escape') setEditingPeriode(null);
                                                     }}
                                                     autoFocus />
@@ -1281,14 +1298,14 @@ export default function MonitoringPrepaidPage() {
                                                       <Download size={9} /> TXT
                                                     </button>
                                                   </div>
-                                                ) : <span className="text-slate-300 text-xs">â€”</span>}
+                                                ) : <span className="text-slate-300 text-xs">—</span>}
                                               </td>
                                               {item.pembagianType === 'manual' && canEdit && (
                                                 <td className="px-3 py-2 text-center">
                                                   {isEditing ? (
                                                     <div className="flex items-center gap-1 justify-center">
                                                       <button
-                                                        onClick={() => handleSavePeriodeAmount(p.id, parseFloat(editingPeriode!.amount) || 0)}
+                                                        onClick={() => handleSavePeriodeAmount(p.id, parseFloat(editingPeriode!.amount) || 0, item.id)}
                                                         disabled={savingPeriode}
                                                         className="text-[10px] px-2.5 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 transition-colors active:scale-95 font-semibold">
                                                         {savingPeriode ? '...' : 'Simpan'}
@@ -1314,6 +1331,7 @@ export default function MonitoringPrepaidPage() {
                                       </tbody>
                                     </table>
                                   </div>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -1353,7 +1371,7 @@ export default function MonitoringPrepaidPage() {
           editData={editData}
         />
 
-        {/* â”€â”€ Processing Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Processing Overlay ────────────────────────────────────── */}
         {(submitting || importLoading) && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl px-10 py-8 shadow-2xl flex flex-col items-center gap-4 max-w-xs mx-4 border border-red-100">
