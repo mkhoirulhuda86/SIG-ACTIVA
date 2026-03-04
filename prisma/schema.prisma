@@ -165,10 +165,10 @@ model Prepaid {
   id             Int              @id @default(autoincrement())
   companyCode    String?
   noPo           String?
-  kdAkr          String
-  alokasi        String
-  namaAkun       String
-  vendor         String
+  kdAkr          String?
+  alokasi        String?
+  namaAkun       String?
+  vendor         String?
   deskripsi      String?
   headerText     String?          // Header text untuk jurnal SAP
   klasifikasi    String?

@@ -130,10 +130,10 @@ export async function POST(request: NextRequest) {
       periodeAmounts // array untuk manual pembagian
     } = body;
 
-    // Validasi input
-    if (!kdAkr || !namaAkun || !totalAmount || !startDate || !period || !alokasi) {
+    // Validasi input — hanya field yang benar-benar dibutuhkan untuk generate periode
+    if (!totalAmount || !startDate || !period) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Field Amount, Start Date, dan Jumlah Periode wajib diisi' },
         { status: 400 }
       );
     }

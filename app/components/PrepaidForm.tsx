@@ -107,6 +107,10 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.totalAmount || !formData.startDate || !formData.period) {
+      toast.error('Amount, Start Date, dan Jumlah Periode wajib diisi');
+      return;
+    }
     setLoading(true);
 
     try {
@@ -195,6 +199,7 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
         {/* Modal Body */}
         <div className="overflow-y-auto" style={{ maxHeight: 'calc(95vh - 180px)' }}>
           <form onSubmit={handleSubmit} className="p-4 sm:p-6 bg-gray-50">
+            <p className="text-xs text-gray-400 mb-4"><span className="text-red-500">*</span> wajib diisi</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               {/* Company Code */}
               <div>
@@ -294,7 +299,7 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* Amount */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Amount
+                  Amount <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -311,7 +316,7 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* Start Date */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Start Date
+                  Start Date <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
@@ -325,7 +330,7 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
               {/* Jumlah Periode */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Jumlah Periode
+                  Jumlah Periode <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
