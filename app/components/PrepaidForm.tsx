@@ -150,29 +150,41 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
     if (overlayRef.current) {
       gsap.fromTo(overlayRef.current,
         { opacity: 0 },
-        { opacity: 1, duration: 0.22, ease: 'power2.out' }
+        { opacity: 1, duration: 0.18, ease: 'power2.out' }   // immediate backdrop
       );
     }
     if (panelRef.current) {
       gsap.fromTo(panelRef.current,
         { opacity: 0, scale: 0.91, y: 28 },
-        { opacity: 1, scale: 1, y: 0, duration: 0.35, ease: 'back.out(1.5)', delay: 0.07 }
+        { opacity: 1, scale: 1, y: 0, duration: 0.32, ease: 'back.out(1.5)', delay: 0.06 }
       );
     }
   }, [isOpen]);
 
+  // Animated close: slide out then call parent onClose
+  const handleClose = () => {
+    const tl = gsap.timeline({ onComplete: onClose });
+    if (panelRef.current) {
+      tl.to(panelRef.current, { opacity: 0, scale: 0.93, y: 16, duration: 0.18, ease: 'power2.in' }, 0);
+    }
+    if (overlayRef.current) {
+      tl.to(overlayRef.current, { opacity: 0, duration: 0.22, ease: 'power2.in' }, 0.04);
+    }
+    if (!panelRef.current && !overlayRef.current) onClose();
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div ref={overlayRef} className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-      <div ref={panelRef} className="bg-gradient-to-br from-red-600 to-red-800 rounded-xl sm:rounded-2xl shadow-2xl max-w-5xl w-full max-h-[95vh] sm:max-h-[90vh] flex flex-col">
+    <div ref={overlayRef} className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4" style={{ opacity: 0 }}>
+      <div ref={panelRef} className="bg-gradient-to-br from-red-600 to-red-800 rounded-xl sm:rounded-2xl shadow-2xl max-w-5xl w-full max-h-[95vh] sm:max-h-[90vh] flex flex-col" style={{ opacity: 0 }}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-6 md:px-8 py-4 sm:py-5 md:py-6">
           <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white">
             {mode === 'edit' ? 'Edit Data Prepaid' : 'Tambah Data Prepaid'}
           </h2>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             type="button"
             className="text-white hover:text-red-100 transition-colors rounded-full hover:bg-white/10 p-1"
           >
@@ -393,7 +405,7 @@ export default function PrepaidForm({ isOpen, onClose, onSuccess, editData, mode
             <div className="flex items-center justify-end gap-2 sm:gap-3 pt-4 sm:pt-6 border-t border-gray-200 bg-white px-4 sm:px-6 py-3 sm:py-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6 rounded-b-xl sm:rounded-b-2xl">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleClose}
                 className="px-3 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors"
                 disabled={loading}
               >

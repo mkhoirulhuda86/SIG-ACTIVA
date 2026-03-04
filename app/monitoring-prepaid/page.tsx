@@ -84,7 +84,6 @@ export default function MonitoringPrepaidPage() {
   const tableCardRef  = useRef<HTMLDivElement>(null);
   const tableBodyRef  = useRef<HTMLTableSectionElement>(null);
   const addBtnRef     = useRef<HTMLButtonElement>(null);
-  const formOverlayRef = useRef<HTMLDivElement>(null);
 
   const bulanMap: Record<string, number> = {
     'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
@@ -203,25 +202,6 @@ export default function MonitoringPrepaidPage() {
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
-
-  // â”€â”€â”€ Animate form overlay open/close â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  useEffect(() => {
-    if (!formOverlayRef.current) return;
-    if (isFormOpen) {
-      gsap.fromTo(formOverlayRef.current,
-        { opacity: 0 },
-        { opacity: 1, duration: 0.22, ease: 'power2.out' }
-      );
-      const panel = formOverlayRef.current.querySelector('[data-form-panel]');
-      if (panel) {
-        gsap.fromTo(panel,
-          { opacity: 0, scale: 0.92, y: 32 },
-          { opacity: 1, scale: 1, y: 0, duration: 0.35, ease: 'back.out(1.4)', delay: 0.05 }
-        );
-      }
-    }
-  }, [isFormOpen]);
-
 
 
   // Calculate totals
@@ -1360,33 +1340,18 @@ export default function MonitoringPrepaidPage() {
             </div>
           </div>
         )}
-
-        {/* â”€â”€ Prepaid Form Wrapper (animated) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-        <div ref={formOverlayRef} style={{ opacity: 0, pointerEvents: isFormOpen ? 'auto' : 'none' }}>
-          <PrepaidForm
-            isOpen={isFormOpen}
-            onClose={() => {
-              // Animate out then close
-              if (formOverlayRef.current) {
-                gsap.to(formOverlayRef.current, {
-                  opacity: 0, duration: 0.2, ease: 'power2.in',
-                  onComplete: () => {
-                    setIsFormOpen(false);
-                    setEditData(null);
-                    setEditMode('create');
-                  }
-                });
-              } else {
-                setIsFormOpen(false);
-                setEditData(null);
-                setEditMode('create');
-              }
-            }}
-            onSuccess={fetchPrepaidData}
-            mode={editMode}
-            editData={editData}
-          />
-        </div>
+        {/* Prepaid Form */}
+        <PrepaidForm
+          isOpen={isFormOpen}
+          onClose={() => {
+            setIsFormOpen(false);
+            setEditData(null);
+            setEditMode('create');
+          }}
+          onSuccess={fetchPrepaidData}
+          mode={editMode}
+          editData={editData}
+        />
 
         {/* â”€â”€ Processing Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {(submitting || importLoading) && (
