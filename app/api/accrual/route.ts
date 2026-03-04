@@ -129,8 +129,8 @@ export async function GET(request: NextRequest) {
     });
 
     const res = NextResponse.json(accrualsWithCalculations);
-    // Allow browser/CDN to cache for 15 s, serve stale up to 60 s while revalidating
-    res.headers.set('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=60');
+    // Transactional financial data — never cache, always fresh from DB
+    res.headers.set('Cache-Control', 'no-store');
     return res;
   } catch (error) {
     console.error('Error fetching accruals:', error);

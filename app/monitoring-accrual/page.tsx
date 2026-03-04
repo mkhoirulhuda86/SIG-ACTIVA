@@ -444,9 +444,6 @@ export default function MonitoringAccrualPage() {
     }
   };
 
-  // Post-mutation: always bypass HTTP cache so newly added/edited data appears immediately
-  const freshAccrual = () => fetch(`/api/accrual?_r=${Date.now()}`);
-
   // Realtime: refresh list when another user mutates accrual/realisasi data
   useRealtimeUpdates(['accrual'], () => { fetchAccrualData(); });
 
@@ -2278,7 +2275,7 @@ export default function MonitoringAccrualPage() {
       toast.success(isEditing ? 'Data accrual berhasil diupdate!' : 'Data accrual berhasil ditambahkan!');
 
       // Background refresh tanpa full-page loading spinner
-      const accrualRes = await freshAccrual();
+      const accrualRes = await fetch('/api/accrual');
       if (accrualRes.ok) setAccrualData(await accrualRes.json());
     } catch (error) {
       console.error('Error creating accrual:', error);
@@ -2366,7 +2363,7 @@ export default function MonitoringAccrualPage() {
       const periodeId = selectedPeriode.id;
       const [realisasiRes, accrualRes] = await Promise.all([
         fetch(`/api/accrual/realisasi?periodeId=${periodeId}`),
-        freshAccrual(),
+        fetch('/api/accrual'),
       ]);
       if (realisasiRes.ok) setRealisasiData(await realisasiRes.json());
       if (accrualRes.ok) {
@@ -2434,7 +2431,7 @@ export default function MonitoringAccrualPage() {
       const periodeId = selectedPeriode.id;
       const [realisasiRes, accrualRes] = await Promise.all([
         fetch(`/api/accrual/realisasi?periodeId=${periodeId}`),
-        freshAccrual(),
+        fetch('/api/accrual'),
       ]);
       if (realisasiRes.ok) setRealisasiData(await realisasiRes.json());
       if (accrualRes.ok) {
@@ -2469,7 +2466,7 @@ export default function MonitoringAccrualPage() {
           const periodeId = selectedPeriode?.id;
           const [realisasiRes, accrualRes] = await Promise.all([
             periodeId ? fetch(`/api/accrual/realisasi?periodeId=${periodeId}`) : Promise.resolve(null),
-            freshAccrual(),
+            fetch('/api/accrual'),
           ]);
           if (realisasiRes?.ok) setRealisasiData(await realisasiRes.json());
           if (accrualRes.ok) {
@@ -2550,7 +2547,7 @@ export default function MonitoringAccrualPage() {
       const periodeId = selectedPeriode?.id;
       const [realisasiRes, accrualRes] = await Promise.all([
         periodeId ? fetch(`/api/accrual/realisasi?periodeId=${periodeId}`) : Promise.resolve(null),
-        freshAccrual(),
+        fetch('/api/accrual'),
       ]);
       if (realisasiRes?.ok) setRealisasiData(await realisasiRes.json());
       if (accrualRes.ok) {
@@ -2651,7 +2648,7 @@ export default function MonitoringAccrualPage() {
       const periodeId = costCenterModalPeriode.id;
       const [listRes, accrualRes] = await Promise.all([
         fetch(`/api/accrual/periode-costcenter?periodeId=${periodeId}`),
-        freshAccrual(),
+        fetch('/api/accrual'),
       ]);
       if (listRes.ok) setCostCenterData(await listRes.json());
       if (accrualRes.ok) {
@@ -2685,7 +2682,7 @@ export default function MonitoringAccrualPage() {
           const periodeId = costCenterModalPeriode?.id;
           const [listRes, accrualRes] = await Promise.all([
             periodeId ? fetch(`/api/accrual/periode-costcenter?periodeId=${periodeId}`) : Promise.resolve(null),
-            freshAccrual(),
+            fetch('/api/accrual'),
           ]);
           if (listRes?.ok) setCostCenterData(await listRes.json());
           if (accrualRes.ok) {
@@ -2742,7 +2739,7 @@ export default function MonitoringAccrualPage() {
       const periodeId = costCenterModalPeriode?.id;
       const [listRes, accrualRes] = await Promise.all([
         periodeId ? fetch(`/api/accrual/periode-costcenter?periodeId=${periodeId}`) : Promise.resolve(null),
-        freshAccrual(),
+        fetch('/api/accrual'),
       ]);
       if (listRes?.ok) setCostCenterData(await listRes.json());
       if (accrualRes.ok) {
@@ -2793,7 +2790,7 @@ export default function MonitoringAccrualPage() {
       const periodeId = costCenterModalPeriode.id;
       const [listRes, accrualRes] = await Promise.all([
         fetch(`/api/accrual/periode-costcenter?periodeId=${periodeId}`),
-        freshAccrual(),
+        fetch('/api/accrual'),
       ]);
       if (listRes.ok) setCostCenterData(await listRes.json());
       if (accrualRes.ok) {
@@ -2846,7 +2843,7 @@ export default function MonitoringAccrualPage() {
       setShowImportGlobalModal(false);
 
       // Background: refresh tanpa full-page loading
-      const accrualRes = await freshAccrual();
+      const accrualRes = await fetch('/api/accrual');
       if (accrualRes.ok) setAccrualData(await accrualRes.json());
     } catch (error) {
       console.error('Error uploading file:', error);
@@ -2922,7 +2919,7 @@ export default function MonitoringAccrualPage() {
       setShowImportExcelModal(false);
 
       // Background refresh tanpa full-page loading spinner
-      const accrualRes = await freshAccrual();
+      const accrualRes = await fetch('/api/accrual');
       if (accrualRes.ok) setAccrualData(await accrualRes.json());
     } catch (error) {
       console.error('Error importing Excel file:', error);
@@ -2955,7 +2952,7 @@ export default function MonitoringAccrualPage() {
       toast.success('Amount periode berhasil diupdate!');
 
       // Background refresh tanpa full-page loading spinner
-      const accrualRes = await freshAccrual();
+      const accrualRes = await fetch('/api/accrual');
       if (accrualRes.ok) setAccrualData(await accrualRes.json());
     } catch (error) {
       console.error('Error updating periode amount:', error);
