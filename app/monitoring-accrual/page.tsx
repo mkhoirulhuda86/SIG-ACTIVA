@@ -3282,17 +3282,17 @@ export default function MonitoringAccrualPage() {
                             {formatCurrency(totalAmountKodeAkun)}
                           </td>
                           <td></td><td></td><td></td>
-                          <td className="px-3 py-3.5 text-right font-bold text-blue-900" style={{ maxWidth: '140px' }}>
-                            <div className="truncate" title={formatCurrency(totalSaldoAwalKodeAkun)}>{formatCurrency(totalSaldoAwalKodeAkun)}</div>
+                          <td className="px-3 py-3.5 text-right font-bold text-blue-900">
+                            {formatCurrency(totalSaldoAwalKodeAkun)}
                           </td>
-                          <td className="px-3 py-3.5 text-right font-bold text-blue-900" style={{ maxWidth: '140px' }}>
-                            <div className="truncate" title={formatCurrency(totalAccrualKodeAkun)}>{formatCurrency(totalAccrualKodeAkun)}</div>
+                          <td className="px-3 py-3.5 text-right font-bold text-blue-900">
+                            {formatCurrency(totalAccrualKodeAkun)}
                           </td>
-                          <td className="px-3 py-3.5 text-right font-bold text-blue-900" style={{ maxWidth: '140px' }}>
-                            <div className="truncate" title={formatCurrency(totalRealisasiKodeAkun)}>{formatCurrency(totalRealisasiKodeAkun)}</div>
+                          <td className="px-3 py-3.5 text-right font-bold text-blue-900">
+                            {formatCurrency(totalRealisasiKodeAkun)}
                           </td>
-                          <td className="px-3 py-3.5 text-right font-bold text-blue-900" style={{ maxWidth: '140px' }}>
-                            <div className="truncate" title={formatCurrency(totalSaldoKodeAkun)}>{formatCurrency(totalSaldoKodeAkun)}</div>
+                          <td className="px-3 py-3.5 text-right font-bold text-blue-900">
+                            {formatCurrency(totalSaldoKodeAkun)}
                           </td>
                           <td className="px-4 py-3.5">
                             <div className="flex items-center justify-center gap-1">
@@ -3367,10 +3367,10 @@ export default function MonitoringAccrualPage() {
                                 </td>
                                 <td className="px-4 py-3 text-right font-bold text-emerald-900">{formatCurrency(totalAmountVendor)}</td>
                                 <td></td><td></td><td></td>
-                                <td className="px-3 py-3 text-right font-bold text-emerald-900" style={{ maxWidth: '140px' }}><div className="truncate" title={formatCurrency(totalSaldoAwalVendor)}>{formatCurrency(totalSaldoAwalVendor)}</div></td>
-                                <td className="px-3 py-3 text-right font-bold text-emerald-900" style={{ maxWidth: '140px' }}><div className="truncate" title={formatCurrency(totalAccrualVendor)}>{formatCurrency(totalAccrualVendor)}</div></td>
-                                <td className="px-3 py-3 text-right font-bold text-emerald-900" style={{ maxWidth: '140px' }}><div className="truncate" title={formatCurrency(totalRealisasiVendor)}>{formatCurrency(totalRealisasiVendor)}</div></td>
-                                <td className="px-3 py-3 text-right font-bold text-emerald-900" style={{ maxWidth: '140px' }}><div className="truncate" title={formatCurrency(totalSaldoVendor)}>{formatCurrency(totalSaldoVendor)}</div></td>
+                                <td className="px-3 py-3 text-right font-bold text-emerald-900">{formatCurrency(totalSaldoAwalVendor)}</td>
+                                <td className="px-3 py-3 text-right font-bold text-emerald-900">{formatCurrency(totalAccrualVendor)}</td>
+                                <td className="px-3 py-3 text-right font-bold text-emerald-900">{formatCurrency(totalRealisasiVendor)}</td>
+                                <td className="px-3 py-3 text-right font-bold text-emerald-900">{formatCurrency(totalSaldoVendor)}</td>
                                 <td></td>
                               </tr>
 
@@ -3438,28 +3438,28 @@ export default function MonitoringAccrualPage() {
                           <td className="px-4 py-3.5 text-center text-xs whitespace-nowrap">
                             <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">{item.jumlahPeriode} bln</span>
                           </td>
-                          <td className="px-2 py-3.5 text-right text-slate-600 text-xs whitespace-nowrap" style={{ maxWidth: '140px' }}>
-                            <div className="truncate" title={formatCurrency(getSaldoAwal(item))}>
+                          <td className="px-2 py-3.5 text-right text-slate-600 text-xs whitespace-nowrap">
+                            
                               {formatCurrency(getSaldoAwal(item))}
-                            </div>
+                            
                           </td>
-                          <td className="px-2 py-3.5 text-right text-slate-600 text-xs whitespace-nowrap" style={{ maxWidth: '140px' }}>
-                            <div className="truncate" title={formatCurrency(calculateItemAccrual(item))}>
+                          <td className="px-2 py-3.5 text-right text-slate-600 text-xs whitespace-nowrap">
+                            
                               {formatCurrency(calculateItemAccrual(item))}
-                            </div>
+                            
                           </td>
-                          <td className="px-2 py-3.5 text-right text-blue-600 text-xs whitespace-nowrap" style={{ maxWidth: '140px' }}>
-                            <div className="truncate" title={formatCurrency(calculateActualRealisasi(item))}>
+                          <td className="px-2 py-3.5 text-right text-blue-600 text-xs whitespace-nowrap">
+                            
                               {formatCurrency(calculateActualRealisasi(item))}
-                            </div>
+                            
                           </td>
-                          <td className="px-2 py-3.5 text-right text-xs whitespace-nowrap" style={{ maxWidth: '140px' }}>
+                          <td className="px-2 py-3.5 text-right text-xs whitespace-nowrap">
                             {(() => {
                               const saldo = calculateItemSaldo(item, calculateItemAccrual(item), calculateActualRealisasi(item));
                               return (
-                                <div className={`truncate font-bold ${saldo > 0 ? 'text-amber-600' : saldo < 0 ? 'text-red-600' : 'text-slate-400'}`} title={formatCurrency(saldo)}>
+                                <span className={`font-bold ${saldo > 0 ? 'text-amber-600' : saldo < 0 ? 'text-red-600' : 'text-slate-400'}`}>
                                   {formatCurrency(saldo)}
-                                </div>
+                                </span>
                               );
                             })()}
                           </td>
@@ -3510,20 +3510,14 @@ export default function MonitoringAccrualPage() {
                                       <tr className="hover:bg-gray-50">
                                         <td className="px-4 py-3 text-gray-700 bg-white">Periode {periode.periodeKe}</td>
                                         <td className="px-4 py-3 text-gray-700 bg-white">{periode.bulan}</td>
-                                        <td className="px-4 py-3 text-right text-gray-800 font-medium bg-white" style={{ maxWidth: '150px' }}>
-                                          <span className="truncate overflow-hidden text-ellipsis" title={formatCurrency(Math.abs(periode.amountAccrual))}>
-                                            {formatCurrency(Math.abs(periode.amountAccrual))}
-                                          </span>
+                                        <td className="px-4 py-3 text-right text-gray-800 font-medium bg-white">
+                                          {formatCurrency(Math.abs(periode.amountAccrual))}
                                         </td>
-                                        <td className="px-4 py-3 text-right text-blue-700 bg-white" style={{ maxWidth: '150px' }}>
-                                          <span className="truncate block overflow-hidden text-ellipsis" title={formatCurrency(periode.totalRealisasi || 0)}>
-                                            {formatCurrency(periode.totalRealisasi || 0)}
-                                          </span>
+                                        <td className="px-4 py-3 text-right text-blue-700 bg-white">
+                                          {formatCurrency(periode.totalRealisasi || 0)}
                                         </td>
-                                        <td className="px-4 py-3 text-right text-gray-800 font-semibold bg-white" style={{ maxWidth: '150px' }}>
-                                          <span className="truncate block overflow-hidden text-ellipsis" title={formatCurrency(periode.saldo || 0)}>
-                                            {formatCurrency(periode.saldo || 0)}
-                                          </span>
+                                        <td className="px-4 py-3 text-right text-gray-800 font-semibold bg-white">
+                                          {formatCurrency(periode.saldo || 0)}
                                         </td>
                                         <td className="px-4 py-3 text-center bg-white">
                                           <div className="flex items-center justify-center gap-1">
