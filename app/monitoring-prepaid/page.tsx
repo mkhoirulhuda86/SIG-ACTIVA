@@ -164,10 +164,11 @@ export default function MonitoringPrepaidPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchPrepaidData = useCallback(async () => {
+  const fetchPrepaidData = useCallback(async (bust = false) => {
     try {
       setLoading(true);
-      const response = await fetch('/api/prepaid');
+      const url = bust ? `/api/prepaid?_=${Date.now()}` : '/api/prepaid';
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         setPrepaidData(data);
@@ -182,7 +183,7 @@ export default function MonitoringPrepaidPage() {
   }, []);
 
   // Realtime: refresh when another user adds/updates/deletes prepaid
-  useRealtimeUpdates(['prepaid'], () => { fetchPrepaidData(); });
+  useRealtimeUpdates(['prepaid'], () => { fetchPrepaidData(true); });
 
   // ─── Page entrance animation (runs once data finishes loading) ──────────────
   useEffect(() => {
@@ -554,7 +555,7 @@ export default function MonitoringPrepaidPage() {
           ? `\n${result.skipped} baris gagal diimport (error)`
           : '';
         toast.success('Import berhasil!', { description: `${result.created} data berhasil diimport${skippedMsg}${warningsMsg}` });
-        await fetchPrepaidData();
+        await fetchPrepaidData(true);
       } else {
         toast.error(`Gagal mengimpor: ${result.error}`);
       }
@@ -587,7 +588,7 @@ export default function MonitoringPrepaidPage() {
           }
           const data = await response.json();
           setSelectedIds(new Set());
-          fetchPrepaidData();
+          fetchPrepaidData(true);
           toast.success(data.count != null ? `${data.count} data berhasil dihapus.` : 'Data berhasil dihapus.');
         } catch (error) {
           console.error('Error bulk delete:', error);
@@ -614,7 +615,7 @@ export default function MonitoringPrepaidPage() {
           const response = await fetch(`/api/prepaid?id=${id}`, { method: 'DELETE' });
           if (response.ok) {
             toast.success('Data prepaid berhasil dihapus!');
-            fetchPrepaidData();
+            fetchPrepaidData(true);
           } else {
             toast.error('Gagal menghapus data prepaid');
           }
@@ -1134,7 +1135,7 @@ export default function MonitoringPrepaidPage() {
                 return next;
               });
             }
-            fetchPrepaidData();
+            fetchPrepaidData(true);
           }}
           mode={editMode}
           editData={editData}
