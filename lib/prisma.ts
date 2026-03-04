@@ -6,6 +6,10 @@ const { Pool } = pg;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  // Connection pool tuning: enough for concurrent API requests without exhausting DB
+  max: 20,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
 });
 
 const adapter = new PrismaPg(pool);

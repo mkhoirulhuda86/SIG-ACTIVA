@@ -362,20 +362,12 @@ export default function MonitoringAccrualPage() {
   // Load user role from localStorage
   useEffect(() => {
     const role = localStorage.getItem('userRole') || '';
-    console.log('User Role loaded:', role);
     setUserRole(role);
     setIsRoleLoaded(true);
   }, []);
 
   // Check if user can edit (only ADMIN_SYSTEM and STAFF_ACCOUNTING)
   const canEdit = userRole === 'ADMIN_SYSTEM' || userRole === 'STAFF_ACCOUNTING';
-  
-  // Debug log untuk memastikan nilai
-  useEffect(() => {
-    if (isRoleLoaded) {
-      console.log('Can Edit:', canEdit, 'User Role:', userRole);
-    }
-  }, [canEdit, userRole, isRoleLoaded]);
 
   // Helper function to calculate accrual (memoized for better performance)
   const calculateItemAccrual = useCallback((item: Accrual) => {
@@ -441,7 +433,7 @@ export default function MonitoringAccrualPage() {
   const fetchAccrualData = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/accrual?t=' + Date.now());
+      const response = await fetch('/api/accrual');
       if (!response.ok) throw new Error('Failed to fetch data');
       const data = await response.json();
       setAccrualData(data);

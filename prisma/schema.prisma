@@ -98,6 +98,8 @@ model Accrual {
   @@map("accruals")
   @@index([kdAkr])
   @@index([startDate])
+  @@index([createdAt])
+  @@index([vendor])
 }
 
 model AccrualPeriode {

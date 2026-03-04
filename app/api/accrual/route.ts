@@ -119,11 +119,6 @@ export async function GET(request: NextRequest) {
           // Update rollover untuk periode berikutnya (kelebihan realisasi)
           rollover = Math.max(0, totalAvailable - capAccrual);
           
-          // Log for debugging
-          if (totalRealisasi > 0 || rollover > 0) {
-            console.log(`Periode ${periode.bulan} - Realisasi: ${totalRealisasi}, Rollover in: ${totalAvailable - totalRealisasi}, Rollover out: ${rollover}, Saldo: ${saldo}`);
-          }
-          
           return {
             ...periode,
             totalRealisasi,
@@ -133,7 +128,10 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json(accrualsWithCalculations);
+    const res = NextResponse.json(accrualsWithCalculations);
+    // Allow browser/CDN to cache for 15 s, serve stale up to 60 s while revalidating
+    res.headers.set('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=60');
+    return res;
   } catch (error) {
     console.error('Error fetching accruals:', error);
     return NextResponse.json(
