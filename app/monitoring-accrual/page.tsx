@@ -3067,142 +3067,168 @@ export default function MonitoringAccrualPage() {
           ) : (
             <>
               {/* Filter Bar */}
-              <div ref={filterBarRef} className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 sm:p-4 mb-4 sm:mb-6">
-                <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+              <div ref={filterBarRef} className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/80 shadow-sm p-3 sm:p-4 mb-5 sm:mb-6">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   {/* Search */}
-                  <div className="relative w-full sm:flex-1 sm:min-w-[250px]">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                  <div className="relative w-full sm:flex-1 sm:min-w-[220px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                     <input
                       type="text"
-                      placeholder="Cari berdasarkan..."
+                      placeholder="Cari accrual, vendor, kode akun..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all duration-200"
+                      className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-400/50 focus:border-red-300 text-sm transition-all duration-200 bg-gray-50/60 placeholder:text-slate-400"
                     />
                   </div>
 
-                  {/* Action Buttons */}
-                  <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:ml-auto">
-                    <button 
-                      onClick={() => setShowImportExcelModal(true)}
-                      className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-all duration-200 text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center active:scale-95 hover:shadow-md hover:shadow-red-500/20"
-                    >
-                      <Upload size={16} className="sm:w-[18px] sm:h-[18px]" />
-                      <span className="hidden sm:inline">Import Excel Accrual</span>
-                      <span className="sm:hidden">Excel</span>
-                    </button>
-                    <button 
-                      onClick={() => setShowImportGlobalModal(true)}
-                      className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center"
-                    >
-                      <Upload size={16} className="sm:w-[18px] sm:h-[18px]" />
-                      <span className="hidden sm:inline">Import Realisasi Global</span>
-                      <span className="sm:hidden">Import</span>
-                    </button>
-                    <button 
-                      onClick={handleDownloadAllItemsReport}
-                      className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center"
-                    >
-                      <Download size={16} className="sm:w-[18px] sm:h-[18px]" />
-                      <span className="hidden sm:inline">Export Per Item (All)</span>
-                      <span className="sm:hidden">Per Item</span>
-                    </button>
-                    <button 
-                      onClick={handleDownloadGlobalReport}
-                      className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center"
-                    >
-                      <Download size={16} className="sm:w-[18px] sm:h-[18px]" />
-                      <span className="hidden sm:inline">Export Global</span>
-                      <span className="sm:hidden">Global</span>
-                    </button>
+                  {/* Visually-grouped action buttons */}
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
+
+                    {/* ── Import group ── */}
+                    <div className="flex gap-1.5 bg-indigo-50/80 border border-indigo-100 rounded-xl p-1">
+                      <button
+                        onClick={() => setShowImportExcelModal(true)}
+                        className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 rounded-lg transition-all duration-200 text-xs font-semibold active:scale-95 shadow-sm shadow-indigo-200"
+                        title="Import Excel Accrual"
+                      >
+                        <Upload size={13} />
+                        <span className="hidden sm:inline">Import Accrual</span>
+                        <span className="sm:hidden">Accrual</span>
+                      </button>
+                      <button
+                        onClick={() => setShowImportGlobalModal(true)}
+                        className="flex items-center gap-1.5 bg-indigo-500 hover:bg-indigo-600 text-white px-2.5 py-1.5 rounded-lg transition-all duration-200 text-xs font-semibold active:scale-95 shadow-sm shadow-indigo-200"
+                        title="Import Realisasi Global"
+                      >
+                        <Upload size={13} />
+                        <span className="hidden sm:inline">Import Realisasi</span>
+                        <span className="sm:hidden">Realisasi</span>
+                      </button>
+                    </div>
+
+                    {/* ── Export group ── */}
+                    <div className="flex gap-1.5 bg-emerald-50/80 border border-emerald-100 rounded-xl p-1">
+                      <button
+                        onClick={handleDownloadAllItemsReport}
+                        className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-lg transition-all duration-200 text-xs font-semibold active:scale-95 shadow-sm shadow-emerald-200"
+                        title="Export Per Item (All)"
+                      >
+                        <Download size={13} />
+                        <span className="hidden sm:inline">Per Item</span>
+                        <span className="sm:hidden">Item</span>
+                      </button>
+                      <button
+                        onClick={handleDownloadGlobalReport}
+                        className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-2.5 py-1.5 rounded-lg transition-all duration-200 text-xs font-semibold active:scale-95 shadow-sm shadow-emerald-200"
+                        title="Export Global"
+                      >
+                        <Download size={13} />
+                        <span className="hidden sm:inline">Global</span>
+                        <span className="sm:hidden">Glb</span>
+                      </button>
+                    </div>
+
+                    {/* ── Danger: delete selected ── */}
                     {canEdit && selectedIds.size > 0 && (
                       <button
                         onClick={handleDeleteSelected}
                         disabled={deletingSelected}
-                        className="flex items-center gap-1 sm:gap-2 bg-red-700 hover:bg-red-800 !text-white px-2 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium flex-1 sm:flex-initial justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-xl transition-all duration-200 text-xs font-semibold active:scale-95 shadow-sm shadow-rose-200 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
-                        <Trash2 size={16} className="sm:w-[18px] sm:h-[18px]" />
-                        {deletingSelected ? (
-                          <span>Menghapus...</span>
-                        ) : (
-                          <>
-                            <span className="hidden sm:inline">Hapus terpilih ({selectedIds.size})</span>
-                            <span className="sm:hidden">Hapus ({selectedIds.size})</span>
-                          </>
-                        )}
+                        <Trash2 size={13} />
+                        {deletingSelected ? 'Menghapus...' : `Hapus (${selectedIds.size})`}
                       </button>
                     )}
+
+                    {/* ── Primary CTA: Tambah ── */}
                     {canEdit && (
-                      <button 
+                      <button
                         onClick={() => setShowModal(true)}
-                        className="flex items-center gap-1 sm:gap-2 bg-red-600 hover:bg-red-700 !text-white px-2 sm:px-4 py-2 rounded-lg transition-all duration-200 text-xs sm:text-sm font-medium w-full sm:w-auto justify-center active:scale-95 hover:shadow-md hover:shadow-red-500/20"
+                        className="flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white px-3 py-2 rounded-xl transition-all duration-200 text-xs font-semibold active:scale-95 shadow-md shadow-red-200 hover:shadow-red-300"
                       >
-                        <Plus size={16} className="sm:w-[18px] sm:h-[18px]" />
-                        <span className="hidden sm:inline">Tambah Data Accrual</span>
-                        <span className="sm:hidden">Tambah Data</span>
+                        <Plus size={14} />
+                        <span className="hidden sm:inline">Tambah Accrual</span>
+                        <span className="sm:hidden">Tambah</span>
                       </button>
                     )}
                   </div>
                 </div>
-          </div>
+                {/* Result count chip */}
+                {debouncedSearchTerm && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xs text-slate-500">
+                      <span className="font-semibold text-red-600">{filteredData.length}</span> hasil untuk &quot;<span className="italic">{debouncedSearchTerm}</span>&quot;
+                    </span>
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-0.5"
+                    >
+                      <X size={11} /> Hapus
+                    </button>
+                  </div>
+                )}
+              </div>
 
           {/* Metric Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
-            <div ref={metricCard1Ref} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6 relative overflow-hidden group hover:shadow-md transition-all duration-300 cursor-default">
-              <div className="absolute top-0 right-0 w-28 h-28 bg-red-500/5 rounded-full -translate-y-10 translate-x-10 group-hover:scale-110 transition-transform duration-500" />
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs sm:text-sm text-gray-500 font-medium uppercase tracking-wide">Outstanding Saldo</p>
-                <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center group-hover:bg-red-100 transition-colors duration-200">
-                  <TrendingDown size={18} className="text-red-600" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-5 sm:mb-6">
+            {/* Card 1 — Outstanding Saldo */}
+            <div ref={metricCard1Ref} className="relative bg-white rounded-2xl border border-red-100 shadow-sm p-5 overflow-hidden group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 cursor-default">
+              {/* Soft blob */}
+              <div className="absolute -top-6 -right-6 w-32 h-32 bg-gradient-to-br from-red-100 to-rose-50 rounded-full opacity-70 group-hover:scale-110 transition-transform duration-500" />
+              {/* Bottom accent */}
+              <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-gradient-to-r from-red-600 via-rose-500 to-red-400 rounded-b-2xl" />
+              <div className="relative flex items-start justify-between mb-4">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">Outstanding Saldo</p>
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg shadow-red-200 group-hover:shadow-red-300 transition-shadow">
+                  <TrendingDown size={19} className="text-white" />
                 </div>
               </div>
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-800 tabular-nums">
+              <h3 className="relative text-2xl font-black text-slate-800 tabular-nums leading-tight">
                 {formatCurrency(Math.abs(displaySaldo))}
               </h3>
-              <p className="text-xs text-gray-400 mt-1.5">Total saldo outstanding accrual</p>
+              <p className="relative text-[11px] text-slate-400 mt-2 font-medium">Total saldo outstanding accrual</p>
             </div>
-            <div ref={metricCard2Ref} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6 relative overflow-hidden group hover:shadow-md transition-all duration-300 cursor-default">
-              <div className="absolute top-0 right-0 w-28 h-28 bg-blue-500/5 rounded-full -translate-y-10 translate-x-10 group-hover:scale-110 transition-transform duration-500" />
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs sm:text-sm text-gray-500 font-medium uppercase tracking-wide">Jumlah Accrual</p>
-                <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors duration-200">
-                  <Activity size={18} className="text-blue-600" />
+
+            {/* Card 2 — Jumlah Accrual */}
+            <div ref={metricCard2Ref} className="relative bg-white rounded-2xl border border-blue-100 shadow-sm p-5 overflow-hidden group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 cursor-default">
+              <div className="absolute -top-6 -right-6 w-32 h-32 bg-gradient-to-br from-blue-100 to-sky-50 rounded-full opacity-70 group-hover:scale-110 transition-transform duration-500" />
+              <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-gradient-to-r from-blue-600 via-sky-500 to-blue-400 rounded-b-2xl" />
+              <div className="relative flex items-start justify-between mb-4">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">Jumlah Accrual</p>
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500 to-sky-600 flex items-center justify-center shadow-lg shadow-blue-200 group-hover:shadow-blue-300 transition-shadow">
+                  <Activity size={19} className="text-white" />
                 </div>
               </div>
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-800 tabular-nums">{displayCount}</h3>
-              <p className="text-xs text-gray-400 mt-1.5">Total item accrual tercatat</p>
+              <h3 className="relative text-2xl font-black text-slate-800 tabular-nums leading-tight">
+                {displayCount} <span className="text-sm font-semibold text-slate-400">item</span>
+              </h3>
+              <p className="relative text-[11px] text-slate-400 mt-2 font-medium">Total item accrual tercatat</p>
             </div>
-            <div ref={metricCard3Ref} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6 relative overflow-hidden group hover:shadow-md transition-all duration-300 cursor-default">
-              <div className="absolute top-0 right-0 w-28 h-28 bg-green-500/5 rounded-full -translate-y-10 translate-x-10 group-hover:scale-110 transition-transform duration-500" />
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs sm:text-sm text-gray-500 font-medium uppercase tracking-wide">Total Periode</p>
-                <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center group-hover:bg-green-100 transition-colors duration-200">
-                  <DollarSign size={18} className="text-green-600" />
+
+            {/* Card 3 — Total Periode */}
+            <div ref={metricCard3Ref} className="relative bg-white rounded-2xl border border-emerald-100 shadow-sm p-5 overflow-hidden group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 cursor-default">
+              <div className="absolute -top-6 -right-6 w-32 h-32 bg-gradient-to-br from-emerald-100 to-green-50 rounded-full opacity-70 group-hover:scale-110 transition-transform duration-500" />
+              <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-gradient-to-r from-emerald-600 via-green-500 to-emerald-400 rounded-b-2xl" />
+              <div className="relative flex items-start justify-between mb-4">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">Total Periode</p>
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-200 group-hover:shadow-emerald-300 transition-shadow">
+                  <DollarSign size={19} className="text-white" />
                 </div>
               </div>
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-800 tabular-nums">{displayPeriodes}</h3>
-              <p className="text-xs text-gray-400 mt-1.5">Jumlah periode aktif</p>
+              <h3 className="relative text-2xl font-black text-slate-800 tabular-nums leading-tight">
+                {displayPeriodes} <span className="text-sm font-semibold text-slate-400">periode</span>
+              </h3>
+              <p className="relative text-[11px] text-slate-400 mt-2 font-medium">Jumlah periode aktif</p>
             </div>
           </div>
 
           {/* Table */}
-          <div ref={tableContainerRef} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden" style={{ maxWidth: '100%' }}>
+          <div ref={tableContainerRef} className="bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden" style={{ maxWidth: '100%' }}>
             <style jsx>{`
-              .custom-scrollbar::-webkit-scrollbar {
-                height: 10px;
-                width: 10px;
-              }
-              .custom-scrollbar::-webkit-scrollbar-track {
-                background: #f1f5f9;
-                border-radius: 5px;
-              }
-              .custom-scrollbar::-webkit-scrollbar-thumb {
-                background: #cbd5e1;
-                border-radius: 5px;
-              }
-              .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                background: #94a3b8;
-              }
+              .custom-scrollbar::-webkit-scrollbar { height: 8px; width: 8px; }
+              .custom-scrollbar::-webkit-scrollbar-track { background: #f8fafc; border-radius: 4px; }
+              .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+              .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
               .table-container {
                 min-height: calc(100vh - 320px);
                 max-height: calc(100vh - 260px);
@@ -3212,18 +3238,30 @@ export default function MonitoringAccrualPage() {
                 from { opacity: 0; transform: translateY(-6px); }
                 to   { opacity: 1; transform: translateY(0); }
               }
-              .animate-slide-down {
-                animation: slideDown 0.22s ease-out forwards;
-              }
+              .animate-slide-down { animation: slideDown 0.22s ease-out forwards; }
+              .tr-item:hover td { background-color: #f8fafc !important; transition: background 0.15s ease; }
             `}</style>
-            <div
-              className="table-container custom-scrollbar"
-            >
+
+            {/* Table caption bar */}
+            <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-gray-50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-5 bg-gradient-to-b from-red-500 to-rose-600 rounded-full" />
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Data Accrual</span>
+                <span className="ml-1 px-2 py-0.5 bg-red-50 border border-red-100 text-red-700 text-[10px] font-bold rounded-full">
+                  {filteredData.length} item
+                </span>
+              </div>
+              {debouncedSearchTerm && (
+                <span className="text-[10px] text-slate-400 italic">Filter aktif: &quot;{debouncedSearchTerm}&quot;</span>
+              )}
+            </div>
+
+            <div className="table-container custom-scrollbar">
               <table className="w-full text-sm" style={{ minWidth: '1900px' }}>
-                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-[5] shadow-sm">
-                  <tr>
+                <thead className="sticky top-0 z-[5]">
+                  <tr className="bg-gradient-to-r from-slate-700 to-slate-800 border-b-2 border-slate-600">
                     {canEdit && (
-                      <th className="px-2 py-4 text-center text-sm font-semibold text-gray-700 whitespace-nowrap w-10 bg-gray-50">
+                      <th className="px-2 py-3.5 text-center whitespace-nowrap w-10">
                         <input
                           type="checkbox"
                           checked={filteredData.length > 0 && filteredData.every((item) => selectedIds.has(item.id))}
@@ -3234,71 +3272,35 @@ export default function MonitoringAccrualPage() {
                               setSelectedIds(new Set());
                             }
                           }}
-                          className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                          className="rounded border-slate-400 text-red-500 focus:ring-red-400"
                           title="Pilih semua"
                         />
                       </th>
                     )}
-                    <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 whitespace-nowrap w-12 bg-gray-50">
-                      ▼
+                    <th className="px-3 py-3.5 text-center whitespace-nowrap w-10">
+                      <ChevronDown size={14} className="text-slate-400 mx-auto" />
                     </th>
-                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
-                      Company Code
-                    </th>
-                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
-                      No PO
-                    </th>
-                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
-                      Assignment/Order
-                    </th>
-                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
-                      Kode Akun Accrual
-                    </th>
-                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
-                      Kode Akun Biaya
-                    </th>
-                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
-                      Vendor
-                    </th>
-                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
-                      Deskripsi
-                    </th>
-                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
-                      Header Text
-                    </th>
-                    <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
-                      Klasifikasi
-                    </th>
-                    <th className="px-4 py-4 text-right text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
-                      Amount
-                    </th>
-                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
-                      Cost Center
-                    </th>
-                    <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
-                      Start Date
-                    </th>
-                    <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50">
-                      Periode
-                    </th>
-                    <th className="px-3 py-4 text-right text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ maxWidth: '140px' }}>
-                      Saldo Awal
-                    </th>
-                    <th className="px-3 py-4 text-right text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ maxWidth: '140px' }}>
-                      Total Accrual
-                    </th>
-                    <th className="px-3 py-4 text-right text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ maxWidth: '140px' }}>
-                      Total Realisasi
-                    </th>
-                    <th className="px-3 py-4 text-right text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ maxWidth: '140px' }}>
-                      Saldo
-                    </th>
-                    <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 whitespace-nowrap bg-gray-50" style={{ minWidth: '140px' }}>
-                      Actions
-                    </th>
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Company Code</th>
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">No PO</th>
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Assignment/Order</th>
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Kode Akun Accrual</th>
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Kode Akun Biaya</th>
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Vendor</th>
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Deskripsi</th>
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Header Text</th>
+                    <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Klasifikasi</th>
+                    <th className="px-4 py-3.5 text-right text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Amount</th>
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Cost Center</th>
+                    <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Start Date</th>
+                    <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Periode</th>
+                    <th className="px-3 py-3.5 text-right text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap" style={{ maxWidth: '140px' }}>Saldo Awal</th>
+                    <th className="px-3 py-3.5 text-right text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap" style={{ maxWidth: '140px' }}>Total Accrual</th>
+                    <th className="px-3 py-3.5 text-right text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap" style={{ maxWidth: '140px' }}>Total Realisasi</th>
+                    <th className="px-3 py-3.5 text-right text-[11px] font-bold text-amber-300 uppercase tracking-wider whitespace-nowrap" style={{ maxWidth: '140px' }}>Saldo</th>
+                    <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '140px' }}>Actions</th>
                   </tr>
                 </thead>
-                <tbody ref={tableBodyRef} className="divide-y divide-gray-200">
+                <tbody ref={tableBodyRef} className="divide-y divide-gray-100">
                   {Object.entries(groupedByKodeAkun).map(([kodeAkun, vendorGroups]) => {
                     const isKodeAkunExpanded = expandedKodeAkun.has(kodeAkun);
                     const allItems = Object.values(vendorGroups).flat();
@@ -3322,54 +3324,49 @@ export default function MonitoringAccrualPage() {
                     return (
                       <React.Fragment key={kodeAkun}>
                         {/* Kode Akun Group Header */}
-                        <tr className="bg-blue-50 font-semibold">
-                          {canEdit && <td className="px-2 py-4 bg-blue-50" />}
-                          <td className="px-4 py-4 text-center bg-blue-50">
+                        <tr className="bg-gradient-to-r from-blue-600/10 to-blue-50 font-semibold border-l-4 border-l-blue-500">
+                          {canEdit && <td className="px-2 py-3.5" />}
+                          <td className="px-3 py-3.5 text-center">
                             <button
                               onClick={() => {
                                 const newExpanded = new Set(expandedKodeAkun);
                                 if (isKodeAkunExpanded) {
                                   newExpanded.delete(kodeAkun);
+
                                 } else {
                                   newExpanded.add(kodeAkun);
                                 }
                                 setExpandedKodeAkun(newExpanded);
                               }}
-                              className="text-blue-700 hover:text-blue-900 transition-colors"
+                              className="w-6 h-6 rounded-md bg-blue-200/60 hover:bg-blue-300/60 text-blue-800 flex items-center justify-center transition-colors"
                             >
-                              {isKodeAkunExpanded ? '▼' : '▶'}
+                              {isKodeAkunExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                             </button>
                           </td>
-                          <td colSpan={9} className="px-4 py-4 text-left text-blue-900 bg-blue-50">
-                            Kode Akun: {kodeAkun}
+                          <td colSpan={9} className="px-4 py-3.5 text-left">
+                            <span className="inline-flex items-center gap-2">
+                              <span className="px-2 py-0.5 bg-blue-200/50 text-blue-900 text-[11px] font-bold rounded tracking-wide">KODE AKUN</span>
+                              <span className="text-blue-900 font-bold text-sm">{kodeAkun}</span>
+                              <span className="text-blue-600/60 text-xs font-medium">({allItems.length} item)</span>
+                            </span>
                           </td>
-                          <td className="px-4 py-4 text-right font-bold text-blue-900 bg-blue-50">
+                          <td className="px-4 py-3.5 text-right font-bold text-blue-900">
                             {formatCurrency(totalAmountKodeAkun)}
                           </td>
-                          <td className="px-4 py-4 bg-blue-50"></td>
-                          <td className="px-4 py-4 bg-blue-50"></td>
-                          <td className="px-4 py-4 bg-blue-50"></td>
-                          <td className="px-3 py-4 text-right font-bold text-blue-900 bg-blue-50" style={{ maxWidth: '140px' }}>
-                            <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalSaldoAwalKodeAkun)}>
-                              {formatCurrency(totalSaldoAwalKodeAkun)}
-                            </div>
+                          <td></td><td></td><td></td>
+                          <td className="px-3 py-3.5 text-right font-bold text-blue-900" style={{ maxWidth: '140px' }}>
+                            <div className="truncate" title={formatCurrency(totalSaldoAwalKodeAkun)}>{formatCurrency(totalSaldoAwalKodeAkun)}</div>
                           </td>
-                          <td className="px-3 py-4 text-right font-bold text-blue-900 bg-blue-50" style={{ maxWidth: '140px' }}>
-                            <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalAccrualKodeAkun)}>
-                              {formatCurrency(totalAccrualKodeAkun)}
-                            </div>
+                          <td className="px-3 py-3.5 text-right font-bold text-blue-900" style={{ maxWidth: '140px' }}>
+                            <div className="truncate" title={formatCurrency(totalAccrualKodeAkun)}>{formatCurrency(totalAccrualKodeAkun)}</div>
                           </td>
-                          <td className="px-3 py-4 text-right font-bold text-blue-900 bg-blue-50" style={{ maxWidth: '140px' }}>
-                            <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalRealisasiKodeAkun)}>
-                              {formatCurrency(totalRealisasiKodeAkun)}
-                            </div>
+                          <td className="px-3 py-3.5 text-right font-bold text-blue-900" style={{ maxWidth: '140px' }}>
+                            <div className="truncate" title={formatCurrency(totalRealisasiKodeAkun)}>{formatCurrency(totalRealisasiKodeAkun)}</div>
                           </td>
-                          <td className="px-3 py-4 text-right font-bold text-blue-900 bg-blue-50" style={{ maxWidth: '140px' }}>
-                            <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalSaldoKodeAkun)}>
-                              {formatCurrency(totalSaldoKodeAkun)}
-                            </div>
+                          <td className="px-3 py-3.5 text-right font-bold text-blue-900" style={{ maxWidth: '140px' }}>
+                            <div className="truncate" title={formatCurrency(totalSaldoKodeAkun)}>{formatCurrency(totalSaldoKodeAkun)}</div>
                           </td>
-                          <td className="px-4 py-4 bg-blue-50">
+                          <td className="px-4 py-3.5">
                             <div className="flex items-center justify-center gap-1">
                               <div className="relative">
                                 <button
@@ -3523,9 +3520,9 @@ export default function MonitoringAccrualPage() {
 
                           return (
                             <React.Fragment key={vendorKey}>
-                              <tr className="bg-green-50 font-semibold animate-slide-down">
-                                {canEdit && <td className="px-2 py-4 bg-green-50" />}
-                                <td className="px-4 py-4 text-center bg-green-50">
+                              <tr className="bg-gradient-to-r from-emerald-500/10 to-emerald-50 font-semibold animate-slide-down border-l-4 border-l-emerald-400">
+                                {canEdit && <td className="px-2 py-3" />}
+                                <td className="px-3 py-3 text-center">
                                   <button
                                     onClick={() => {
                                       const newExpanded = new Set(expandedVendor);
@@ -3536,50 +3533,34 @@ export default function MonitoringAccrualPage() {
                                       }
                                       setExpandedVendor(newExpanded);
                                     }}
-                                    className="text-green-700 hover:text-green-900 transition-colors ml-4"
+                                    className="w-6 h-6 rounded-md bg-emerald-200/60 hover:bg-emerald-300/60 text-emerald-800 flex items-center justify-center transition-colors ml-4"
                                   >
-                                    {isVendorExpanded ? '▼' : '▶'}
+                                    {isVendorExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                                   </button>
                                 </td>
-                                <td colSpan={9} className="px-4 py-4 text-left text-green-900 bg-green-50">
-                                  Vendor: {vendor}
+                                <td colSpan={9} className="px-4 py-3 text-left">
+                                  <span className="inline-flex items-center gap-2">
+                                    <span className="px-2 py-0.5 bg-emerald-200/50 text-emerald-900 text-[11px] font-bold rounded tracking-wide">VENDOR</span>
+                                    <span className="text-emerald-900 font-bold text-sm">{vendor}</span>
+                                    <span className="text-emerald-600/60 text-xs font-medium">({items.length} item)</span>
+                                  </span>
                                 </td>
-                                <td className="px-4 py-4 text-right font-bold text-green-900 bg-green-50">
-                                  {formatCurrency(totalAmountVendor)}
-                                </td>
-                                <td className="px-4 py-4 bg-green-50"></td>
-                                <td className="px-4 py-4 bg-green-50"></td>
-                                <td className="px-4 py-4 bg-green-50"></td>
-                                <td className="px-3 py-4 text-right font-bold text-green-900 bg-green-50" style={{ maxWidth: '140px' }}>
-                                  <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalSaldoAwalVendor)}>
-                                    {formatCurrency(totalSaldoAwalVendor)}
-                                  </div>
-                                </td>
-                                <td className="px-3 py-4 text-right font-bold text-green-900 bg-green-50" style={{ maxWidth: '140px' }}>
-                                  <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalAccrualVendor)}>
-                                    {formatCurrency(totalAccrualVendor)}
-                                  </div>
-                                </td>
-                                <td className="px-3 py-4 text-right font-bold text-green-900 bg-green-50" style={{ maxWidth: '140px' }}>
-                                  <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalRealisasiVendor)}>
-                                    {formatCurrency(totalRealisasiVendor)}
-                                  </div>
-                                </td>
-                                <td className="px-3 py-4 text-right font-bold text-green-900 bg-green-50" style={{ maxWidth: '140px' }}>
-                                  <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(totalSaldoVendor)}>
-                                    {formatCurrency(totalSaldoVendor)}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-4 bg-green-50"></td>
+                                <td className="px-4 py-3 text-right font-bold text-emerald-900">{formatCurrency(totalAmountVendor)}</td>
+                                <td></td><td></td><td></td>
+                                <td className="px-3 py-3 text-right font-bold text-emerald-900" style={{ maxWidth: '140px' }}><div className="truncate" title={formatCurrency(totalSaldoAwalVendor)}>{formatCurrency(totalSaldoAwalVendor)}</div></td>
+                                <td className="px-3 py-3 text-right font-bold text-emerald-900" style={{ maxWidth: '140px' }}><div className="truncate" title={formatCurrency(totalAccrualVendor)}>{formatCurrency(totalAccrualVendor)}</div></td>
+                                <td className="px-3 py-3 text-right font-bold text-emerald-900" style={{ maxWidth: '140px' }}><div className="truncate" title={formatCurrency(totalRealisasiVendor)}>{formatCurrency(totalRealisasiVendor)}</div></td>
+                                <td className="px-3 py-3 text-right font-bold text-emerald-900" style={{ maxWidth: '140px' }}><div className="truncate" title={formatCurrency(totalSaldoVendor)}>{formatCurrency(totalSaldoVendor)}</div></td>
+                                <td></td>
                               </tr>
 
                               {isVendorExpanded && items.map((item) => {
                           const isExpanded = expandedRows.has(item.id);
                           return (
                             <React.Fragment key={item.id}>
-                              <tr className="bg-white hover:bg-gray-50 transition-colors animate-slide-down">
+                              <tr className="tr-item bg-white hover:bg-slate-50/80 transition-colors animate-slide-down border-l-4 border-l-transparent hover:border-l-red-200">
                                 {canEdit && (
-                                  <td className="px-2 py-4 text-center bg-white">
+                                  <td className="px-2 py-3.5 text-center">
                                     <input
                                       type="checkbox"
                                       checked={selectedIds.has(item.id)}
@@ -3596,7 +3577,7 @@ export default function MonitoringAccrualPage() {
                                     />
                                   </td>
                                 )}
-                                <td className="px-4 py-4 text-center bg-white">
+                                <td className="px-3 py-3.5 text-center">
                                   <button
                                     onClick={() => {
                                       const newExpanded = new Set(expandedRows);
@@ -3607,71 +3588,78 @@ export default function MonitoringAccrualPage() {
                                       }
                                       setExpandedRows(newExpanded);
                                     }}
-                                    className="text-gray-600 hover:text-red-600 transition-colors ml-6"
+                                    className="w-6 h-6 rounded-md hover:bg-slate-100 text-slate-400 hover:text-red-600 flex items-center justify-center transition-all ml-6"
                                   >
-                                    {isExpanded ? '▼' : '▶'}
+                                    {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                                   </button>
                                 </td>
-                          <td className="px-4 py-4 text-gray-800 whitespace-nowrap bg-white">{item.companyCode || '-'}</td>
-                          <td className="px-4 py-4 text-gray-800 whitespace-nowrap bg-white">{item.noPo || '-'}</td>
-                          <td className="px-4 py-4 text-gray-800 whitespace-nowrap bg-white">{item.alokasi || '-'}</td>
-                          <td className="px-4 py-4 text-gray-800 whitespace-nowrap font-medium bg-white">{item.kdAkr}</td>
-                          <td className="px-4 py-4 text-gray-800 bg-white">{item.kdAkunBiaya}</td>
-                          <td className="px-4 py-4 text-gray-600 bg-white">{item.vendor}</td>
-                          <td className="px-4 py-4 text-gray-600 max-w-xs truncate bg-white" title={item.deskripsi}>{item.deskripsi}</td>
-                          <td className="px-4 py-4 text-gray-600 max-w-xs truncate bg-white" title={item.headerText || '-'}>{item.headerText || '-'}</td>
-                          <td className="px-4 py-4 text-center bg-white">
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                          <td className="px-4 py-3.5 text-slate-700 text-xs whitespace-nowrap">{item.companyCode || '-'}</td>
+                          <td className="px-4 py-3.5 text-slate-700 text-xs whitespace-nowrap">{item.noPo || '-'}</td>
+                          <td className="px-4 py-3.5 text-slate-700 text-xs whitespace-nowrap">{item.alokasi || '-'}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className="text-slate-800 font-semibold text-xs">{item.kdAkr}</span>
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-700 text-xs">{item.kdAkunBiaya}</td>
+                          <td className="px-4 py-3.5 text-slate-600 text-xs">{item.vendor}</td>
+                          <td className="px-4 py-3.5 text-slate-600 text-xs max-w-xs truncate" title={item.deskripsi}>{item.deskripsi}</td>
+                          <td className="px-4 py-3.5 text-slate-500 text-xs max-w-xs truncate" title={item.headerText || '-'}>{item.headerText || '-'}</td>
+                          <td className="px-4 py-3.5 text-center">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100/80 text-blue-700 border border-blue-200/50">
                               {item.klasifikasi || '-'}
                             </span>
                           </td>
-                          <td className="px-4 py-4 text-right font-medium text-gray-800 whitespace-nowrap bg-white">
+                          <td className="px-4 py-3.5 text-right font-semibold text-slate-700 text-xs whitespace-nowrap">
                             {formatCurrency(Math.abs(item.totalAmount))}
                           </td>
-                          <td className="px-4 py-4 text-gray-800 whitespace-nowrap bg-white">{item.costCenter || '-'}</td>
-                          <td className="px-4 py-4 text-center text-gray-600 text-xs whitespace-nowrap bg-white">
+                          <td className="px-4 py-3.5 text-slate-700 text-xs whitespace-nowrap">{item.costCenter || '-'}</td>
+                          <td className="px-4 py-3.5 text-center text-slate-500 text-xs whitespace-nowrap">
                             {formatDate(item.startDate)}
                           </td>
-                          <td className="px-4 py-4 text-center text-gray-800 whitespace-nowrap bg-white">
-                            {item.jumlahPeriode} bulan
+                          <td className="px-4 py-3.5 text-center text-xs whitespace-nowrap">
+                            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">{item.jumlahPeriode} bln</span>
                           </td>
-                          <td className="px-2 py-4 text-right font-medium text-gray-800 whitespace-nowrap bg-white" style={{ maxWidth: '140px' }}>
-                            <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(getSaldoAwal(item))}>
+                          <td className="px-2 py-3.5 text-right text-slate-600 text-xs whitespace-nowrap" style={{ maxWidth: '140px' }}>
+                            <div className="truncate" title={formatCurrency(getSaldoAwal(item))}>
                               {formatCurrency(getSaldoAwal(item))}
                             </div>
                           </td>
-                          <td className="px-2 py-4 text-right font-medium text-gray-800 whitespace-nowrap bg-white" style={{ maxWidth: '140px' }}>
-                            <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(calculateItemAccrual(item))}>
+                          <td className="px-2 py-3.5 text-right text-slate-600 text-xs whitespace-nowrap" style={{ maxWidth: '140px' }}>
+                            <div className="truncate" title={formatCurrency(calculateItemAccrual(item))}>
                               {formatCurrency(calculateItemAccrual(item))}
                             </div>
                           </td>
-                          <td className="px-2 py-4 text-right text-blue-700 whitespace-nowrap bg-white" style={{ maxWidth: '140px' }}>
-                            <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(calculateActualRealisasi(item))}>
+                          <td className="px-2 py-3.5 text-right text-blue-600 text-xs whitespace-nowrap" style={{ maxWidth: '140px' }}>
+                            <div className="truncate" title={formatCurrency(calculateActualRealisasi(item))}>
                               {formatCurrency(calculateActualRealisasi(item))}
                             </div>
                           </td>
-                          <td className="px-2 py-4 text-right font-semibold text-gray-800 whitespace-nowrap bg-white" style={{ maxWidth: '140px' }}>
-                            <div className="truncate overflow-hidden text-ellipsis" title={formatCurrency(calculateItemSaldo(item, calculateItemAccrual(item), calculateActualRealisasi(item)))}>
-                              {formatCurrency(calculateItemSaldo(item, calculateItemAccrual(item), calculateActualRealisasi(item)))}
-                            </div>
+                          <td className="px-2 py-3.5 text-right text-xs whitespace-nowrap" style={{ maxWidth: '140px' }}>
+                            {(() => {
+                              const saldo = calculateItemSaldo(item, calculateItemAccrual(item), calculateActualRealisasi(item));
+                              return (
+                                <div className={`truncate font-bold ${saldo > 0 ? 'text-amber-600' : saldo < 0 ? 'text-red-600' : 'text-slate-400'}`} title={formatCurrency(saldo)}>
+                                  {formatCurrency(saldo)}
+                                </div>
+                              );
+                            })()}
                           </td>
-                          <td className="px-4 py-4 text-center bg-white">
+                          <td className="px-4 py-3.5 text-center">
                             <div className="flex items-center justify-center gap-1">
                               {canEdit && (
                                 <>
                                   <button
                                     onClick={() => handleEdit(item)}
-                                    className="text-blue-600 hover:text-blue-800 transition-colors p-1 hover:bg-blue-50 rounded"
+                                    className="text-blue-500 hover:text-blue-700 transition-all p-1.5 hover:bg-blue-50 rounded-lg active:scale-90"
                                     title="Edit"
                                   >
-                                    <Edit2 size={16} />
+                                    <Edit2 size={14} />
                                   </button>
                                   <button
                                     onClick={() => handleDelete(item.id)}
-                                    className="text-red-600 hover:text-red-800 transition-colors p-1 hover:bg-red-50 rounded"
+                                    className="text-rose-500 hover:text-rose-700 transition-all p-1.5 hover:bg-rose-50 rounded-lg active:scale-90"
                                     title="Hapus"
                                   >
-                                    <Trash2 size={16} />
+                                    <Trash2 size={14} />
                                   </button>
                                 </>
                               )}
