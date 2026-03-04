@@ -1111,7 +1111,17 @@ export default function MonitoringPrepaidPage() {
             setEditData(null);
             setEditMode('create');
           }}
-          onSuccess={fetchPrepaidData}
+          onSuccess={() => {
+            // If editing, bust the periodes cache so the expand row re-fetches fresh data
+            if (editMode === 'edit' && editData) {
+              setPeriodesCache(prev => {
+                const next = { ...prev };
+                delete next[editData.id];
+                return next;
+              });
+            }
+            fetchPrepaidData();
+          }}
           mode={editMode}
           editData={editData}
         />

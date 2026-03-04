@@ -236,12 +236,42 @@ export async function PUT(request: NextRequest) {
       startDate,
       period,
       periodUnit,
-      type = 'Linear', // Default to Linear if not provided
+      type = 'Linear',
+      pembagianType,
+      periodeAmounts,
     } = body;
 
-    // Update prepaid data
+    const prepaidId = parseInt(id);
+
+    // Fetch current state to detect what changed
+    const current = await prisma.prepaid.findUnique({
+      where: { id: prepaidId },
+      select: {
+        pembagianType: true,
+        totalAmount: true,
+        period: true,
+        startDate: true,
+      },
+    });
+
+    if (!current) {
+      return NextResponse.json({ error: 'Prepaid not found' }, { status: 404 });
+    }
+
+    // Determine whether periodes need to be regenerated:
+    // - pembagianType changed
+    // - totalAmount, period, or startDate changed
+    const oldStart    = new Date(current.startDate).toISOString().split('T')[0];
+    const newStart    = new Date(startDate).toISOString().split('T')[0];
+    const needRegen   =
+      current.pembagianType !== pembagianType ||
+      current.totalAmount   !== totalAmount   ||
+      current.period        !== period        ||
+      oldStart              !== newStart;
+
+    // Update scalar fields first
     const prepaid = await prisma.prepaid.update({
-      where: { id: parseInt(id) },
+      where: { id: prepaidId },
       data: {
         companyCode,
         noPo,
@@ -258,11 +288,44 @@ export async function PUT(request: NextRequest) {
         period,
         periodUnit,
         type,
+        pembagianType,   // ← was missing before
       },
-      include: {
-        periodes: true
-      }
     });
+
+    if (needRegen) {
+      // Delete existing periodes
+      await prisma.prepaidPeriode.deleteMany({ where: { prepaidId } });
+
+      // Rebuild periodes
+      const startDateObj = new Date(startDate);
+      const newPeriodes: any[] = [];
+
+      for (let i = 0; i < period; i++) {
+        const periodeDate = new Date(startDateObj);
+        periodeDate.setMonth(periodeDate.getMonth() + i);
+
+        const bulanNama = periodeDate.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
+        const tahun = periodeDate.getFullYear();
+
+        let amountPrepaid: number;
+        if (pembagianType === 'manual') {
+          amountPrepaid = (periodeAmounts && periodeAmounts[i] !== undefined) ? periodeAmounts[i] : 0;
+        } else {
+          amountPrepaid = totalAmount / period;
+        }
+
+        newPeriodes.push({
+          prepaidId,
+          periodeKe: i + 1,
+          bulan: bulanNama,
+          tahun,
+          amountPrepaid,
+          isAmortized: false,
+        });
+      }
+
+      await prisma.prepaidPeriode.createMany({ data: newPeriodes });
+    }
 
     broadcast('prepaid');
     return NextResponse.json(prepaid);
