@@ -4,7 +4,6 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { RotateCcw, TrendingUp, SlidersHorizontal, BarChart3, Layers } from 'lucide-react';
 import { gsap } from 'gsap';
-import { animate, stagger } from 'animejs';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Separator } from '../components/ui/separator';
@@ -83,21 +82,15 @@ function DonutChart({ data, total }: { data: { label: string; value: number; col
     if (!svgRef.current || total === 0) return;
     const paths = svgRef.current.querySelectorAll('path[data-slice]');
     if (!paths.length) return;
-    animate(paths, {
-      opacity: [0, 1],
-      scale: [0.7, 1],
-      duration: 650,
-      delay: stagger(70, { start: 60 }),
-      ease: 'easeOutElastic(1, .6)',
-    });
+    gsap.fromTo(paths,
+      { opacity: 0, scale: 0.7, transformOrigin: '100px 100px' },
+      { opacity: 1, scale: 1, duration: 0.65, ease: 'back.out(1.6)', stagger: 0.07, delay: 0.06 }
+    );
     const texts = svgRef.current.querySelectorAll('text');
-    animate(texts, {
-      opacity: [0, 1],
-      translateY: [8, 0],
-      duration: 400,
-      delay: stagger(60, { start: 450 }),
-      ease: 'easeOutExpo',
-    });
+    gsap.fromTo(texts,
+      { opacity: 0, y: 8 },
+      { opacity: 1, y: 0, duration: 0.4, ease: 'expo.out', stagger: 0.06, delay: 0.45 }
+    );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [total]);
 
@@ -181,13 +174,10 @@ function TrendChart({ data }: { data: { label: string; value: number }[] }) {
     }
     if (dotsRef.current) {
       const dots = dotsRef.current.querySelectorAll('circle');
-      animate(dots, {
-        opacity: [0, 1],
-        scale: [0, 1],
-        duration: 300,
-        delay: stagger(30, { start: 900 }),
-        ease: 'easeOutBack',
-      });
+      gsap.fromTo(dots,
+        { opacity: 0, scale: 0 },
+        { opacity: 1, scale: 1, duration: 0.3, ease: 'back.out(1.8)', stagger: 0.03, delay: 0.9 }
+      );
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.length]);
@@ -305,26 +295,20 @@ export default function SubAkunFluktuasiPage() {
   useEffect(() => {
     if (!tableBodyRef.current) return;
     const rows = tableBodyRef.current.querySelectorAll('tr');
-    animate(rows, {
-      opacity: [0, 1],
-      translateX: [-10, 0],
-      duration: 280,
-      delay: stagger(25),
-      ease: 'easeOutExpo',
-    });
+    gsap.fromTo(rows,
+      { opacity: 0, x: -10 },
+      { opacity: 1, x: 0, duration: 0.28, ease: 'expo.out', stagger: 0.025 }
+    );
   }, [listPage, filterSubAkun, filterKlasifikasi, selectedYear]);
 
   // Animate filter sub-akun list on filter change
   useEffect(() => {
     if (!subAkunListRef.current) return;
     const items = subAkunListRef.current.querySelectorAll('label');
-    animate(items, {
-      opacity: [0, 1],
-      translateX: [8, 0],
-      duration: 260,
-      delay: stagger(30),
-      ease: 'easeOutExpo',
-    });
+    gsap.fromTo(items,
+      { opacity: 0, x: 8 },
+      { opacity: 1, x: 0, duration: 0.26, ease: 'expo.out', stagger: 0.03 }
+    );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterSubAkun]);
 
@@ -469,12 +453,8 @@ export default function SubAkunFluktuasiPage() {
 
   const resetFilters = useCallback(() => {
     if (resetBtnRef.current) {
-      animate(resetBtnRef.current.querySelector('svg') ?? resetBtnRef.current, {
-        rotate: [0, -360],
-        scale: [1, 0.85, 1],
-        duration: 550,
-        ease: 'easeOutBack',
-      });
+      const spinTarget = resetBtnRef.current.querySelector('svg') ?? resetBtnRef.current;
+      gsap.fromTo(spinTarget, { rotation: 0 }, { rotation: -360, duration: 0.55, ease: 'back.out(1.6)' });
     }
     setSelectedYear('all');
     setFilterSubAkun(new Set());
