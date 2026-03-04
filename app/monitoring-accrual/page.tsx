@@ -3,7 +3,7 @@
 import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Download, Plus, MoreVertical, X, Edit2, Trash2, Upload, ChevronDown, ChevronRight, TrendingDown, Activity, DollarSign } from 'lucide-react';
+import { Search, Download, Plus, MoreVertical, X, Edit2, Trash2, Upload, ChevronDown, ChevronRight, TrendingDown, Activity, DollarSign, AlertTriangle } from 'lucide-react';
 import { gsap } from 'gsap';
 import { animate } from 'animejs';
 import { Skeleton } from '../components/ui/skeleton';
@@ -263,6 +263,17 @@ export default function MonitoringAccrualPage() {
   const [jurnalHeaderInput, setJurnalHeaderInput] = useState('');
   const [jurnalLineInput, setJurnalLineInput] = useState('');
   const [jurnalPendingCallback, setJurnalPendingCallback] = useState<((h: string, l: string) => void) | null>(null);
+
+  // Custom confirm dialog
+  const [confirmDialog, setConfirmDialog] = useState<{
+    message: string;
+    subMessage?: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  const showConfirm = useCallback((message: string, subMessage: string, onConfirm: () => void) => {
+    setConfirmDialog({ message, subMessage, onConfirm });
+  }, []);
 
   // ── Animation refs ──────────────────────────────────────────────
   const pageRef                   = useRef<HTMLDivElement>(null);
@@ -2145,52 +2156,56 @@ export default function MonitoringAccrualPage() {
     setShowModal(true);
   }, []);
 
-  const handleDelete = useCallback(async (id: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus data ini?')) return;
-
-    try {
-      const response = await fetch(`/api/accrual?id=${id}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) throw new Error('Failed to delete accrual');
-
-      fetchAccrualData();
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      toast.success('Data berhasil dihapus!');
-    } catch (error) {
-      console.error('Error deleting accrual:', error);
-      toast.error('Gagal menghapus data');
-    }
-  }, []);
-
-  const handleDeleteSelected = useCallback(async () => {
-    if (selectedIds.size === 0) return;
-    if (!confirm(`Yakin hapus ${selectedIds.size} data accrual terpilih?`)) return;
-
-    setDeletingSelected(true);
-    try {
-      const ids = Array.from(selectedIds).join(',');
-      const response = await fetch(`/api/accrual?ids=${ids}`, { method: 'DELETE' });
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Gagal menghapus');
+  const handleDelete = useCallback((id: number) => {
+    showConfirm(
+      'Hapus data accrual?',
+      'Aksi ini tidak dapat dibatalkan. Semua periode dan realisasi terkait akan ikut terhapus.',
+      async () => {
+        try {
+          const response = await fetch(`/api/accrual?id=${id}`, { method: 'DELETE' });
+          if (!response.ok) throw new Error('Failed to delete accrual');
+          fetchAccrualData();
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+          toast.success('Data berhasil dihapus!');
+        } catch (error) {
+          console.error('Error deleting accrual:', error);
+          toast.error('Gagal menghapus data');
+        }
       }
-      const data = await response.json();
-      setSelectedIds(new Set());
-      fetchAccrualData();
-      toast.success(data.count != null ? `${data.count} data berhasil dihapus.` : 'Data berhasil dihapus.');
-    } catch (error) {
-      console.error('Error bulk delete:', error);
-      toast.error('Gagal menghapus data terpilih');
-    } finally {
-      setDeletingSelected(false);
-    }
-  }, [selectedIds]);
+    );
+  }, [showConfirm]);;
+
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    showConfirm(
+      `Hapus ${selectedIds.size} data accrual?`,
+      'Semua data yang dipilih beserta periode dan realisasinya akan dihapus permanen.',
+      async () => {
+        setDeletingSelected(true);
+        try {
+          const ids = Array.from(selectedIds).join(',');
+          const response = await fetch(`/api/accrual?ids=${ids}`, { method: 'DELETE' });
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || 'Gagal menghapus');
+          }
+          const data = await response.json();
+          setSelectedIds(new Set());
+          fetchAccrualData();
+          toast.success(data.count != null ? `${data.count} data berhasil dihapus.` : 'Data berhasil dihapus.');
+        } catch (error) {
+          console.error('Error bulk delete:', error);
+          toast.error('Gagal menghapus data terpilih');
+        } finally {
+          setDeletingSelected(false);
+        }
+      }
+    );
+  }, [selectedIds, showConfirm]);;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2442,45 +2457,41 @@ export default function MonitoringAccrualPage() {
     }
   };
 
-  const handleDeleteRealisasi = async (id: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus realisasi ini?')) return;
-
-    try {
-      const response = await fetch(`/api/accrual/realisasi?id=${id}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) throw new Error('Failed to delete realisasi');
-
-      // Update local state immediately — no need to wait for heavy re-fetch
-      setRealisasiData(prev => prev.filter(r => r.id !== id));
-
-      toast.success('Realisasi berhasil dihapus!');
-
-      // Background: refresh accrual & realisasi data for accurate computed values
-      const periodeId = selectedPeriode?.id;
-      const [realisasiRes, accrualRes] = await Promise.all([
-        periodeId ? fetch(`/api/accrual/realisasi?periodeId=${periodeId}`) : Promise.resolve(null),
-        fetch('/api/accrual'),
-      ]);
-      if (realisasiRes?.ok) setRealisasiData(await realisasiRes.json());
-      if (accrualRes.ok) {
-        const accruals = await accrualRes.json();
-        setAccrualData(accruals);
-        if (periodeId) {
-          const updatedAccrual = accruals.find((acc: Accrual) =>
-            acc.periodes?.some(p => p.id === periodeId)
-          );
-          if (updatedAccrual) {
-            const updatedPeriode = updatedAccrual.periodes?.find((p: AccrualPeriode) => p.id === periodeId);
-            if (updatedPeriode) setSelectedPeriode(updatedPeriode);
+  const handleDeleteRealisasi = (id: number) => {
+    showConfirm(
+      'Hapus realisasi ini?',
+      'Data realisasi ini akan dihapus permanen dan tidak dapat dikembalikan.',
+      async () => {
+        try {
+          const response = await fetch(`/api/accrual/realisasi?id=${id}`, { method: 'DELETE' });
+          if (!response.ok) throw new Error('Failed to delete realisasi');
+          setRealisasiData(prev => prev.filter(r => r.id !== id));
+          toast.success('Realisasi berhasil dihapus!');
+          const periodeId = selectedPeriode?.id;
+          const [realisasiRes, accrualRes] = await Promise.all([
+            periodeId ? fetch(`/api/accrual/realisasi?periodeId=${periodeId}`) : Promise.resolve(null),
+            fetch('/api/accrual'),
+          ]);
+          if (realisasiRes?.ok) setRealisasiData(await realisasiRes.json());
+          if (accrualRes.ok) {
+            const accruals = await accrualRes.json();
+            setAccrualData(accruals);
+            if (periodeId) {
+              const updatedAccrual = accruals.find((acc: Accrual) =>
+                acc.periodes?.some(p => p.id === periodeId)
+              );
+              if (updatedAccrual) {
+                const updatedPeriode = updatedAccrual.periodes?.find((p: AccrualPeriode) => p.id === periodeId);
+                if (updatedPeriode) setSelectedPeriode(updatedPeriode);
+              }
+            }
           }
+        } catch (error) {
+          console.error('Error deleting realisasi:', error);
+          toast.error('Gagal menghapus realisasi');
         }
       }
-    } catch (error) {
-      console.error('Error deleting realisasi:', error);
-      toast.error('Gagal menghapus realisasi');
-    }
+    );
   };
 
   // Toggle selection realisasi
@@ -2513,10 +2524,12 @@ export default function MonitoringAccrualPage() {
     }
 
     const count = selectedRealisasiIds.size;
-    if (!confirm(`Apakah Anda yakin ingin menghapus ${count} realisasi yang dipilih?`)) return;
-
-    setDeletingBulkRealisasi(true);
-    try {
+    showConfirm(
+      `Hapus ${count} realisasi yang dipilih?`,
+      'Semua realisasi yang dipilih akan dihapus permanen.',
+      async () => {
+        setDeletingBulkRealisasi(true);
+        try {
       const ids = Array.from(selectedRealisasiIds);
 
       // Single batch delete request instead of N sequential requests
@@ -2560,9 +2573,11 @@ export default function MonitoringAccrualPage() {
     } finally {
       setDeletingBulkRealisasi(false);
     }
+      }
+    );
   };
 
-  // ── Rincian Accrual per Cost Center ──────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
 
   const handleOpenCostCenterModal = async (accrual: Accrual, periode: AccrualPeriode) => {
     setCostCenterModalAccrual(accrual);
@@ -2658,34 +2673,37 @@ export default function MonitoringAccrualPage() {
     }
   };
 
-  const handleDeleteCostCenter = async (id: number) => {
-    if (!confirm('Hapus rincian ini?')) return;
-    try {
-      const res = await fetch(`/api/accrual/periode-costcenter?id=${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete');
-
-      setCostCenterData(prev => prev.filter(c => c.id !== id));
-      toast.success('Rincian berhasil dihapus!');
-
-      const periodeId = costCenterModalPeriode?.id;
-      const [listRes, accrualRes] = await Promise.all([
-        periodeId ? fetch(`/api/accrual/periode-costcenter?periodeId=${periodeId}`) : Promise.resolve(null),
-        fetch('/api/accrual'),
-      ]);
-      if (listRes?.ok) setCostCenterData(await listRes.json());
-      if (accrualRes.ok) {
-        const accruals = await accrualRes.json();
-        setAccrualData(accruals);
-        if (periodeId) {
-          const updatedAccrual = accruals.find((a: Accrual) => a.periodes?.some(p => p.id === periodeId));
-          const updatedPeriode = updatedAccrual?.periodes?.find((p: AccrualPeriode) => p.id === periodeId);
-          if (updatedPeriode) setCostCenterModalPeriode(updatedPeriode);
+  const handleDeleteCostCenter = (id: number) => {
+    showConfirm(
+      'Hapus rincian ini?',
+      'Entri rincian cost center ini akan dihapus permanen.',
+      async () => {
+        try {
+          const res = await fetch(`/api/accrual/periode-costcenter?id=${id}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error('Failed to delete');
+          setCostCenterData(prev => prev.filter(c => c.id !== id));
+          toast.success('Rincian berhasil dihapus!');
+          const periodeId = costCenterModalPeriode?.id;
+          const [listRes, accrualRes] = await Promise.all([
+            periodeId ? fetch(`/api/accrual/periode-costcenter?periodeId=${periodeId}`) : Promise.resolve(null),
+            fetch('/api/accrual'),
+          ]);
+          if (listRes?.ok) setCostCenterData(await listRes.json());
+          if (accrualRes.ok) {
+            const accruals = await accrualRes.json();
+            setAccrualData(accruals);
+            if (periodeId) {
+              const updatedAccrual = accruals.find((a: Accrual) => a.periodes?.some(p => p.id === periodeId));
+              const updatedPeriode = updatedAccrual?.periodes?.find((p: AccrualPeriode) => p.id === periodeId);
+              if (updatedPeriode) setCostCenterModalPeriode(updatedPeriode);
+            }
+          }
+        } catch (error) {
+          console.error('Error deleting cost center entry:', error);
+          toast.error('Gagal menghapus rincian');
         }
       }
-    } catch (error) {
-      console.error('Error deleting cost center entry:', error);
-      toast.error('Gagal menghapus rincian');
-    }
+    );
   };
 
   const handleToggleCostCenterSelection = (id: number) => {
@@ -2704,11 +2722,14 @@ export default function MonitoringAccrualPage() {
     }
   };
 
-  const handleBulkDeleteCostCenter = async () => {
+  const handleBulkDeleteCostCenter = () => {
     if (selectedCostCenterIds.size === 0) return;
-    if (!confirm(`Hapus ${selectedCostCenterIds.size} rincian terpilih?`)) return;
-    setDeletingBulkCostCenter(true);
-    try {
+    showConfirm(
+      `Hapus ${selectedCostCenterIds.size} rincian terpilih?`,
+      'Semua rincian yang dipilih akan dihapus permanen.',
+      async () => {
+        setDeletingBulkCostCenter(true);
+        try {
       const ids = Array.from(selectedCostCenterIds);
       const res = await fetch(`/api/accrual/periode-costcenter?ids=${ids.join(',')}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete');
@@ -2740,6 +2761,8 @@ export default function MonitoringAccrualPage() {
     } finally {
       setDeletingBulkCostCenter(false);
     }
+      }
+    );
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -5337,6 +5360,52 @@ export default function MonitoringAccrualPage() {
                 }}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
               >Download</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Custom Confirm Dialog ── */}
+      {confirmDialog && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60]"
+          onClick={() => setConfirmDialog(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-red-100 p-6 mx-4 max-w-sm w-full"
+            style={{ transform: 'scale(0.88)', opacity: 0 }}
+            ref={(el) => {
+              if (el) {
+                gsap.to(el, { scale: 1, opacity: 1, duration: 0.28, ease: 'back.out(1.5)' });
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <h3 className="text-base font-bold text-slate-800">{confirmDialog.message}</h3>
+            </div>
+            {confirmDialog.subMessage && (
+              <p className="text-sm text-slate-500 mb-5 leading-relaxed pl-[52px]">
+                {confirmDialog.subMessage}
+              </p>
+            )}
+            <div className="flex gap-2 justify-end mt-5">
+              <button
+                onClick={() => setConfirmDialog(null)}
+                className="px-4 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-slate-600 hover:bg-slate-50 transition-all active:scale-95"
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
+                className="px-4 py-2 text-xs font-semibold rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 transition-all shadow-sm active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5 inline-block mr-1.5 -mt-0.5" />
+                Hapus
+              </button>
             </div>
           </div>
         </div>
