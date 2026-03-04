@@ -70,29 +70,47 @@ export default function UserManagementPage() {
   const toastRef       = useRef<HTMLDivElement>(null);
   const errorRef       = useRef<HTMLDivElement>(null);
 
-  // ── Stat counter state ────────────────────────────────────────────
-  const [statTotal, setStatTotal]     = useState(0);
-  const [statApproved, setStatApproved] = useState(0);
-  const [statPending, setStatPending]  = useState(0);
+  // ── Merged stat state — ONE re-render per frame instead of 3 ──────
+  const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0 });
+
+  // ── AbortController ref for in-flight fetch cancellation ──────────
+  const fetchCtrl = useRef<AbortController | null>(null);
+
+  // ── Table-row animation runs only on first load ───────────────────
+  const tableAnimDone = useRef(false);
+
+  // ── Debounce ref for SSE-triggered refreshes ──────────────────────
+  const sseDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetchUsers();
+    return () => { fetchCtrl.current?.abort(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Realtime: refresh saat admin lain tambah/edit/approve/hapus user
-  useRealtimeUpdates(['users'], () => { fetchUsers(); });
+  // Realtime: debounce to avoid hammering API on rapid events
+  useRealtimeUpdates(['users'], useCallback(() => {
+    if (sseDebounce.current) clearTimeout(sseDebounce.current);
+    sseDebounce.current = setTimeout(() => fetchUsers(), 400);
+  }, []));
 
   const fetchUsers = useCallback(async () => {
+    // Cancel any in-flight request before starting a new one
+    fetchCtrl.current?.abort();
+    const ctrl = new AbortController();
+    fetchCtrl.current = ctrl;
     try {
-      const response = await fetch('/api/users');
+      const response = await fetch('/api/users', { signal: ctrl.signal });
       const data = await response.json();
       if (data.success) {
         setUsers(data.users);
       }
-    } catch (error) {
-      console.error('Error fetching users:', error);
+    } catch (err: unknown) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error('Error fetching users:', err);
+      }
     } finally {
-      setIsLoading(false);
+      if (!ctrl.signal.aborted) setIsLoading(false);
     }
   }, []);
 
@@ -133,28 +151,36 @@ export default function UserManagementPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
-  // ── Animate table rows whenever users changes ──────────────────────
+  // ── Animate table rows + stat counters when users data arrives ────
   useEffect(() => {
-    if (!tableBodyRef.current || isLoading) return;
-    const rows = tableBodyRef.current.querySelectorAll('tr');
-    gsap.fromTo(rows,
-      { opacity: 0, x: -12 },
-      { opacity: 1, x: 0, duration: 0.28, ease: 'expo.out', stagger: 0.03, delay: 0.3 }
-    );
-    // Animate stat counters with anime.js
+    if (isLoading) return;
+
     const total    = users.length;
     const approved = users.filter(u => u.isApproved).length;
     const pending  = total - approved;
-    const proxy = { t: statTotal, a: statApproved, p: statPending };
+
+    // Animate table rows only on first load, not on every SSE refresh
+    if (!tableAnimDone.current && tableBodyRef.current) {
+      tableAnimDone.current = true;
+      const rows = tableBodyRef.current.querySelectorAll('tr');
+      gsap.killTweensOf(rows);
+      gsap.fromTo(rows,
+        { opacity: 0, x: -12 },
+        { opacity: 1, x: 0, duration: 0.28, ease: 'expo.out', stagger: 0.03, delay: 0.3 }
+      );
+    }
+
+    // Counter animation — single state update per frame (1× re-render instead of 3×)
+    const proxy = { t: stats.total, a: stats.approved, p: stats.pending };
     animate(proxy, {
       t: total, a: approved, p: pending,
-      duration: 900,
+      duration: 800,
       ease: 'easeOutExpo',
-      onUpdate: () => {
-        setStatTotal(Math.round(proxy.t));
-        setStatApproved(Math.round(proxy.a));
-        setStatPending(Math.round(proxy.p));
-      },
+      onUpdate: () => setStats({
+        total: Math.round(proxy.t),
+        approved: Math.round(proxy.a),
+        pending: Math.round(proxy.p),
+      }),
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [users, isLoading]);
@@ -291,6 +317,7 @@ export default function UserManagementPage() {
       if (data.success) {
         setSuccessMessage(isEditing ? 'User berhasil diupdate' : 'User berhasil ditambahkan');
         setTimeout(() => setSuccessMessage(''), 3000);
+        tableAnimDone.current = false; // allow row re-animation after mutation
         handleCloseModal();
         fetchUsers();
       } else {
@@ -317,6 +344,7 @@ export default function UserManagementPage() {
       if (data.success) {
         setSuccessMessage('User berhasil dihapus');
         setTimeout(() => setSuccessMessage(''), 3000);
+        tableAnimDone.current = false;
         fetchUsers();
       } else {
         setError(data.error || 'Gagal menghapus user');
@@ -347,6 +375,7 @@ export default function UserManagementPage() {
       if (data.success) {
         setSuccessMessage('User berhasil disetujui');
         setTimeout(() => setSuccessMessage(''), 3000);
+        tableAnimDone.current = false;
         fetchUsers();
       } else {
         setError(data.error || 'Gagal menyetujui user');
@@ -468,7 +497,7 @@ export default function UserManagementPage() {
               </div>
               <div>
                 <p className="text-xs text-gray-500 font-medium">Total User</p>
-                <p className="text-2xl font-bold text-gray-800">{statTotal}</p>
+                <p className="text-2xl font-bold text-gray-800">{stats.total}</p>
               </div>
             </div>
             {/* Approved */}
@@ -480,7 +509,7 @@ export default function UserManagementPage() {
               </div>
               <div>
                 <p className="text-xs text-gray-500 font-medium">User Aktif</p>
-                <p className="text-2xl font-bold text-green-700">{statApproved}</p>
+                <p className="text-2xl font-bold text-green-700">{stats.approved}</p>
               </div>
             </div>
             {/* Pending */}
@@ -492,7 +521,7 @@ export default function UserManagementPage() {
               </div>
               <div>
                 <p className="text-xs text-gray-500 font-medium">Pending Approval</p>
-                <p className="text-2xl font-bold text-amber-700">{statPending}</p>
+                <p className="text-2xl font-bold text-amber-700">{stats.pending}</p>
               </div>
             </div>
           </div>

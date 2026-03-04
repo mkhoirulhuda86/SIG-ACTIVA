@@ -22,7 +22,12 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, users });
+    return NextResponse.json({ success: true, users }, {
+      headers: {
+        // Cache for 5s, serve stale up to 30s while revalidating in background
+        'Cache-Control': 'private, max-age=5, stale-while-revalidate=30',
+      },
+    });
   } catch (error) {
     console.error('Get users error:', error);
     return NextResponse.json(
