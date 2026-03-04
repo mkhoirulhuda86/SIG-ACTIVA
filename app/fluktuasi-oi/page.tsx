@@ -891,6 +891,7 @@ export default function FluktuasiOIPage() {
   const [inputMode, setInputMode] = useState<'simple' | 'advanced'>('simple');
   const [naturalInput, setNaturalInput] = useState('');
   const [keywordSearch, setKeywordSearch] = useState('');
+  const [keywordAkunSearch, setKeywordAkunSearch] = useState('');
   const [keywordPage, setKeywordPage] = useState(0);
   const KEYWORD_PAGE_SIZE = 10;
   const [kwMode, setKwMode] = useState<'normal' | 'regex' | 'not' | 'docno' | 'col'>('normal');
@@ -2154,7 +2155,7 @@ export default function FluktuasiOIPage() {
       // For large sets just do a single quick fade — stagger would take too long
       gsap.fromTo(rows, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'power1.out' });
     }
-  }, [keywordPage, keywordFilter, keywordSearch]);
+  }, [keywordPage, keywordFilter, keywordSearch, keywordAkunSearch]);
 
   // ── GSAP rekap rows fade (fires on page/data change) ─────────────────────
   // NOTE: stagger removed — with REKAP_PAGE_SIZE=200 a 0.012s stagger means
@@ -2243,8 +2244,13 @@ export default function FluktuasiOIPage() {
         const search = keywordSearch.toLowerCase();
         return kw.keyword.toLowerCase().includes(search) || kw.result.toLowerCase().includes(search);
       })
+      .filter(kw => {
+        if (!keywordAkunSearch) return true;
+        const akunSearch = keywordAkunSearch.toLowerCase();
+        return kw.accountCodes.toLowerCase().includes(akunSearch);
+      })
       .sort((a, b) => b.id - a.id),
-  [keywords, keywordFilter, keywordSearch]);
+  [keywords, keywordFilter, keywordSearch, keywordAkunSearch]);
 
   // ── Parse natural language preview (avoid re-running on every unrelated render) ──
   const parsedNaturalInput = useMemo(
@@ -2400,23 +2406,31 @@ export default function FluktuasiOIPage() {
                   </div>
                   
                   {/* Search Box */}
-                  <div className="mt-3">
-                    <input
-                      type="text"
-                      value={keywordSearch}
-                      onChange={(e) => { setKeywordSearch(e.target.value); setKeywordPage(0); }}
-                      placeholder="Cari keyword..."
-                      className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                    />
-                    {keywordSearch && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        Menampilkan {keywords.filter(kw => keywordFilter === 'all' || kw.type === keywordFilter).filter(kw => {
-                          const search = keywordSearch.toLowerCase();
-                          return kw.keyword.toLowerCase().includes(search) || kw.result.toLowerCase().includes(search);
-                        }).length} dari {keywords.filter(kw => keywordFilter === 'all' || kw.type === keywordFilter).length} keyword
-                      </p>
-                    )}
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <div className="flex-1 min-w-[180px] max-w-sm">
+                      <input
+                        type="text"
+                        value={keywordSearch}
+                        onChange={(e) => { setKeywordSearch(e.target.value); setKeywordPage(0); }}
+                        placeholder="Cari keyword / result..."
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-[180px] max-w-sm">
+                      <input
+                        type="text"
+                        value={keywordAkunSearch}
+                        onChange={(e) => { setKeywordAkunSearch(e.target.value); setKeywordPage(0); }}
+                        placeholder="Cari berdasarkan kode akun..."
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-orange-400 text-sm"
+                      />
+                    </div>
                   </div>
+                  {(keywordSearch || keywordAkunSearch) && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Menampilkan {filteredKeywords.length} dari {keywords.filter(kw => keywordFilter === 'all' || kw.type === keywordFilter).length} keyword
+                    </p>
+                  )}
                 </>
               )}
             </div>
