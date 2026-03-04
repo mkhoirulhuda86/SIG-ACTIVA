@@ -1,8 +1,13 @@
 ﻿'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, TrendingUp, SlidersHorizontal, BarChart3, Layers } from 'lucide-react';
+import { gsap } from 'gsap';
+import { animate, stagger } from 'animejs';
+import { Badge } from '../components/ui/badge';
+import { Skeleton } from '../components/ui/skeleton';
+import { Separator } from '../components/ui/separator';
 
 const Sidebar = dynamic(() => import('../components/Sidebar'), { ssr: false });
 const Header  = dynamic(() => import('../components/Header'),  { ssr: false });
@@ -67,6 +72,30 @@ const KLASI_PALETTE = [
 
 // â”€â”€â”€ Donut Chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function DonutChart({ data, total }: { data: { label: string; value: number; color: string }[]; total: number }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    if (!svgRef.current || total === 0) return;
+    const paths = svgRef.current.querySelectorAll('path[data-slice]');
+    if (!paths.length) return;
+    animate(paths, {
+      opacity: [0, 1],
+      scale: [0.7, 1],
+      duration: 650,
+      delay: stagger(70, { start: 60 }),
+      ease: 'easeOutElastic(1, .6)',
+    });
+    const texts = svgRef.current.querySelectorAll('text');
+    animate(texts, {
+      opacity: [0, 1],
+      translateY: [8, 0],
+      duration: 400,
+      delay: stagger(60, { start: 450 }),
+      ease: 'easeOutExpo',
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total]);
+
   if (total === 0) return (
     <div className="flex items-center justify-center" style={{ width: 200, height: 200 }}>
       <span className="text-slate-400 text-xs">No data</span>
@@ -101,10 +130,18 @@ function DonutChart({ data, total }: { data: { label: string; value: number; col
     return `M ${s1.x} ${s1.y} A ${oR} ${oR} 0 ${large} 1 ${e1.x} ${e1.y} L ${s2.x} ${s2.y} A ${ir} ${ir} 0 ${large} 0 ${e2.x} ${e2.y} Z`;
   };
   return (
-    <svg viewBox="0 0 200 200" style={{ width: 200, height: 200, flexShrink: 0 }}>
+    <svg ref={svgRef} viewBox="0 0 200 200" style={{ width: 200, height: 200, flexShrink: 0, overflow: 'visible' }}>
       <circle cx={cx} cy={cy} r={R} fill="#f1f5f9" />
       {slices.map((s, i) => (
-        <path key={i} d={arcPath(cx, cy, R, r, s.startAngle, s.sweep)} fill={s.color} />
+        <path
+          key={i}
+          data-slice="true"
+          d={arcPath(cx, cy, R, r, s.startAngle, s.sweep)}
+          fill={s.color}
+          style={{ transformOrigin: `${cx}px ${cy}px`, cursor: 'pointer' }}
+          onMouseEnter={e => gsap.to(e.currentTarget, { scale: 1.07, duration: 0.2, transformOrigin: `${cx}px ${cy}px`, ease: 'power2.out' })}
+          onMouseLeave={e => gsap.to(e.currentTarget, { scale: 1.0, duration: 0.2, transformOrigin: `${cx}px ${cy}px`, ease: 'power2.out' })}
+        />
       ))}
       <circle cx={cx} cy={cy} r={r} fill="white" />
       <text x={cx} y={cy - 8} textAnchor="middle" fill="#1e293b" fontSize={13} fontWeight="800">
@@ -119,6 +156,37 @@ function DonutChart({ data, total }: { data: { label: string; value: number; col
 
 // â”€â”€â”€ Trend chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function TrendChart({ data }: { data: { label: string; value: number }[] }) {
+  const polyRef = useRef<SVGPolylineElement>(null);
+  const areaRef = useRef<SVGPolygonElement>(null);
+  const dotsRef = useRef<SVGGElement>(null);
+
+  useEffect(() => {
+    if (!polyRef.current || data.length < 2) return;
+    const line = polyRef.current;
+    const len = line.getTotalLength?.() ?? 800;
+    gsap.fromTo(line,
+      { strokeDasharray: len, strokeDashoffset: len, opacity: 1 },
+      { strokeDashoffset: 0, duration: 1.1, ease: 'power3.inOut', delay: 0.1 }
+    );
+    if (areaRef.current) {
+      gsap.fromTo(areaRef.current,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.6, ease: 'power2.out', delay: 0.7 }
+      );
+    }
+    if (dotsRef.current) {
+      const dots = dotsRef.current.querySelectorAll('circle');
+      animate(dots, {
+        opacity: [0, 1],
+        scale: [0, 1],
+        duration: 300,
+        delay: stagger(30, { start: 900 }),
+        ease: 'easeOutBack',
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.length]);
+
   if (data.length < 2) return (
     <div className="flex items-center justify-center h-full">
       <span className="text-slate-400 text-xs">Butuh &ge; 2 periode</span>
@@ -158,22 +226,27 @@ function TrendChart({ data }: { data: { label: string; value: number }[] }) {
           </g>
         );
       })}
-      <polygon points={area} fill="url(#trendGrad)" />
-      <polyline points={pts} fill="none" stroke="#2563eb" strokeWidth={2} strokeLinejoin="round" />
-      {data.map((d, i) => {
-        const showDot   = data.length <= 30;
-        const showLabel = i % step === 0 || i === data.length - 1;
-        return (
-          <g key={i}>
-            {showDot && <circle cx={toX(i)} cy={toY(d.value)} r={2.5} fill="#2563eb" stroke="white" strokeWidth={1} />}
-            {showLabel && (
-              <text x={toX(i)} y={H - 2} textAnchor="middle" fill="#94a3b8" fontSize={7}>
-                {d.label}
-              </text>
-            )}
-          </g>
-        );
-      })}
+      <polygon ref={areaRef} points={area} fill="url(#trendGrad)" style={{ opacity: 0 }} />
+      <polyline ref={polyRef} points={pts} fill="none" stroke="#2563eb" strokeWidth={2} strokeLinejoin="round" />
+      <g ref={dotsRef}>
+        {data.map((d, i) => {
+          const showDot   = data.length <= 30;
+          const showLabel = i % step === 0 || i === data.length - 1;
+          return (
+            <g key={i}>
+              {showDot && (
+                <circle cx={toX(i)} cy={toY(d.value)} r={2.5} fill="#2563eb" stroke="white" strokeWidth={1}
+                  style={{ opacity: 0, transformOrigin: `${toX(i)}px ${toY(d.value)}px` }} />
+              )}
+              {showLabel && (
+                <text x={toX(i)} y={H - 2} textAnchor="middle" fill="#94a3b8" fontSize={7}>
+                  {d.label}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </g>
     </svg>
   );
 }
@@ -192,6 +265,70 @@ export default function SubAkunFluktuasiPage() {
   // Listing
   const [listPage, setListPage] = useState(0);
   const LIST_PAGE_SIZE = 50;
+
+  // Animation refs
+  const pageRef          = useRef<HTMLDivElement>(null);
+  const resetBtnRef      = useRef<HTMLButtonElement>(null);
+  const donutCardRef     = useRef<HTMLDivElement>(null);
+  const trendCardRef     = useRef<HTMLDivElement>(null);
+  const tablesCardRef    = useRef<HTMLDivElement>(null);
+  const filterCardRef    = useRef<HTMLDivElement>(null);
+  const listingCardRef   = useRef<HTMLDivElement>(null);
+  const tableBodyRef     = useRef<HTMLTableSectionElement>(null);
+  const filterBoxRef     = useRef<HTMLDivElement>(null);
+  const subAkunListRef   = useRef<HTMLDivElement>(null);
+  const klasiListRef     = useRef<HTMLDivElement>(null);
+
+  // Animate page entrance when data loads
+  useEffect(() => {
+    if (!pageRef.current) return;
+    const cards = [donutCardRef, trendCardRef, tablesCardRef, filterCardRef].map(r => r.current).filter(Boolean);
+    gsap.fromTo(pageRef.current,
+      { opacity: 0, y: 18 },
+      { opacity: 1, y: 0, duration: 0.55, ease: 'power3.out' }
+    );
+    gsap.fromTo(cards,
+      { opacity: 0, y: 32, scale: 0.97 },
+      { opacity: 1, y: 0, scale: 1, duration: 0.65, ease: 'power3.out', stagger: 0.08, delay: 0.12 }
+    );
+  }, [loading]);
+
+  // Animate table rows whenever filtered data changes
+  useEffect(() => {
+    if (!tableBodyRef.current) return;
+    const rows = tableBodyRef.current.querySelectorAll('tr');
+    animate(rows, {
+      opacity: [0, 1],
+      translateX: [-10, 0],
+      duration: 280,
+      delay: stagger(25),
+      ease: 'easeOutExpo',
+    });
+  }, [listPage, filterSubAkun, filterKlasifikasi, selectedYear]);
+
+  // Animate filter sub-akun list on filter change
+  useEffect(() => {
+    if (!subAkunListRef.current) return;
+    const items = subAkunListRef.current.querySelectorAll('label');
+    animate(items, {
+      opacity: [0, 1],
+      translateX: [8, 0],
+      duration: 260,
+      delay: stagger(30),
+      ease: 'easeOutExpo',
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterSubAkun]);
+
+  // Animate listing card on mount
+  useEffect(() => {
+    if (!listingCardRef.current) return;
+    gsap.fromTo(listingCardRef.current,
+      { opacity: 0, y: 28 },
+      { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out', delay: 0.45 }
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   useEffect(() => {
     fetch('/api/fluktuasi/akun-periodes')
@@ -361,6 +498,14 @@ export default function SubAkunFluktuasiPage() {
   );
 
   const resetFilters = useCallback(() => {
+    if (resetBtnRef.current) {
+      animate(resetBtnRef.current.querySelector('svg') ?? resetBtnRef.current, {
+        rotate: [0, -360],
+        scale: [1, 0.85, 1],
+        duration: 550,
+        ease: 'easeOutBack',
+      });
+    }
     setSelectedYear('all');
     setFilterSubAkun(new Set());
     setFilterKlasifikasi(new Set());
@@ -375,7 +520,7 @@ export default function SubAkunFluktuasiPage() {
 
   // â”€â”€ Shell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const shell = (content: React.ReactNode) => (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30">
       {isMobileSidebarOpen && (
         <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setMobileSidebar(false)} />
       )}
@@ -394,50 +539,121 @@ export default function SubAkunFluktuasiPage() {
   );
 
   if (loading) return shell(
-    <div className="flex-1 flex items-center justify-center">
-      <div className="flex flex-col items-center gap-4">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
-        <p className="text-slate-500 text-sm">Memuat data fluktuasi...</p>
+    <div className="flex-1 p-4">
+      {/* Skeleton grid */}
+      <div className="flex justify-end mb-3">
+        <Skeleton className="h-8 w-32 rounded-lg" />
+      </div>
+      <div className="grid gap-3 grid-cols-1 lg:grid-cols-[280px_1fr_260px] mb-3">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col items-center gap-3">
+          <Skeleton className="h-3 w-40 rounded" />
+          <Skeleton className="h-[200px] w-[200px] rounded-full" />
+          <div className="w-full space-y-2">
+            {[1,2,3,4].map(i => <Skeleton key={i} className="h-5 w-full rounded" />)}
+          </div>
+        </div>
+        <div className="flex flex-col gap-3">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+            <Skeleton className="h-3 w-48 rounded" />
+            <div className="flex gap-1">{[1,2,3].map(i => <Skeleton key={i} className="h-5 w-10 rounded" />)}</div>
+            <Skeleton className="h-[130px] w-full rounded-lg" />
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Skeleton className="h-3 w-20 rounded" />
+                {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-5 w-full rounded" />)}
+              </div>
+              <div className="space-y-1.5">
+                <Skeleton className="h-3 w-20 rounded" />
+                {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-5 w-full rounded" />)}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+          <Skeleton className="h-3 w-16 rounded mx-auto" />
+          {[1,2,3,4,5,6,7,8].map(i => <Skeleton key={i} className="h-5 w-full rounded" />)}
+        </div>
+      </div>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-2">
+        {[...Array(5)].map((_,i) => (
+          <div key={i} className="flex gap-3">
+            <Skeleton className="h-5 w-5 rounded" />
+            <Skeleton className="h-5 w-20 rounded" />
+            <Skeleton className="h-5 flex-1 rounded" />
+            <Skeleton className="h-5 w-24 rounded" />
+            <Skeleton className="h-5 w-8 rounded" />
+          </div>
+        ))}
+      </div>
+      {/* Centered loading overlay */}
+      <div className="fixed inset-0 pointer-events-none flex items-center justify-center">
+        <div className="bg-white/90 backdrop-blur-sm border border-blue-200/60 rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+          <div className="relative w-14 h-14">
+            <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
+            <div className="absolute inset-0 rounded-full border-4 border-t-blue-600 border-r-blue-300 border-b-transparent border-l-transparent animate-spin" />
+            <BarChart3 className="absolute inset-0 m-auto w-6 h-6 text-blue-600" />
+          </div>
+          <p className="text-slate-700 text-sm font-semibold tracking-wide">Memuat data fluktuasi...</p>
+          <div className="flex gap-1.5">
+            {[0,1,2].map(i => (
+              <div key={i} className="w-2 h-2 rounded-full bg-blue-500 animate-bounce"
+                style={{ animationDelay: `${i * 0.15}s` }} />
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
 
   if (records.length === 0) return shell(
     <div className="flex-1 flex items-center justify-center p-8 text-center">
-      <div>
+      <div className="space-y-3">
+        <div className="w-16 h-16 mx-auto rounded-2xl bg-blue-50 flex items-center justify-center">
+          <BarChart3 className="w-8 h-8 text-blue-400" />
+        </div>
         <p className="text-slate-600 font-semibold text-lg">Belum ada data fluktuasi</p>
-        <p className="text-slate-400 text-sm mt-1">Upload data di halaman <strong className="text-blue-600">Fluktuasi OI/EXP</strong></p>
+        <p className="text-slate-400 text-sm">Upload data di halaman <strong className="text-blue-600">Fluktuasi OI/EXP</strong></p>
       </div>
     </div>
   );
 
   return shell(
-    <div className="flex-1 overflow-y-auto">
+    <div ref={pageRef} className="flex-1 overflow-y-auto">
 
-      {/* â”€â”€ Reset button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Reset button ───────────────────────────────────────────── */}
       <div className="flex justify-end px-4 pt-3">
-        <button onClick={resetFilters}
-          className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold"
+        <button
+          ref={resetBtnRef}
+          onClick={resetFilters}
+          className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200 active:scale-95 hover:brightness-110 hover:shadow-md"
           style={{ backgroundColor: '#dc2626', color: 'white' }}>
           <RotateCcw size={13} /> Reset Filter
         </button>
       </div>
 
-      {/* â”€â”€ 3-col top panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── 3-col top panel ────────────────────────────────────────── */}
       <div className="grid gap-3 px-4 pt-2 pb-3 grid-cols-1 lg:grid-cols-[280px_1fr_260px]">
 
-        {/* LEFT â€“ Donut + legend */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3 flex flex-col">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center mb-3">
-            DISTRIBUSI SUB AKUN FLUKTUASI
-          </p>
+        {/* LEFT – Donut + legend */}
+        <div ref={donutCardRef}
+          className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 flex flex-col transition-shadow hover:shadow-md"
+          style={{ opacity: 0 }}>
+          <div className="flex items-center justify-center gap-1.5 mb-3">
+            <Layers size={12} className="text-slate-400" />
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              DISTRIBUSI SUB AKUN FLUKTUASI
+            </p>
+          </div>
           <div className="flex flex-col items-center gap-3 flex-1">
             <DonutChart data={donutData} total={donutTotal} />
-            <div className="w-full space-y-2">
+            <div className="w-full space-y-1.5">
               {donutData.map((d, i) => {
                 const pct = donutTotal > 0 ? (Math.abs(d.value) / donutTotal * 100).toFixed(1) : '0.0';
                 return (
-                  <div key={i} className="flex items-center gap-2 cursor-pointer"
+                  <div key={i}
+                    className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded-lg transition-all duration-150 hover:bg-blue-50 active:scale-[0.98]"
                     onClick={() => { toggleSubAkun(d.label); setListPage(0); }}>
                     <span className="flex-shrink-0 rounded-sm" style={{ width: 10, height: 10, backgroundColor: d.color }} />
                     <span className="flex-1 text-[10px] font-mono text-slate-600">{d.label}</span>
@@ -445,11 +661,12 @@ export default function SubAkunFluktuasiPage() {
                       style={{ color: d.value >= 0 ? '#16a34a' : '#dc2626' }}>
                       {fmtCompact(d.value)}
                     </span>
-                    <span className="text-[9px] text-slate-400 w-9 text-right">{pct}%</span>
+                    <Badge variant="outline" className="text-[8px] px-1 py-0 h-4 font-mono text-slate-400">{pct}%</Badge>
                   </div>
                 );
               })}
-              <div className="border-t border-gray-100 pt-1.5 flex items-center justify-between">
+              <Separator className="my-1" />
+              <div className="flex items-center justify-between px-1">
                 <span className="text-[10px] font-bold text-slate-600">Total keseluruhan</span>
                 <span className="text-[11px] font-extrabold font-mono"
                   style={{ color: totalFiltered >= 0 ? '#16a34a' : '#dc2626' }}>
@@ -460,15 +677,20 @@ export default function SubAkunFluktuasiPage() {
           </div>
         </div>
 
-        {/* CENTER â€“ Trend chart + tables */}
+        {/* CENTER – Trend chart + tables */}
         <div className="flex flex-col gap-3">
 
           {/* Trend chart */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
+          <div ref={trendCardRef}
+            className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 transition-shadow hover:shadow-md"
+            style={{ opacity: 0 }}>
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                TREN TOTAL FLUKTUASI PER PERIODE
-              </p>
+              <div className="flex items-center gap-1.5">
+                <TrendingUp size={12} className="text-blue-500" />
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  TREN TOTAL FLUKTUASI PER PERIODE
+                </p>
+              </div>
               <div className="flex items-center gap-1 text-[9px] text-slate-400">
                 <span className="inline-block w-6 h-0.5 bg-blue-600 rounded" />
                 Amount Outstanding
@@ -477,14 +699,14 @@ export default function SubAkunFluktuasiPage() {
             {/* Year quick filter */}
             <div className="flex flex-wrap gap-1 mb-2">
               <button onClick={() => setSelectedYear('all')}
-                className="px-2 py-0.5 rounded text-[9px] font-semibold transition"
+                className="px-2 py-0.5 rounded text-[9px] font-semibold transition-all duration-150 active:scale-90"
                 style={{
                   backgroundColor: selectedYear === 'all' ? '#2563eb' : '#f1f5f9',
                   color: selectedYear === 'all' ? 'white' : '#64748b',
                 }}>Semua</button>
               {years.map(yr => (
                 <button key={yr} onClick={() => setSelectedYear(yr)}
-                  className="px-2 py-0.5 rounded text-[9px] font-semibold transition"
+                  className="px-2 py-0.5 rounded text-[9px] font-semibold transition-all duration-150 active:scale-90"
                   style={{
                     backgroundColor: selectedYear === yr ? '#2563eb' : '#f1f5f9',
                     color: selectedYear === yr ? 'white' : '#64748b',
@@ -497,12 +719,14 @@ export default function SubAkunFluktuasiPage() {
           </div>
 
           {/* Two summary tables side by side */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+          <div ref={tablesCardRef}
+            className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-shadow hover:shadow-md"
+            style={{ opacity: 0 }}>
             <div className="grid grid-cols-1 sm:grid-cols-2">
 
               {/* Sub Akun table */}
               <div className="border-r border-gray-100">
-                <div className="px-3 py-2 border-b border-gray-100 bg-slate-50">
+                <div className="px-3 py-2 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-blue-50/40">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sub Akun</p>
                 </div>
                 <table className="w-full" style={{ fontSize: 10.5, borderCollapse: 'collapse' }}>
@@ -514,7 +738,7 @@ export default function SubAkunFluktuasiPage() {
                   </thead>
                   <tbody>
                     {subAkunTotals.map(({ group, total }, i) => (
-                      <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}
+                      <tr key={i} className={`transition-colors duration-100 ${i % 2 === 0 ? 'bg-white hover:bg-blue-50/40' : 'bg-slate-50 hover:bg-blue-50/60'}`}
                         style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td className="px-3 py-1.5 font-mono font-semibold" style={{ color: group.color }}>
                           {group.label}
@@ -538,7 +762,7 @@ export default function SubAkunFluktuasiPage() {
 
               {/* Klasifikasi table */}
               <div>
-                <div className="px-3 py-2 border-b border-gray-100 bg-slate-50">
+                <div className="px-3 py-2 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-blue-50/40">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Klasifikasi</p>
                 </div>
                 <table className="w-full" style={{ fontSize: 10.5, borderCollapse: 'collapse' }}>
@@ -550,7 +774,7 @@ export default function SubAkunFluktuasiPage() {
                   </thead>
                   <tbody>
                     {klasifikasiTotals.slice(0, 5).map((d, i) => (
-                      <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}
+                      <tr key={i} className={`transition-colors duration-100 ${i % 2 === 0 ? 'bg-white hover:bg-blue-50/40' : 'bg-slate-50 hover:bg-blue-50/60'}`}
                         style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td className="px-3 py-1.5 text-slate-600">
                           <div className="flex items-start gap-1.5">
@@ -578,14 +802,19 @@ export default function SubAkunFluktuasiPage() {
           </div>
         </div>
 
-        {/* RIGHT â€“ Filter panel */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3 flex flex-col gap-3">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">FILTER</p>
+        {/* RIGHT – Filter panel */}
+        <div ref={filterCardRef}
+          className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 flex flex-col gap-3 transition-shadow hover:shadow-md"
+          style={{ opacity: 0 }}>
+          <div className="flex items-center justify-center gap-1.5">
+            <SlidersHorizontal size={11} className="text-slate-400" />
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">FILTER</p>
+          </div>
 
           {/* Sub Akun checkboxes */}
           <div>
             <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Sub Kode Akun</p>
-            <div className="border border-gray-200 rounded-lg bg-gray-50 overflow-hidden">
+            <div ref={subAkunListRef} className="border border-gray-200 rounded-lg bg-gray-50 overflow-hidden">
               <div className="flex items-center px-2 py-1 bg-slate-100 border-b border-gray-200">
                 <span className="flex-1 text-[8.5px] font-semibold text-slate-500 uppercase">Sub Akun</span>
                 <span className="text-[8.5px] font-semibold text-slate-500 uppercase">Amount</span>
@@ -595,10 +824,10 @@ export default function SubAkunFluktuasiPage() {
                 const isChecked = filterSubAkun.size === 0 || filterSubAkun.has(g.code);
                 return (
                   <label key={g.code}
-                    className="flex items-center gap-2 px-2 py-1 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-blue-50 transition">
+                    className="flex items-center gap-2 px-2 py-1.5 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-blue-50 transition-colors duration-100">
                     <input type="checkbox" checked={isChecked}
                       onChange={() => { toggleSubAkun(g.code); setListPage(0); }}
-                      className="w-3 h-3" style={{ accentColor: g.color }} />
+                      className="w-3 h-3 rounded" style={{ accentColor: g.color }} />
                     <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: g.color }} />
                     <span className="flex-1 text-[10px] font-mono text-slate-700">{g.label}</span>
                     <span className="text-[9px] font-mono text-slate-500">{fmtCompact(amt)}</span>
@@ -609,7 +838,7 @@ export default function SubAkunFluktuasiPage() {
           </div>
 
           {/* Klasifikasi checkboxes */}
-          <div className="flex-1 flex flex-col min-h-0">
+          <div ref={klasiListRef} className="flex-1 flex flex-col min-h-0">
             <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Klasifikasi</p>
             <div className="border border-gray-200 rounded-lg bg-gray-50 flex flex-col flex-1 overflow-hidden">
               <div className="flex items-center px-2 py-1 bg-slate-100 border-b border-gray-200 flex-shrink-0">
@@ -624,10 +853,10 @@ export default function SubAkunFluktuasiPage() {
                   const isChecked = filterKlasifikasi.size === 0 || filterKlasifikasi.has(k);
                   return (
                     <label key={k}
-                      className="flex items-center gap-2 px-2 py-1 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-blue-50 transition">
+                      className="flex items-center gap-2 px-2 py-1.5 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-blue-50 transition-colors duration-100">
                       <input type="checkbox" checked={isChecked}
                         onChange={() => { toggleKlasifikasi(k); setListPage(0); }}
-                        className="w-3 h-3" style={{ accentColor: '#2563eb' }} />
+                        className="w-3 h-3 rounded" style={{ accentColor: '#2563eb' }} />
                       <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
                       <span className="flex-1 text-[9.5px] text-slate-700 leading-snug" title={k}>
                         {k}
@@ -642,14 +871,19 @@ export default function SubAkunFluktuasiPage() {
         </div>
       </div>
 
-      {/* â”€â”€ Listing table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="mx-4 mb-4 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-        <div className="border-b border-gray-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+      {/* ── Listing table ──────────────────────────────────────────── */}
+      <div ref={listingCardRef}
+        className="mx-4 mb-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-shadow hover:shadow-md"
+        style={{ opacity: 0 }}>
+        <div className="border-b border-gray-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 bg-gradient-to-r from-slate-50 to-blue-50/30">
           <div>
-            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-              LISTING OUTSTANDING SUB AKUN FLUKTUASI
-            </p>
-            <p className="text-[9px] text-slate-400">
+            <div className="flex items-center gap-1.5">
+              <BarChart3 size={11} className="text-blue-500" />
+              <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                LISTING OUTSTANDING SUB AKUN FLUKTUASI
+              </p>
+            </div>
+            <p className="text-[9px] text-slate-400 mt-0.5">
               {listingRows.length.toLocaleString('id-ID')} entri
               {listingTotalPages > 1 && ` · Hal ${listPage + 1} / ${listingTotalPages}`}
             </p>
@@ -658,12 +892,12 @@ export default function SubAkunFluktuasiPage() {
             <div className="flex items-center gap-1">
               <button disabled={listPage === 0}
                 onClick={() => setListPage(p => Math.max(0, p - 1))}
-                className="text-sm px-2.5 py-0.5 border border-gray-200 rounded bg-gray-50 text-slate-500 disabled:opacity-30 hover:bg-gray-100 transition">
+                className="text-sm px-2.5 py-0.5 border border-gray-200 rounded-lg bg-white text-slate-500 disabled:opacity-30 hover:bg-blue-50 hover:border-blue-200 transition-all duration-150 active:scale-95">
                 {'‹'}
               </button>
               <button disabled={listPage >= listingTotalPages - 1}
                 onClick={() => setListPage(p => Math.min(listingTotalPages - 1, p + 1))}
-                className="text-sm px-2.5 py-0.5 border border-gray-200 rounded bg-gray-50 text-slate-500 disabled:opacity-30 hover:bg-gray-100 transition">
+                className="text-sm px-2.5 py-0.5 border border-gray-200 rounded-lg bg-white text-slate-500 disabled:opacity-30 hover:bg-blue-50 hover:border-blue-200 transition-all duration-150 active:scale-95">
                 {'›'}
               </button>
             </div>
@@ -688,18 +922,18 @@ export default function SubAkunFluktuasiPage() {
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody ref={tableBodyRef}>
               {listingPage.map((row, ri) => {
                 const globalRi = listPage * LIST_PAGE_SIZE + ri;
                 const isPos    = row.total >= 0;
                 const color    = row.subGroup?.color ?? '#64748b';
                 return (
                   <tr key={ri}
-                    className={ri % 2 === 0 ? 'bg-white' : 'bg-slate-50'}
+                    className={`transition-colors duration-100 ${ri % 2 === 0 ? 'bg-white hover:bg-blue-50/30' : 'bg-slate-50 hover:bg-blue-50/50'}`}
                     style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td className="px-3 py-1.5 text-slate-400">{globalRi + 1}.</td>
                     <td className="px-3 py-1.5">
-                      <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold font-mono"
+                      <span className="inline-block px-1.5 py-0.5 rounded-md text-[9px] font-bold font-mono"
                         style={{ backgroundColor: color + '18', color }}>
                         {row.subGroup?.label ?? '-'}
                       </span>
@@ -721,13 +955,18 @@ export default function SubAkunFluktuasiPage() {
               })}
               {listingPage.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-slate-400">Tidak ada data sesuai filter</td>
+                  <td colSpan={5} className="py-10 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <BarChart3 className="w-8 h-8 text-slate-200" />
+                      <span className="text-slate-400 text-sm">Tidak ada data sesuai filter</span>
+                    </div>
+                  </td>
                 </tr>
               )}
             </tbody>
             {listingPage.length > 0 && (
               <tfoot>
-                <tr className="bg-slate-50 border-t border-gray-200">
+                <tr className="bg-gradient-to-r from-slate-50 to-blue-50/30 border-t border-gray-200">
                   <td colSpan={3} className="px-3 py-1.5 font-bold text-slate-600 text-xs">TOTAL (filtered)</td>
                   <td className="px-3 py-1.5 text-right font-mono font-extrabold text-sm"
                     style={{ color: totalFiltered >= 0 ? '#16a34a' : '#dc2626' }}>
@@ -744,3 +983,4 @@ export default function SubAkunFluktuasiPage() {
     </div>
   );
 }
+
