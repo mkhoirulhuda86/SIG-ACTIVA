@@ -238,92 +238,74 @@ function TrendChart({ data }: { data: { label: string; value: number }[] }) {
 // --- Skeleton Loading State --------------------------------------------------
 function PageSkeleton() {
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="flex-1 p-4">
       {/* Filter pills skeleton */}
-      <div className="flex items-center gap-2">
-        <Skeleton className="h-5 w-16 rounded-full" />
-        <Skeleton className="h-5 w-20 rounded-full" />
-        <Skeleton className="h-5 w-24 rounded-full" />
-        <Skeleton className="h-5 w-28 rounded-full" />
-        <div className="ml-auto"><Skeleton className="h-7 w-28 rounded-lg" /></div>
+      <div className="flex justify-end mb-3">
+        <Skeleton className="h-8 w-32 rounded-lg" />
       </div>
       {/* 3-col grid skeleton */}
-      <div className="grid gap-3 grid-cols-1 lg:grid-cols-[280px_1fr_270px]">
+      <div className="grid gap-3 grid-cols-1 lg:grid-cols-[280px_1fr_270px] mb-3">
         {/* Donut */}
-        <div className="bg-white rounded-xl border p-4 flex flex-col gap-3 shadow-sm">
-          <Skeleton className="h-3 w-44 mx-auto rounded" />
-          <div className="mx-auto relative">
-            <Skeleton className="h-[200px] w-[200px] rounded-full" />
-          </div>
-          <div className="space-y-2">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <Skeleton className="h-2.5 w-2.5 rounded-sm shrink-0" />
-                <Skeleton className="h-2.5 flex-1 rounded" />
-                <Skeleton className="h-2.5 w-14 rounded" />
-              </div>
-            ))}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col items-center gap-3">
+          <Skeleton className="h-3 w-40 rounded" />
+          <Skeleton className="h-[200px] w-[200px] rounded-full" />
+          <div className="w-full space-y-2">
+            {[1,2,3,4].map(i => <Skeleton key={i} className="h-5 w-full rounded" />)}
           </div>
         </div>
         {/* Center */}
         <div className="flex flex-col gap-3">
-          <div className="bg-white rounded-xl border p-4 shadow-sm">
-            <Skeleton className="h-3 w-52 mb-3 rounded" />
-            <div className="flex gap-1 mb-2">
-              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-5 w-10 rounded" />)}
-            </div>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+            <Skeleton className="h-3 w-48 rounded" />
+            <div className="flex gap-1">{[1,2,3].map(i => <Skeleton key={i} className="h-5 w-10 rounded" />)}</div>
             <Skeleton className="h-[130px] w-full rounded-lg" />
           </div>
-          <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
-            <div className="grid grid-cols-2 divide-x divide-slate-100">
-              {Array.from({ length: 2 }).map((_, ii) => (
-                <div key={ii} className="p-3 space-y-2.5">
-                  <Skeleton className="h-3 w-32 rounded" />
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="flex gap-2">
-                      <Skeleton className="h-3 flex-1 rounded" />
-                      <Skeleton className="h-3 w-16 rounded" />
-                    </div>
-                  ))}
-                </div>
-              ))}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Skeleton className="h-3 w-20 rounded" />
+                {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-5 w-full rounded" />)}
+              </div>
+              <div className="space-y-1.5">
+                <Skeleton className="h-3 w-20 rounded" />
+                {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-5 w-full rounded" />)}
+              </div>
             </div>
           </div>
         </div>
         {/* Filter */}
-        <div className="bg-white rounded-xl border p-4 space-y-3 shadow-sm">
-          <Skeleton className="h-3 w-12 mx-auto rounded" />
-          <Skeleton className="h-7 w-full rounded-lg" />
-          <div className="space-y-2">
-            {Array.from({ length: 9 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <Skeleton className="h-3 w-3 rounded" />
-                <Skeleton className="h-2.5 w-2 rounded-sm" />
-                <Skeleton className="h-2.5 flex-1 rounded" />
-                <Skeleton className="h-2.5 w-10 rounded" />
-              </div>
-            ))}
-          </div>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+          <Skeleton className="h-3 w-16 rounded mx-auto" />
+          {[1,2,3,4,5,6,7,8].map(i => <Skeleton key={i} className="h-5 w-full rounded" />)}
         </div>
       </div>
       {/* Table skeleton */}
-      <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
-        <div className="px-4 py-3 border-b bg-slate-50/60">
-          <Skeleton className="h-3 w-52 rounded" />
-          <Skeleton className="h-2.5 w-24 mt-1.5 rounded" />
-        </div>
-        <div className="p-3 space-y-2">
-          <div className="h-7 rounded-lg bg-gradient-to-r from-[#1e3a5f] to-[#1e40af] opacity-80" />
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="flex gap-3 items-center py-1">
-              <Skeleton className="h-3 w-4 rounded" />
-              <Skeleton className="h-5 w-20 rounded" />
-              <Skeleton className="h-4 w-16 rounded" />
-              <Skeleton className="h-4 flex-1 rounded" />
-              <Skeleton className="h-3 w-24 rounded" />
-              <Skeleton className="h-3 w-8 rounded" />
-            </div>
-          ))}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-2">
+        {[...Array(5)].map((_,i) => (
+          <div key={i} className="flex gap-3">
+            <Skeleton className="h-5 w-5 rounded" />
+            <Skeleton className="h-5 w-20 rounded" />
+            <Skeleton className="h-5 flex-1 rounded" />
+            <Skeleton className="h-5 w-24 rounded" />
+            <Skeleton className="h-5 w-8 rounded" />
+          </div>
+        ))}
+      </div>
+      {/* Centered loading overlay */}
+      <div className="fixed inset-0 pointer-events-none flex items-center justify-center">
+        <div className="bg-white/90 backdrop-blur-sm border border-blue-200/60 rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+          <div className="relative w-14 h-14">
+            <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
+            <div className="absolute inset-0 rounded-full border-4 border-t-blue-600 border-r-blue-300 border-b-transparent border-l-transparent animate-spin" />
+            <BarChart3 className="absolute inset-0 m-auto w-6 h-6 text-blue-600" />
+          </div>
+          <p className="text-slate-700 text-sm font-semibold tracking-wide">Memuat data fluktuasi...</p>
+          <div className="flex gap-1.5">
+            {[0,1,2].map(i => (
+              <div key={i} className="w-2 h-2 rounded-full bg-blue-500 animate-bounce"
+                style={{ animationDelay: `${i * 0.15}s` }} />
+            ))}
+          </div>
         </div>
       </div>
     </div>
