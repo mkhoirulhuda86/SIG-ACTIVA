@@ -87,17 +87,6 @@ export default function DashboardPage() {
   const fluktuasiRef = useRef<HTMLDivElement>(null);
   const trendRef     = useRef<HTMLDivElement>(null);
 
-  /* ── GSAP: stagger skeleton cards in on initial load ────────────────── */
-  useEffect(() => {
-    if (!loading || !skeletonRef.current) return;
-    const cards = skeletonRef.current.querySelectorAll('.sk-card');
-    if (!cards.length) return;
-    gsap.fromTo(cards,
-      { opacity: 0, y: 22 },
-      { opacity: 1, y: 0, duration: 0.5, ease: 'power3.out', stagger: 0.09 }
-    );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
 
   /* ── GSAP: animate grid sections in on load ──────────────── */
   useEffect(() => {
@@ -118,6 +107,18 @@ export default function DashboardPage() {
   const [loading, setLoading]       = useState(!_cache);   // full skeleton
   const [refreshing, setRefreshing] = useState(false);      // top loading bar
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  /* ── GSAP: stagger skeleton cards in on initial load ────────────────── */
+  useEffect(() => {
+    if (!loading || !skeletonRef.current) return;
+    const cards = skeletonRef.current.querySelectorAll('.sk-card');
+    if (!cards.length) return;
+    gsap.fromTo(cards,
+      { opacity: 0, y: 22 },
+      { opacity: 1, y: 0, duration: 0.5, ease: 'power3.out', stagger: 0.09 }
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   const fetchDashboardSummary = async (bustCache = false) => {
     if (!bustCache && _cache && Date.now() - _cache.ts < CACHE_TTL) {
