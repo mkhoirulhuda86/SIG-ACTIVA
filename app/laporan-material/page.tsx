@@ -238,22 +238,19 @@ export default function LaporanMaterialPage() {
     finally { setIsLoading(false); }
   }, []);
 
-  // On mount / refresh: fetch history AND latest data IN PARALLEL (eliminates sequential waterfall)
+  // On mount / refresh: single request returns history + latest data together (1 HTTP round-trip)
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
       try {
-        const [histRes, dataRes] = await Promise.all([
-          fetch('/api/material-data?action=history'),
-          fetch('/api/material-data'),  // no importDate → returns latest
-        ]);
-        if (histRes.ok) {
-          const dates = await histRes.json();
-          const sorted = dates.sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime());
+        const res = await fetch('/api/material-data?action=init');
+        if (res.ok) {
+          const { history, data } = await res.json();
+          const sorted = (history as string[]).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
           setHistoryDates(sorted);
           if (sorted.length > 0) setSelectedDate(sorted[0]);
+          setImportedData(data);
         }
-        if (dataRes.ok) setImportedData(await dataRes.json());
       } catch (error) { console.error('Error initialising material page:', error); }
       finally { setIsLoading(false); }
     };

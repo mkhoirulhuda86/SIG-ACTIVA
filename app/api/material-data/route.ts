@@ -2,6 +2,74 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
 
+// Helper to transform raw/prisma rows into MaterialData API shape
+function transformRows(data: any[]) {
+  return data.map((item: any) => ({
+    materialId: item.materialId,
+    materialName: item.materialName,
+    location: item.location,
+    stokAwal: {
+      opr: item.stokAwalOpr,
+      sap: item.stokAwalSap,
+      selisih: item.stokAwalSelisih,
+      total: item.stokAwalTotal,
+    },
+    produksi: {
+      opr: item.produksiOpr,
+      sap: item.produksiSap,
+      selisih: item.produksiSelisih,
+      total: item.produksiTotal,
+    },
+    rilis: {
+      opr: item.rilisOpr,
+      sap: item.rilisSap,
+      selisih: item.rilisSelisih,
+      total: item.rilisTotal,
+    },
+    stokAkhir: {
+      opr: item.stokAkhirOpr,
+      sap: item.stokAkhirSap,
+      selisih: item.stokAkhirSelisih,
+      total: item.stokAkhirTotal,
+    },
+    blank: item.blank ?? 0,
+    blankTotal: item.blankTotal ?? 0,
+    grandTotal: item.grandTotal ?? 0,
+  }));
+}
+
+// Single raw-SQL query: get all rows for the latest importDate in one DB round-trip
+async function fetchLatestData(targetDate?: Date): Promise<any[]> {
+  if (targetDate) {
+    return prisma.materialData.findMany({
+      where: { importDate: targetDate },
+      select: {
+        materialId: true, materialName: true, location: true,
+        stokAwalOpr: true, stokAwalSap: true, stokAwalSelisih: true, stokAwalTotal: true,
+        produksiOpr: true, produksiSap: true, produksiSelisih: true, produksiTotal: true,
+        rilisOpr: true, rilisSap: true, rilisSelisih: true, rilisTotal: true,
+        stokAkhirOpr: true, stokAkhirSap: true, stokAkhirSelisih: true, stokAkhirTotal: true,
+        blank: true, blankTotal: true, grandTotal: true,
+      },
+      orderBy: [{ materialId: 'asc' }, { location: 'asc' }],
+      take: 5000,
+    });
+  }
+  // No target date – use subquery to get latest in a single DB round-trip
+  return prisma.$queryRaw<any[]>`
+    SELECT "materialId", "materialName", location,
+           "stokAwalOpr", "stokAwalSap", "stokAwalSelisih", "stokAwalTotal",
+           "produksiOpr", "produksiSap", "produksiSelisih", "produksiTotal",
+           "rilisOpr", "rilisSap", "rilisSelisih", "rilisTotal",
+           "stokAkhirOpr", "stokAkhirSap", "stokAkhirSelisih", "stokAkhirTotal",
+           blank, "blankTotal", "grandTotal"
+    FROM material_data
+    WHERE "importDate" = (SELECT MAX("importDate") FROM material_data)
+    ORDER BY "materialId" ASC, location ASC
+    LIMIT 5000
+  `;
+}
+
 // GET - Fetch all material data or get list of import dates
 export async function GET(request: NextRequest) {
   try {
@@ -9,108 +77,46 @@ export async function GET(request: NextRequest) {
     const action = searchParams.get('action');
     const importDate = searchParams.get('importDate');
 
+    // Combined init: return history + latest data in ONE request (eliminates one HTTP round-trip)
+    if (action === 'init') {
+      const [historyRows, rawData] = await Promise.all([
+        prisma.materialData.findMany({
+          select: { importDate: true },
+          distinct: ['importDate'],
+          orderBy: { importDate: 'desc' },
+          take: 2,
+        }),
+        fetchLatestData(),
+      ]);
+      const history = historyRows
+        .map((d: any) => d.importDate.toISOString())
+        .sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime());
+      return NextResponse.json(
+        { history, data: transformRows(rawData) },
+        { headers: { 'Cache-Control': 'private, no-cache' } }
+      );
+    }
+
     // Get list of unique import dates (last 2)
     if (action === 'history') {
       const dates = await prisma.materialData.findMany({
-        select: {
-          importDate: true,
-        },
+        select: { importDate: true },
         distinct: ['importDate'],
-        orderBy: {
-          importDate: 'desc'
-        },
-        take: 2
+        orderBy: { importDate: 'desc' },
+        take: 2,
       });
-      
       return NextResponse.json(dates.map((d: any) => d.importDate));
     }
 
     // Get data for specific import date (default to latest)
-    let targetDate: Date;
-    
-    if (importDate) {
-      targetDate = new Date(importDate);
-    } else {
-      // Get the latest import date
-      const latest = await prisma.materialData.findFirst({
-        select: { importDate: true },
-        orderBy: { importDate: 'desc' }
-      });
-      
-      if (!latest) {
-        return NextResponse.json([]);
-      }
-      
-      targetDate = latest.importDate;
+    const targetDate = importDate ? new Date(importDate) : undefined;
+    const data = await fetchLatestData(targetDate);
+
+    if (!data.length && !importDate) {
+      return NextResponse.json([]);
     }
 
-    const data = await prisma.materialData.findMany({
-      where: {
-        importDate: targetDate
-      },
-      select: {
-        materialId: true,
-        materialName: true,
-        location: true,
-        stokAwalOpr: true,
-        stokAwalSap: true,
-        stokAwalSelisih: true,
-        stokAwalTotal: true,
-        produksiOpr: true,
-        produksiSap: true,
-        produksiSelisih: true,
-        produksiTotal: true,
-        rilisOpr: true,
-        rilisSap: true,
-        rilisSelisih: true,
-        rilisTotal: true,
-        stokAkhirOpr: true,
-        stokAkhirSap: true,
-        stokAkhirSelisih: true,
-        stokAkhirTotal: true,
-      },
-      orderBy: [
-        { materialId: 'asc' },
-        { location: 'asc' }
-      ],
-      take: 5000
-    });
-
-    // Transform database format back to MaterialData format
-    const transformedData = data.map((item: any) => ({
-      materialId: item.materialId,
-      materialName: item.materialName,
-      location: item.location,
-      stokAwal: {
-        opr: item.stokAwalOpr,
-        sap: item.stokAwalSap,
-        selisih: item.stokAwalSelisih,
-        total: item.stokAwalTotal,
-      },
-      produksi: {
-        opr: item.produksiOpr,
-        sap: item.produksiSap,
-        selisih: item.produksiSelisih,
-        total: item.produksiTotal,
-      },
-      rilis: {
-        opr: item.rilisOpr,
-        sap: item.rilisSap,
-        selisih: item.rilisSelisih,
-        total: item.rilisTotal,
-      },
-      stokAkhir: {
-        opr: item.stokAkhirOpr,
-        sap: item.stokAkhirSap,
-        selisih: item.stokAkhirSelisih,
-        total: item.stokAkhirTotal,
-      },
-      blank: item.blank,
-      blankTotal: item.blankTotal,
-      grandTotal: item.grandTotal,
-    }));
-
-    return NextResponse.json(transformedData);
+    return NextResponse.json(transformRows(data));
   } catch (error) {
     console.error('Error fetching material data:', error);
     return NextResponse.json(
