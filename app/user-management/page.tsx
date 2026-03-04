@@ -96,28 +96,40 @@ export default function UserManagementPage() {
     }
   }, []);
 
-  // ── Page entrance when data loads ─────────────────────────────────
+  // ── Page entrance — runs once on mount (not gated on isLoading) ───
+  useEffect(() => {
+    // Use a small delay so DOM is fully painted
+    const tid = setTimeout(() => {
+      if (pageRef.current) {
+        gsap.fromTo(pageRef.current,
+          { opacity: 0, y: 16 },
+          { opacity: 1, y: 0, duration: 0.55, ease: 'power3.out' }
+        );
+      }
+    }, 80);
+    return () => clearTimeout(tid);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Stat-cards + table card animate in when loading finishes ────────
   useEffect(() => {
     if (isLoading) return;
-    if (pageRef.current) {
-      gsap.fromTo(pageRef.current,
-        { opacity: 0, y: 16 },
-        { opacity: 1, y: 0, duration: 0.55, ease: 'power3.out' }
-      );
-    }
-    if (statsRef.current) {
-      const cards = statsRef.current.querySelectorAll('[data-stat-card]');
-      gsap.fromTo(cards,
-        { opacity: 0, y: 28, scale: 0.95 },
-        { opacity: 1, y: 0, scale: 1, duration: 0.55, ease: 'power3.out', stagger: 0.08, delay: 0.1 }
-      );
-    }
-    if (tableCardRef.current) {
-      gsap.fromTo(tableCardRef.current,
-        { opacity: 0, y: 32, scale: 0.98 },
-        { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: 'power3.out', delay: 0.22 }
-      );
-    }
+    const tid = setTimeout(() => {
+      if (statsRef.current) {
+        const cards = statsRef.current.querySelectorAll('[data-stat-card]');
+        gsap.fromTo(cards,
+          { opacity: 0, y: 28, scale: 0.95 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.55, ease: 'power3.out', stagger: 0.08 }
+        );
+      }
+      if (tableCardRef.current) {
+        gsap.fromTo(tableCardRef.current,
+          { opacity: 0, y: 32, scale: 0.98 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: 'power3.out', delay: 0.18 }
+        );
+      }
+    }, 50);
+    return () => clearTimeout(tid);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
@@ -147,13 +159,18 @@ export default function UserManagementPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [users, isLoading]);
 
-  // ── Add-button pulse on mount ──────────────────────────────────────
+  // ── Add-button pulse when visible ────────────────────────────────
   useEffect(() => {
-    if (!addBtnRef.current || isLoading) return;
-    gsap.fromTo(addBtnRef.current,
-      { scale: 0.8, opacity: 0 },
-      { scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(2)', delay: 0.4 }
-    );
+    if (isLoading || !addBtnRef.current) return;
+    const tid = setTimeout(() => {
+      if (addBtnRef.current) {
+        gsap.fromTo(addBtnRef.current,
+          { scale: 0.8, opacity: 0 },
+          { scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(2)' }
+        );
+      }
+    }, 350);
+    return () => clearTimeout(tid);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
@@ -202,17 +219,13 @@ export default function UserManagementPage() {
     }
     setError('');
     setShowModal(true);
-    // Animate modal in
+    // Animate modal in — gsap.set hides immediately, then fromTo reveals
     requestAnimationFrame(() => {
       if (modalRef.current && modalBoxRef.current) {
-        gsap.fromTo(modalRef.current,
-          { opacity: 0 },
-          { opacity: 1, duration: 0.25, ease: 'power2.out' }
-        );
-        gsap.fromTo(modalBoxRef.current,
-          { opacity: 0, scale: 0.88, y: 32 },
-          { opacity: 1, scale: 1, y: 0, duration: 0.45, ease: 'back.out(1.7)', delay: 0.03 }
-        );
+        gsap.set(modalRef.current, { opacity: 0 });
+        gsap.set(modalBoxRef.current, { opacity: 0, scale: 0.88, y: 32 });
+        gsap.to(modalRef.current, { opacity: 1, duration: 0.25, ease: 'power2.out' });
+        gsap.to(modalBoxRef.current, { opacity: 1, scale: 1, y: 0, duration: 0.45, ease: 'back.out(1.7)', delay: 0.03 });
         // Stagger form fields in
         setTimeout(() => {
           if (!modalBoxRef.current) return;
@@ -383,8 +396,10 @@ export default function UserManagementPage() {
   );
 
   // ── Loading skeleton ──────────────────────────────────────────────
-  if (isLoading) return shell(
-    <div className="flex-1 p-4 sm:p-6 md:p-8">
+  if (isLoading) return (
+    <AuthGuard>
+      {shell(
+        <div className="flex-1 p-4 sm:p-6 md:p-8">
       {/* Stat cards skeleton */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         {[1,2,3].map(i => (
@@ -413,11 +428,14 @@ export default function UserManagementPage() {
         ))}
       </div>
     </div>
+      )}
+    </AuthGuard>
   );
 
-  return shell(
+  return (
     <AuthGuard>
-      <div ref={pageRef} style={{ opacity: 0 }} className="flex-1 p-3 sm:p-4 md:p-8">
+      {shell(
+        <div ref={pageRef} className="flex-1 p-3 sm:p-4 md:p-8">
         <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
 
           {/* ── Stat Cards ──────────────────────────────────────── */}
@@ -469,7 +487,6 @@ export default function UserManagementPage() {
             <button
               ref={addBtnRef}
               onClick={() => handleOpenModal()}
-              style={{ opacity: 0 }}
               className="flex items-center gap-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white px-4 py-2.5 rounded-lg shadow-md hover:shadow-lg transition-all font-medium text-sm"
               onMouseEnter={e => gsap.to(e.currentTarget, { scale: 1.04, duration: 0.18, ease: 'power2.out' })}
               onMouseLeave={e => gsap.to(e.currentTarget, { scale: 1, duration: 0.18, ease: 'power2.out' })}
@@ -489,7 +506,7 @@ export default function UserManagementPage() {
           )}
 
           {/* ── Users Table ──────────────────────────────────────── */}
-          <div ref={tableCardRef} style={{ opacity: 0 }} className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+          <div ref={tableCardRef} className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
             <style jsx>{`
               .table-scrollbar::-webkit-scrollbar { height: 6px; }
               .table-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
@@ -612,12 +629,10 @@ export default function UserManagementPage() {
         {showModal && (
           <div
             ref={modalRef}
-            style={{ opacity: 0 }}
             className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4"
           >
             <div
               ref={modalBoxRef}
-              style={{ opacity: 0 }}
               className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden"
             >
               {/* Modal Header */}
@@ -782,6 +797,7 @@ export default function UserManagementPage() {
           </div>
         )}
       </div>
+      )}
     </AuthGuard>
   );
 }
