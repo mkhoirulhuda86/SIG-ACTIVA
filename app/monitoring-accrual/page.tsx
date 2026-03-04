@@ -3071,159 +3071,90 @@ export default function MonitoringAccrualPage() {
           ) : (
             <>
               {/* Filter Bar */}
-              <div ref={filterBarRef} className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/80 shadow-sm p-3 sm:p-4 mb-5 sm:mb-6">
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <div ref={filterBarRef} className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 sm:p-4 mb-5" style={{ opacity: 0 }}>
+                <div className="flex flex-wrap items-center gap-2">
                   {/* Search */}
-                  <div className="relative w-full sm:flex-1 sm:min-w-[220px]">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                     <input
                       type="text"
-                      placeholder="Cari accrual, vendor, kode akun..."
+                      placeholder="Cari akun, vendor, deskripsi..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-400/50 focus:border-red-300 text-sm transition-all duration-200 bg-gray-50/60 placeholder:text-slate-400"
+                      className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent text-xs transition-all"
                     />
                   </div>
 
-                  {/* Visually-grouped action buttons */}
-                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
+                  <div className="flex flex-wrap gap-2 ml-auto">
+                    {[
+                      { label: 'Import Accrual',    icon: <Upload size={13}/>,   onClick: () => setShowImportExcelModal(true) },
+                      { label: 'Import Realisasi',  icon: <Upload size={13}/>,   onClick: () => setShowImportGlobalModal(true) },
+                      { label: 'Per Item',          icon: <Download size={13}/>, onClick: handleDownloadAllItemsReport },
+                      { label: 'Export Global',     icon: <Download size={13}/>, onClick: handleDownloadGlobalReport },
+                    ].map((btn, i) => (
+                      <button key={i}
+                        onClick={btn.onClick}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all duration-200 active:scale-95"
+                        style={{ backgroundColor: '#dc2626', color: 'white' }}
+                        onMouseEnter={e => gsap.to(e.currentTarget, { scale: 1.05, duration: 0.15, ease: 'power2.out' })}
+                        onMouseLeave={e => gsap.to(e.currentTarget, { scale: 1,    duration: 0.15, ease: 'power2.out' })}
+                      >
+                        {btn.icon}
+                        <span className="hidden sm:inline">{btn.label}</span>
+                      </button>
+                    ))}
 
-                    {/* ── Import group ── */}
-                    <div className="flex gap-1.5 bg-indigo-50/80 border border-indigo-100 rounded-xl p-1">
-                      <button
-                        onClick={() => setShowImportExcelModal(true)}
-                        className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 rounded-lg transition-all duration-200 text-xs font-semibold active:scale-95 shadow-sm shadow-indigo-200"
-                        title="Import Excel Accrual"
-                      >
-                        <Upload size={13} />
-                        <span className="hidden sm:inline">Import Accrual</span>
-                        <span className="sm:hidden">Accrual</span>
-                      </button>
-                      <button
-                        onClick={() => setShowImportGlobalModal(true)}
-                        className="flex items-center gap-1.5 bg-indigo-500 hover:bg-indigo-600 text-white px-2.5 py-1.5 rounded-lg transition-all duration-200 text-xs font-semibold active:scale-95 shadow-sm shadow-indigo-200"
-                        title="Import Realisasi Global"
-                      >
-                        <Upload size={13} />
-                        <span className="hidden sm:inline">Import Realisasi</span>
-                        <span className="sm:hidden">Realisasi</span>
-                      </button>
-                    </div>
-
-                    {/* ── Export group ── */}
-                    <div className="flex gap-1.5 bg-emerald-50/80 border border-emerald-100 rounded-xl p-1">
-                      <button
-                        onClick={handleDownloadAllItemsReport}
-                        className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-lg transition-all duration-200 text-xs font-semibold active:scale-95 shadow-sm shadow-emerald-200"
-                        title="Export Per Item (All)"
-                      >
-                        <Download size={13} />
-                        <span className="hidden sm:inline">Per Item</span>
-                        <span className="sm:hidden">Item</span>
-                      </button>
-                      <button
-                        onClick={handleDownloadGlobalReport}
-                        className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-2.5 py-1.5 rounded-lg transition-all duration-200 text-xs font-semibold active:scale-95 shadow-sm shadow-emerald-200"
-                        title="Export Global"
-                      >
-                        <Download size={13} />
-                        <span className="hidden sm:inline">Global</span>
-                        <span className="sm:hidden">Glb</span>
-                      </button>
-                    </div>
-
-                    {/* ── Danger: delete selected ── */}
                     {canEdit && selectedIds.size > 0 && (
                       <button
                         onClick={handleDeleteSelected}
                         disabled={deletingSelected}
-                        className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-xl transition-all duration-200 text-xs font-semibold active:scale-95 shadow-sm shadow-rose-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all duration-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{ backgroundColor: '#b91c1c', color: 'white' }}
+                        onMouseEnter={e => gsap.to(e.currentTarget, { scale: 1.05, duration: 0.15 })}
+                        onMouseLeave={e => gsap.to(e.currentTarget, { scale: 1,    duration: 0.15 })}
                       >
                         <Trash2 size={13} />
-                        {deletingSelected ? 'Menghapus...' : `Hapus (${selectedIds.size})`}
+                        <span>{deletingSelected ? 'Menghapus...' : `Hapus (${selectedIds.size})`}</span>
                       </button>
                     )}
 
-                    {/* ── Primary CTA: Tambah ── */}
                     {canEdit && (
                       <button
                         onClick={() => setShowModal(true)}
-                        className="flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white px-3 py-2 rounded-xl transition-all duration-200 text-xs font-semibold active:scale-95 shadow-md shadow-red-200 hover:shadow-red-300"
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all duration-200 active:scale-95"
+                        style={{ backgroundColor: '#dc2626', color: 'white' }}
+                        onMouseEnter={e => gsap.to(e.currentTarget, { scale: 1.05, duration: 0.15 })}
+                        onMouseLeave={e => gsap.to(e.currentTarget, { scale: 1,    duration: 0.15 })}
                       >
-                        <Plus size={14} />
+                        <Plus size={13} />
                         <span className="hidden sm:inline">Tambah Accrual</span>
                         <span className="sm:hidden">Tambah</span>
                       </button>
                     )}
                   </div>
                 </div>
-                {/* Result count chip */}
-                {debouncedSearchTerm && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="text-xs text-slate-500">
-                      <span className="font-semibold text-red-600">{filteredData.length}</span> hasil untuk &quot;<span className="italic">{debouncedSearchTerm}</span>&quot;
-                    </span>
-                    <button
-                      onClick={() => setSearchTerm('')}
-                      className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-0.5"
-                    >
-                      <X size={11} /> Hapus
-                    </button>
-                  </div>
-                )}
               </div>
 
           {/* Metric Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-5 sm:mb-6">
-            {/* Card 1 — Outstanding Saldo */}
-            <div ref={metricCard1Ref} className="relative bg-white rounded-2xl border border-red-100 shadow-sm p-5 overflow-hidden group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 cursor-default">
-              {/* Soft blob */}
-              <div className="absolute -top-6 -right-6 w-32 h-32 bg-gradient-to-br from-red-100 to-rose-50 rounded-full opacity-70 group-hover:scale-110 transition-transform duration-500" />
-              {/* Bottom accent */}
-              <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-gradient-to-r from-red-600 via-rose-500 to-red-400 rounded-b-2xl" />
-              <div className="relative flex items-start justify-between mb-4">
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">Outstanding Saldo</p>
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg shadow-red-200 group-hover:shadow-red-300 transition-shadow">
-                  <TrendingDown size={19} className="text-white" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+            {[
+              { ref: metricCard1Ref, label: 'Outstanding Saldo',  value: formatCurrency(Math.abs(displaySaldo)), dot: 'bg-red-500',   sub: 'Total saldo outstanding accrual' },
+              { ref: metricCard2Ref, label: 'Jumlah Accrual',     value: String(displayCount) + ' item',         dot: 'bg-blue-500',  sub: 'Total item accrual tercatat' },
+              { ref: metricCard3Ref, label: 'Total Periode',      value: String(displayPeriodes) + ' periode',   dot: 'bg-green-500', sub: 'Jumlah periode aktif' },
+            ].map((m, i) => (
+              <div key={i} ref={m.ref}
+                className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-all duration-200 group cursor-default"
+                style={{ opacity: 0 }}
+                onMouseEnter={e => gsap.to(e.currentTarget, { y: -3, duration: 0.2, ease: 'power2.out' })}
+                onMouseLeave={e => gsap.to(e.currentTarget, { y:  0, duration: 0.2, ease: 'power2.out' })}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`w-2.5 h-2.5 rounded-full ${m.dot} transition-transform duration-200 group-hover:scale-125`} />
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{m.label}</p>
                 </div>
+                <h3 className="text-xl font-bold text-slate-800 mt-1 font-mono">{m.value}</h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">{m.sub}</p>
               </div>
-              <h3 className="relative text-2xl font-black text-slate-800 tabular-nums leading-tight">
-                {formatCurrency(Math.abs(displaySaldo))}
-              </h3>
-              <p className="relative text-[11px] text-slate-400 mt-2 font-medium">Total saldo outstanding accrual</p>
-            </div>
-
-            {/* Card 2 — Jumlah Accrual */}
-            <div ref={metricCard2Ref} className="relative bg-white rounded-2xl border border-blue-100 shadow-sm p-5 overflow-hidden group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 cursor-default">
-              <div className="absolute -top-6 -right-6 w-32 h-32 bg-gradient-to-br from-blue-100 to-sky-50 rounded-full opacity-70 group-hover:scale-110 transition-transform duration-500" />
-              <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-gradient-to-r from-blue-600 via-sky-500 to-blue-400 rounded-b-2xl" />
-              <div className="relative flex items-start justify-between mb-4">
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">Jumlah Accrual</p>
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500 to-sky-600 flex items-center justify-center shadow-lg shadow-blue-200 group-hover:shadow-blue-300 transition-shadow">
-                  <Activity size={19} className="text-white" />
-                </div>
-              </div>
-              <h3 className="relative text-2xl font-black text-slate-800 tabular-nums leading-tight">
-                {displayCount} <span className="text-sm font-semibold text-slate-400">item</span>
-              </h3>
-              <p className="relative text-[11px] text-slate-400 mt-2 font-medium">Total item accrual tercatat</p>
-            </div>
-
-            {/* Card 3 — Total Periode */}
-            <div ref={metricCard3Ref} className="relative bg-white rounded-2xl border border-emerald-100 shadow-sm p-5 overflow-hidden group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 cursor-default">
-              <div className="absolute -top-6 -right-6 w-32 h-32 bg-gradient-to-br from-emerald-100 to-green-50 rounded-full opacity-70 group-hover:scale-110 transition-transform duration-500" />
-              <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-gradient-to-r from-emerald-600 via-green-500 to-emerald-400 rounded-b-2xl" />
-              <div className="relative flex items-start justify-between mb-4">
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">Total Periode</p>
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-200 group-hover:shadow-emerald-300 transition-shadow">
-                  <DollarSign size={19} className="text-white" />
-                </div>
-              </div>
-              <h3 className="relative text-2xl font-black text-slate-800 tabular-nums leading-tight">
-                {displayPeriodes} <span className="text-sm font-semibold text-slate-400">periode</span>
-              </h3>
-              <p className="relative text-[11px] text-slate-400 mt-2 font-medium">Jumlah periode aktif</p>
-            </div>
+            ))}
           </div>
 
           {/* Table */}
@@ -3247,7 +3178,7 @@ export default function MonitoringAccrualPage() {
             `}</style>
 
             {/* Table caption bar */}
-            <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-gray-50 flex items-center justify-between">
+            <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-red-50/30 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-1.5 h-5 bg-gradient-to-b from-red-500 to-rose-600 rounded-full" />
                 <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Data Accrual</span>
@@ -3261,47 +3192,48 @@ export default function MonitoringAccrualPage() {
             </div>
 
             <div className="table-container custom-scrollbar">
-              <table className="w-full text-sm" style={{ minWidth: '1900px' }}>
-                <thead className="sticky top-0 z-[5]">
-                  <tr className="bg-gradient-to-r from-slate-700 to-slate-800 border-b-2 border-slate-600">
+              <table className="w-full text-sm" style={{ minWidth: '1900px', borderCollapse: 'collapse' }}>
+                <thead style={{ background: 'linear-gradient(90deg,#7f1d1d,#dc2626)', position: 'sticky', top: 0, zIndex: 10 }}>
+                  <tr>
                     {canEdit && (
-                      <th className="px-2 py-3.5 text-center whitespace-nowrap w-10">
+                      <th className="px-3 py-3 text-center w-10">
                         <input
                           type="checkbox"
+                          className="w-3.5 h-3.5 rounded cursor-pointer accent-white"
                           checked={filteredData.length > 0 && filteredData.every((item) => selectedIds.has(item.id))}
                           onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedIds(new Set(filteredData.map((item) => item.id)));
-                            } else {
-                              setSelectedIds(new Set());
-                            }
+                            if (e.target.checked) setSelectedIds(new Set(filteredData.map((item) => item.id)));
+                            else setSelectedIds(new Set());
                           }}
-                          className="rounded border-slate-400 text-red-500 focus:ring-red-400"
-                          title="Pilih semua"
                         />
                       </th>
                     )}
-                    <th className="px-3 py-3.5 text-center whitespace-nowrap w-10">
-                      <ChevronDown size={14} className="text-slate-400 mx-auto" />
-                    </th>
-                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Company Code</th>
-                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">No PO</th>
-                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Assignment/Order</th>
-                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Kode Akun Accrual</th>
-                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Kode Akun Biaya</th>
-                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Vendor</th>
-                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Deskripsi</th>
-                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Header Text</th>
-                    <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Klasifikasi</th>
-                    <th className="px-4 py-3.5 text-right text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Amount</th>
-                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Cost Center</th>
-                    <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Start Date</th>
-                    <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap">Periode</th>
-                    <th className="px-3 py-3.5 text-right text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap" style={{ maxWidth: '140px' }}>Saldo Awal</th>
-                    <th className="px-3 py-3.5 text-right text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap" style={{ maxWidth: '140px' }}>Total Accrual</th>
-                    <th className="px-3 py-3.5 text-right text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap" style={{ maxWidth: '140px' }}>Total Realisasi</th>
-                    <th className="px-3 py-3.5 text-right text-[11px] font-bold text-amber-300 uppercase tracking-wider whitespace-nowrap" style={{ maxWidth: '140px' }}>Saldo</th>
-                    <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '140px' }}>Actions</th>
+                    {[
+                      { label: '▼',               align: 'center' },
+                      { label: 'Company Code',     align: 'left' },
+                      { label: 'No PO',            align: 'left' },
+                      { label: 'Assignment/Order', align: 'left' },
+                      { label: 'Kode Akun Accrual',align: 'left' },
+                      { label: 'Kode Akun Biaya',  align: 'left' },
+                      { label: 'Vendor',           align: 'left' },
+                      { label: 'Deskripsi',        align: 'left' },
+                      { label: 'Header Text',      align: 'left' },
+                      { label: 'Klasifikasi',      align: 'center' },
+                      { label: 'Amount',           align: 'right' },
+                      { label: 'Cost Center',      align: 'left' },
+                      { label: 'Start Date',       align: 'center' },
+                      { label: 'Periode',          align: 'center' },
+                      { label: 'Saldo Awal',       align: 'right' },
+                      { label: 'Total Accrual',    align: 'right' },
+                      { label: 'Total Realisasi',  align: 'right' },
+                      { label: 'Saldo',            align: 'right' },
+                      { label: 'Actions',          align: 'center' },
+                    ].map(h => (
+                      <th key={h.label} className="px-3 py-3 whitespace-nowrap"
+                        style={{ textAlign: h.align as any, color: '#fecaca', fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        {h.label}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody ref={tableBodyRef} className="divide-y divide-gray-100">
@@ -3450,11 +3382,11 @@ export default function MonitoringAccrualPage() {
                                 <td></td>
                               </tr>
 
-                              {isVendorExpanded && items.map((item) => {
+                              {isVendorExpanded && items.map((item, idx) => {
                           const isExpanded = expandedRows.has(item.id);
                           return (
                             <React.Fragment key={item.id}>
-                              <tr className="tr-item bg-white hover:bg-slate-50/80 transition-colors animate-slide-down border-l-4 border-l-transparent hover:border-l-red-200">
+                              <tr className={`tr-item transition-colors duration-100 animate-slide-down ${idx % 2 === 0 ? 'bg-white hover:bg-red-50/20' : 'bg-slate-50/50 hover:bg-red-50/30'}`}>
                                 {canEdit && (
                                   <td className="px-2 py-3.5 text-center">
                                     <input
