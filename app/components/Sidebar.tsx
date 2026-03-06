@@ -206,31 +206,44 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                   <li key={item.href}>
                     {/* Parent item */}
                     {hasChildren ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleMenu(item.href)}
-                        onMouseEnter={e => handleItemHover(e.currentTarget as HTMLElement, true)}
-                        onMouseLeave={e => handleItemHover(e.currentTarget as HTMLElement, false)}
-                        className={cn(
-                          'group w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative',
-                          isParentActive
-                            ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
-                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                        )}
-                      >
+                      <div className={cn(
+                        'group flex items-center rounded-lg transition-colors relative',
+                        isParentActive
+                          ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                      )}>
                         {isParentActive && (
                           <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
                         )}
-                        <Icon size={17} className={cn('shrink-0 transition-transform group-hover:scale-110', isParentActive ? 'text-primary' : '')} />
-                        <span className="flex-1 truncate text-left">{item.label}</span>
-                        {item.badge && (
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{item.badge}</Badge>
-                        )}
-                        {isOpen
-                          ? <ChevronDown size={14} className="shrink-0 opacity-60" />
-                          : <ChevronRight size={14} className="shrink-0 opacity-40" />
-                        }
-                      </button>
+                        {/* Navigates to parent href */}
+                        <Link
+                          href={item.href}
+                          onClick={() => {
+                            handleLinkClick();
+                            setOpenMenus(prev => new Set([...prev, item.href]));
+                          }}
+                          onMouseEnter={e => handleItemHover(e.currentTarget as HTMLElement, true)}
+                          onMouseLeave={e => handleItemHover(e.currentTarget as HTMLElement, false)}
+                          className="flex items-center gap-3 px-3 py-2.5 flex-1 min-w-0 text-sm font-medium"
+                        >
+                          <Icon size={17} className={cn('shrink-0 transition-transform group-hover:scale-110', isParentActive ? 'text-primary' : '')} />
+                          <span className="flex-1 truncate">{item.label}</span>
+                          {item.badge && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{item.badge}</Badge>
+                          )}
+                        </Link>
+                        {/* Chevron toggles submenu only */}
+                        <button
+                          type="button"
+                          onClick={() => toggleMenu(item.href)}
+                          className="px-2 py-2.5 shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+                        >
+                          {isOpen
+                            ? <ChevronDown size={14} />
+                            : <ChevronRight size={14} />
+                          }
+                        </button>
+                      </div>
                     ) : (
                       <Tooltip>
                         <TooltipTrigger asChild>
