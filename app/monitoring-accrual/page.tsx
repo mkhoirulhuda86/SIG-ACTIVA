@@ -576,9 +576,9 @@ export default function MonitoringAccrualPage() {
     return cache;
   }, [filteredData, calculateItemAccrual, calculateActualRealisasi]);
 
-  // Calculate total saldo for metric card (saldo awal + total accrual - total realisasi)
+  // Calculate total saldo for metric card — uses filteredData so it matches what's visible
   const totalSaldo = useMemo(() => {
-    return accrualData.reduce((sum, item) => {
+    return filteredData.reduce((sum, item) => {
       const cached = itemTotalsCache.get(item.id);
       if (cached) {
         return sum + (cached.saldoAwal + cached.accrual - cached.realisasi);
@@ -588,7 +588,7 @@ export default function MonitoringAccrualPage() {
       const realisasi = calculateItemRealisasi(item);
       return sum + (saldoAwal + accrual - realisasi);
     }, 0);
-  }, [accrualData, itemTotalsCache]);
+  }, [filteredData, itemTotalsCache]);
 
   // ── Animated metric counters (placed here after useMemo) ─────────────
   useEffect(() => {
