@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight, Trash2, ChevronDown, Loader2, Sparkles } from 'lucide-react';
+import { Upload, FileSpreadsheet, Download, ChevronLeft, ChevronRight, Trash2, ChevronDown, Loader2, Sparkles, RotateCcw } from 'lucide-react';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { gsap } from 'gsap';
 import { animate as animeAnimate, stagger as animeStagger } from 'animejs';
@@ -897,6 +897,7 @@ export default function FluktuasiOIPage() {
   const [kwMode, setKwMode] = useState<'normal' | 'regex' | 'not' | 'docno' | 'col'>('normal');
   const [colHeader, setColHeader] = useState('');
   const [colPattern, setColPattern] = useState('');
+  const [isReapplying, setIsReapplying] = useState(false);
 
   // ── DB Akun Periode States ─────────────────────────────────────────────────
   const [dbAkunPeriodes,  setDbAkunPeriodes]  = useState<AkunPeriodeRecord[]>([]);
@@ -1121,6 +1122,26 @@ export default function FluktuasiOIPage() {
     } catch (error) {
       console.error('Error deleting all keywords:', error);
       toast.error('Gagal menghapus semua keyword');
+    }
+  };
+
+  const handleReapplyKeywords = async () => {
+    if (!confirm(`Re-terapkan ${keywords.length} keyword ke seluruh data yang tersimpan? Proses ini akan memperbarui klasifikasi semua record di database.`)) return;
+    setIsReapplying(true);
+    try {
+      const res    = await fetch('/api/fluktuasi/re-apply-keywords', { method: 'POST' });
+      const result = await res.json();
+      if (result.success) {
+        toast.success(result.message);
+        loadDbStats();
+      } else {
+        toast.error(result.error ?? 'Gagal re-terapkan keyword');
+      }
+    } catch (error) {
+      console.error('Error re-applying keywords:', error);
+      toast.error('Gagal re-terapkan keyword');
+    } finally {
+      setIsReapplying(false);
     }
   };
 
@@ -2343,13 +2364,24 @@ export default function FluktuasiOIPage() {
                     </button>
                   )}
                   {keywords.length > 0 && (
-                    <button
-                      onClick={handleDeleteAllKeywords}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
-                    >
-                      <Trash2 size={16} />
-                      Hapus Semua
-                    </button>
+                    <>
+                      <button
+                        onClick={handleReapplyKeywords}
+                        disabled={isReapplying}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                        title="Re-proses klasifikasi seluruh data tersimpan menggunakan keyword saat ini"
+                      >
+                        <RotateCcw size={16} className={isReapplying ? 'animate-spin' : ''} />
+                        {isReapplying ? 'Memproses...' : 'Re-terapkan ke DB'}
+                      </button>
+                      <button
+                        onClick={handleDeleteAllKeywords}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
+                      >
+                        <Trash2 size={16} />
+                        Hapus Semua
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={() => {
