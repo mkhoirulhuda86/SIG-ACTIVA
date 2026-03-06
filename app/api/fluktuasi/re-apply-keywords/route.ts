@@ -130,73 +130,87 @@ function matchKeywords(
 // klasifikasi on all FluktuasiAkunPeriode records.
 export async function POST() {
   try {
-    // 1. Fetch all keywords
-    const keywords = await prisma.fluktuasiKeyword.findMany({
-      orderBy: [{ priority: 'desc' }, { keyword: 'asc' }],
-    }) as KW[];
+    // 1. Fetch keywords + all sheet rows in parallel (2 queries total)
+    const [keywords, allSheets] = await Promise.all([
+      prisma.fluktuasiKeyword.findMany({
+        orderBy: [{ priority: 'desc' }, { keyword: 'asc' }],
+      }) as Promise<KW[]>,
+      prisma.fluktuasiSheetRows.findMany({
+        select: { accountCode: true, rows: true },
+      }),
+    ]);
 
     if (!keywords.length) {
       return NextResponse.json({ success: false, error: 'Belum ada keyword tersimpan.' }, { status: 400 });
     }
-
-    // 2. Fetch all account codes that have stored rows
-    const accounts = await prisma.fluktuasiSheetRows.findMany({
-      select: { accountCode: true },
-    });
-
-    if (!accounts.length) {
+    if (!allSheets.length) {
       return NextResponse.json({ success: false, error: 'Tidak ada data baris tersimpan. Upload file terlebih dahulu.' }, { status: 400 });
     }
 
-    let updatedRecords = 0;
+    // 2. Pre-filter keywords once (avoids repeated filter inside matchKeywords)
+    const klasKws = (keywords as KW[]).filter(k => k.type === 'klasifikasi').sort((a, b) => b.priority - a.priority);
 
-    // 3. Process each account one by one to avoid loading all rows at once
-    for (const { accountCode } of accounts) {
-      const sheet = await prisma.fluktuasiSheetRows.findUnique({
-        where:  { accountCode },
-        select: { rows: true },
-      });
-      if (!sheet) continue;
+    // 3. Process all sheets in memory → build update map: accountCode+periode → klasifikasi
+    type UpdateItem = { accountCode: string; periode: string; klasifikasi: string };
+    const updates: UpdateItem[] = [];
 
+    for (const sheet of allSheets) {
       const rows = sheet.rows as Record<string, unknown>[];
       if (!rows?.length) continue;
 
-      // Aggregate per period: collect distinct klasifikasi parts
       const periodeMap = new Map<string, Set<string>>();
 
       for (const row of rows) {
-        const p          = String(row['__periode']         ?? '').trim();
+        const p = String(row['__periode'] ?? '').trim();
         if (!p) continue;
+
         const sourceText = String(row['__klasifikasi_raw'] ?? '').trim();
         const docnoText  = String(row['__docno_raw']       ?? '').trim();
-
-        const matched = matchKeywords(sourceText, keywords, 'klasifikasi', docnoText, row as Record<string, unknown>);
+        const matched    = matchKeywords(sourceText, klasKws, 'klasifikasi', docnoText, row);
 
         if (!periodeMap.has(p)) periodeMap.set(p, new Set<string>());
         if (matched) {
-          // split '; '-joined multi-results into individual parts
           for (const part of matched.split(';').map(s => s.trim()).filter(Boolean)) {
             periodeMap.get(p)!.add(part);
           }
         }
       }
 
-      // 4. Update FluktuasiAkunPeriode for each period
       for (const [periode, klasSet] of periodeMap.entries()) {
-        const klasifikasi = [...klasSet].join('; ');
-        const result = await prisma.fluktuasiAkunPeriode.updateMany({
-          where: { accountCode, periode },
-          data:  { klasifikasi },
+        updates.push({
+          accountCode:  sheet.accountCode,
+          periode,
+          klasifikasi: [...klasSet].join('; '),
         });
-        updatedRecords += result.count;
       }
+    }
+
+    if (!updates.length) {
+      return NextResponse.json({ success: true, message: 'Tidak ada record untuk diperbarui.', updatedRecords: 0 });
+    }
+
+    // 4. Fire all updates concurrently (Prisma connection pool handles concurrency)
+    const BATCH = 50; // chunk size to avoid overwhelming the pool
+    let updatedRecords = 0;
+
+    for (let i = 0; i < updates.length; i += BATCH) {
+      const chunk = updates.slice(i, i + BATCH);
+      const results = await Promise.all(
+        chunk.map(u =>
+          prisma.fluktuasiAkunPeriode.updateMany({
+            where: { accountCode: u.accountCode, periode: u.periode },
+            data:  { klasifikasi: u.klasifikasi },
+          })
+        )
+      );
+      updatedRecords += results.reduce((s, r) => s + r.count, 0);
     }
 
     return NextResponse.json({
       success: true,
-      message: `Klasifikasi berhasil diperbarui untuk ${updatedRecords} record dari ${accounts.length} akun.`,
+      message: `Klasifikasi berhasil diperbarui untuk ${updatedRecords} record dari ${allSheets.length} akun.`,
       updatedRecords,
-      accountsProcessed: accounts.length,
+      accountsProcessed: allSheets.length,
     });
   } catch (error) {
     console.error('Error re-applying keywords:', error);
