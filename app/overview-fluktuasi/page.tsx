@@ -678,6 +678,9 @@ export default function OverviewFluktuasiPage() {
     lastTwo, momGap, momPct,
   } = filteredStats;
 
+  // Default: show top 5 only; when user has explicitly picked items in filter → show all
+  const gaugeData = filterKlasifikasi.size === 0 ? byKlasifikasi.slice(0, 5) : byKlasifikasi;
+
   // Paginated listing (cheap slice — not in the large memo)
   const listingTotalPages = Math.ceil(listingRows.length / LIST_PAGE_SIZE);
   const listingPage = useMemo(
@@ -964,13 +967,19 @@ export default function OverviewFluktuasiPage() {
                 </CardHeader>
                 <CardContent className="p-3 pt-2">
                   <div className="flex flex-wrap justify-center gap-3">
-                    {byKlasifikasi.map((d, i) => (
+                    {gaugeData.map((d, i) => (
                       <SemiGauge key={i} value={Math.abs(d.value)} max={maxAbsKlasi} label={d.label} amount={d.value} color={d.color} animDelay={i * 60} />
                     ))}
                   </div>
+                  {filterKlasifikasi.size === 0 && byKlasifikasi.length > 5 && (
+                    <p className="text-center text-[9px] text-slate-400 mt-2">
+                      Menampilkan 5 dari {byKlasifikasi.length} klasifikasi —{' '}
+                      <span className="text-blue-500">centang semua di filter untuk lihat seluruhnya</span>
+                    </p>
+                  )}
                   <Separator className="mt-3 mb-2" />
                   <div className="space-y-2">
-                    {byKlasifikasi.map((d, i) => {
+                    {gaugeData.map((d, i) => {
                       const pct = maxAbsKlasi > 0 ? (Math.abs(d.value) / maxAbsKlasi) * 100 : 0;
                       return (
                         <KlasiBar key={i} label={d.label} pct={pct} value={d.value} color={d.color} animDelay={i * 50} />
@@ -1010,7 +1019,17 @@ export default function OverviewFluktuasiPage() {
               </CardHeader>
               <CardContent className="p-3 pt-2">
                 <div className="mb-3">
-                  <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Klasifikasi</p>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide">Klasifikasi</p>
+                    {filterKlasifikasi.size === 0 && allKlasifikasi.length > 5 && (
+                      <button
+                        onClick={() => { startTransition(() => setFilterKlasifikasi(new Set(allKlasifikasi))); setListPage(0); }}
+                        className="text-[9px] text-blue-500 hover:text-blue-700 font-medium transition-colors"
+                      >
+                        Pilih Semua ({allKlasifikasi.length})
+                      </button>
+                    )}
+                  </div>
                   <div className="border border-gray-200 rounded-lg bg-gray-50 max-h-40 overflow-y-auto p-1.5">
                     {allKlasifikasi.map(k => {
                       const color     = byKlasifikasi.find(d => d.label === k)?.color ?? '#94a3b8';
