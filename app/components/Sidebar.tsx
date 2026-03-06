@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, FileText, TrendingUp, Clock, Users, X, BarChart2, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, FileText, TrendingUp, Clock, Users, X, ChevronRight, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -12,16 +12,38 @@ import { ScrollArea } from './ui/scroll-area';
 import { Badge } from './ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
-const menuItems = [
-  { icon: LayoutDashboard, label: 'Dashboard',          href: '/',                    requireAdmin: false, badge: null },
-  { icon: FileText,        label: 'Laporan Material',   href: '/laporan-material',    requireAdmin: false, badge: null },
-  { icon: FileText,        label: 'Fluktuasi OI/EXP',   href: '/fluktuasi-oi',       requireAdmin: false, badge: null },
-  { icon: BarChart2,       label: 'Overview Fluktuasi', href: '/overview-fluktuasi',  requireAdmin: false, badge: null },
-  { icon: BarChart2,       label: 'Sub Akun Fluktuasi', href: '/sub-akun-fluktuasi',  requireAdmin: false, badge: null },
-  { icon: BarChart2,       label: 'Detail Per Akun',    href: '/detail-akun-fluktuasi', requireAdmin: false, badge: null },
-  { icon: TrendingUp,      label: 'Monitoring Prepaid', href: '/monitoring-prepaid',  requireAdmin: false, badge: null },
-  { icon: Clock,           label: 'Monitoring Accrual', href: '/monitoring-accrual',  requireAdmin: false, badge: null },
-  { icon: Users,           label: 'User Management',    href: '/user-management',     requireAdmin: true,  badge: 'Admin' },
+interface SubMenuItem {
+  label: string;
+  href:  string;
+}
+
+interface MenuItem {
+  icon:         React.ElementType;
+  label:        string;
+  href:         string;
+  requireAdmin: boolean;
+  badge:        string | null;
+  children?:    SubMenuItem[];
+}
+
+const menuItems: MenuItem[] = [
+  { icon: LayoutDashboard, label: 'Dashboard',          href: '/',                   requireAdmin: false, badge: null },
+  { icon: FileText,        label: 'Laporan Material',   href: '/laporan-material',   requireAdmin: false, badge: null },
+  {
+    icon: FileText,
+    label: 'Fluktuasi OI/EXP',
+    href: '/fluktuasi-oi',
+    requireAdmin: false,
+    badge: null,
+    children: [
+      { label: 'Overview Fluktuasi', href: '/overview-fluktuasi'      },
+      { label: 'Sub Akun Fluktuasi', href: '/sub-akun-fluktuasi'      },
+      { label: 'Detail Per Akun',    href: '/detail-akun-fluktuasi'   },
+    ],
+  },
+  { icon: TrendingUp,      label: 'Monitoring Prepaid', href: '/monitoring-prepaid', requireAdmin: false, badge: null },
+  { icon: Clock,           label: 'Monitoring Accrual', href: '/monitoring-accrual', requireAdmin: false, badge: null },
+  { icon: Users,           label: 'User Management',    href: '/user-management',    requireAdmin: true,  badge: 'Admin' },
 ];
 
 interface SidebarProps {
@@ -36,6 +58,33 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const logoRef   = useRef<HTMLDivElement>(null);
   const navRef    = useRef<HTMLUListElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
+
+  // Track which parent menus are open (by href)
+  const fluktuasiSubPaths = ['/overview-fluktuasi', '/sub-akun-fluktuasi', '/detail-akun-fluktuasi'];
+  const [openMenus, setOpenMenus] = useState<Set<string>>(() => {
+    // Auto-open if current path is a child
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname;
+      if (fluktuasiSubPaths.includes(p)) return new Set(['/fluktuasi-oi']);
+    }
+    return new Set();
+  });
+
+  // Also auto-open when pathname changes (e.g. direct navigation)
+  useEffect(() => {
+    if (fluktuasiSubPaths.includes(pathname)) {
+      setOpenMenus(prev => new Set([...prev, '/fluktuasi-oi']));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  const toggleMenu = (href: string) => {
+    setOpenMenus(prev => {
+      const next = new Set(prev);
+      next.has(href) ? next.delete(href) : next.add(href);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const role = getCurrentUserRole();
@@ -145,55 +194,102 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               Menu Utama
             </p>
             <ul ref={navRef} className="space-y-0.5">
-              {filteredMenuItems.map((item, idx) => {
+              {filteredMenuItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
+                const hasChildren = !!item.children?.length;
+                const isOpen = openMenus.has(item.href);
+                // parent is "active" if its own path or any child is current
+                const isParentActive = isActive || (hasChildren && item.children!.some(c => pathname === c.href));
 
                 return (
                   <li key={item.href}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Link
-                          href={item.href}
-                          onClick={handleLinkClick}
-                          onMouseEnter={e => handleItemHover(e.currentTarget as HTMLElement, true)}
-                          onMouseLeave={e => handleItemHover(e.currentTarget as HTMLElement, false)}
-                          className={cn(
-                            'group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative',
-                            isActive
-                              ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
-                              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                          )}
-                        >
-                          {/* Active indicator */}
-                          {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
-                          )}
-
-                          <Icon
-                            size={17}
+                    {/* Parent item */}
+                    {hasChildren ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleMenu(item.href)}
+                        onMouseEnter={e => handleItemHover(e.currentTarget as HTMLElement, true)}
+                        onMouseLeave={e => handleItemHover(e.currentTarget as HTMLElement, false)}
+                        className={cn(
+                          'group w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative',
+                          isParentActive
+                            ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
+                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        )}
+                      >
+                        {isParentActive && (
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
+                        )}
+                        <Icon size={17} className={cn('shrink-0 transition-transform group-hover:scale-110', isParentActive ? 'text-primary' : '')} />
+                        <span className="flex-1 truncate text-left">{item.label}</span>
+                        {item.badge && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{item.badge}</Badge>
+                        )}
+                        {isOpen
+                          ? <ChevronDown size={14} className="shrink-0 opacity-60" />
+                          : <ChevronRight size={14} className="shrink-0 opacity-40" />
+                        }
+                      </button>
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Link
+                            href={item.href}
+                            onClick={handleLinkClick}
+                            onMouseEnter={e => handleItemHover(e.currentTarget as HTMLElement, true)}
+                            onMouseLeave={e => handleItemHover(e.currentTarget as HTMLElement, false)}
                             className={cn(
-                              'shrink-0 transition-transform group-hover:scale-110',
-                              isActive ? 'text-primary' : ''
+                              'group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative',
+                              isActive
+                                ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                             )}
-                          />
-                          <span className="flex-1 truncate">{item.label}</span>
+                          >
+                            {isActive && (
+                              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
+                            )}
+                            <Icon size={17} className={cn('shrink-0 transition-transform group-hover:scale-110', isActive ? 'text-primary' : '')} />
+                            <span className="flex-1 truncate">{item.label}</span>
+                            {item.badge && (
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{item.badge}</Badge>
+                            )}
+                            {isActive && <ChevronRight size={14} className="text-primary opacity-60 shrink-0" />}
+                          </Link>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="text-xs">{item.label}</TooltipContent>
+                      </Tooltip>
+                    )}
 
-                          {item.badge && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-                              {item.badge}
-                            </Badge>
-                          )}
-
-                          {isActive && (
-                            <ChevronRight size={14} className="text-primary opacity-60 shrink-0" />
-                          )}
-                        </Link>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="text-xs">
-                        {item.label}
-                      </TooltipContent>
-                    </Tooltip>
+                    {/* Sub-menu items */}
+                    {hasChildren && isOpen && (
+                      <ul className="mt-0.5 ml-4 pl-3 border-l border-sidebar-border space-y-0.5">
+                        {item.children!.map(child => {
+                          const childActive = pathname === child.href;
+                          return (
+                            <li key={child.href}>
+                              <Link
+                                href={child.href}
+                                onClick={handleLinkClick}
+                                className={cn(
+                                  'group flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors relative',
+                                  childActive
+                                    ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
+                                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                                )}
+                              >
+                                {childActive && (
+                                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-r-full" />
+                                )}
+                                <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50 shrink-0" />
+                                <span className="flex-1 truncate">{child.label}</span>
+                                {childActive && <ChevronRight size={12} className="text-primary opacity-60 shrink-0" />}
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
                   </li>
                 );
               })}
