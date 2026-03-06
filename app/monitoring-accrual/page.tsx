@@ -3490,8 +3490,10 @@ export default function MonitoringAccrualPage() {
                             <td colSpan={canEdit ? 20 : 19} className="px-4 py-4 bg-gray-50">
                               <div className="ml-8">
                                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Detail Periode</h4>
-                                <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
-                                  <thead className="bg-white">
+                                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                <div className="overflow-y-auto max-h-[400px]">
+                                <table className="w-full text-sm">
+                                  <thead className="bg-white" style={{ position: 'sticky', top: 0, zIndex: 10, boxShadow: '0 1px 0 #e5e7eb' }}>
                                     <tr>
                                       <th className="px-4 py-3 text-left font-semibold text-gray-700 bg-white" style={{ width: '90px' }}>Periode</th>
                                       <th className="px-4 py-3 text-left font-semibold text-gray-700 bg-white" style={{ width: '120px' }}>Bulan</th>
@@ -3539,6 +3541,8 @@ export default function MonitoringAccrualPage() {
                                     ))}
                                   </tbody>
                                 </table>
+                                </div>
+                                </div>
                               </div>
                             </td>
                           </tr>
