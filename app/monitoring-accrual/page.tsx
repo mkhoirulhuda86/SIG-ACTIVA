@@ -280,8 +280,6 @@ export default function MonitoringAccrualPage() {
   const skeletonRef               = useRef<HTMLDivElement>(null);
   const filterBarRef              = useRef<HTMLDivElement>(null);
   const metricCard1Ref            = useRef<HTMLDivElement>(null);
-  const metricCard2Ref            = useRef<HTMLDivElement>(null);
-  const metricCard3Ref            = useRef<HTMLDivElement>(null);
   const tableContainerRef         = useRef<HTMLDivElement>(null);
   const tableBodyRef              = useRef<HTMLTableSectionElement>(null);
   const modalPanelRef             = useRef<HTMLDivElement>(null);
@@ -463,12 +461,11 @@ export default function MonitoringAccrualPage() {
   // ── Page entrance animation ─────────────────────────────────────────
   useEffect(() => {
     if (loading) return;
-    const cards = [metricCard1Ref, metricCard2Ref, metricCard3Ref].map(r => r.current).filter(Boolean);
     if (filterBarRef.current) {
       gsap.fromTo(filterBarRef.current, { opacity: 0, y: -14 }, { opacity: 1, y: 0, duration: 0.48, ease: 'power3.out', delay: 0.05 });
     }
-    if (cards.length) {
-      gsap.fromTo(cards, { opacity: 0, y: 30, scale: 0.97 }, { opacity: 1, y: 0, scale: 1, duration: 0.65, ease: 'power3.out', stagger: 0.09, delay: 0.12 });
+    if (metricCard1Ref.current) {
+      gsap.fromTo(metricCard1Ref.current, { opacity: 0, scale: 0.93 }, { opacity: 1, scale: 1, duration: 0.45, ease: 'power3.out', delay: 0.15 });
     }
     if (tableContainerRef.current) {
       gsap.fromTo(tableContainerRef.current, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out', delay: 0.22 });
@@ -3090,6 +3087,15 @@ export default function MonitoringAccrualPage() {
                     />
                   </div>
 
+                  {/* Outstanding Saldo inline */}
+                  <div ref={metricCard1Ref} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm shrink-0" style={{ opacity: 0 }}>
+                    <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                    <div className="leading-tight">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Outstanding Saldo</p>
+                      <p className="text-xs font-bold text-slate-800 font-mono">{formatCurrency(Math.abs(displaySaldo))}</p>
+                    </div>
+                  </div>
+
                   <div className="flex flex-wrap gap-2 ml-auto">
                     {[
                       { label: 'Import Accrual',    icon: <Upload size={13}/>,   onClick: () => setShowImportExcelModal(true) },
@@ -3139,28 +3145,6 @@ export default function MonitoringAccrualPage() {
                   </div>
                 </div>
               </div>
-
-          {/* Metric Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-            {[
-              { ref: metricCard1Ref, label: 'Outstanding Saldo',  value: formatCurrency(Math.abs(displaySaldo)), dot: 'bg-red-500',   sub: 'Total saldo outstanding accrual' },
-              { ref: metricCard2Ref, label: 'Jumlah Accrual',     value: String(displayCount) + ' item',         dot: 'bg-blue-500',  sub: 'Total item accrual tercatat' },
-              { ref: metricCard3Ref, label: 'Total Periode',      value: String(displayPeriodes) + ' periode',   dot: 'bg-green-500', sub: 'Jumlah periode aktif' },
-            ].map((m, i) => (
-              <div key={i} ref={m.ref}
-                className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-all duration-200 group cursor-default"
-                style={{ opacity: 0 }}
-                onMouseEnter={e => gsap.to(e.currentTarget, { y: -3, duration: 0.2, ease: 'power2.out' })}
-                onMouseLeave={e => gsap.to(e.currentTarget, { y:  0, duration: 0.2, ease: 'power2.out' })}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`w-2.5 h-2.5 rounded-full ${m.dot} transition-transform duration-200 group-hover:scale-125`} />
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{m.label}</p>
-                </div>
-                <h3 className="text-xl font-bold text-slate-800 mt-1 font-mono">{m.value}</h3>
-                <p className="text-[10px] text-slate-400 mt-0.5">{m.sub}</p>
-              </div>
-            ))}
-          </div>
 
           {/* Table */}
           <div ref={tableContainerRef} className="bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden" style={{ maxWidth: '100%' }}>
