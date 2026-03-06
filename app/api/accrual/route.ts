@@ -112,9 +112,9 @@ export async function GET(request: NextRequest) {
           // Efektif realisasi adalah minimum antara available dan cap accrual periode
           const effectiveRealisasi = Math.min(totalAvailable, capAccrual);
           
-          // Saldo = accrual dikurangi realisasi (semua positif)
+          // Saldo = accrual dikurangi total realisasi aktual (bisa negatif jika over-realisasi)
           const accrualAbs = Math.abs(periode.amountAccrual);
-          const saldo = accrualAbs - effectiveRealisasi;
+          const saldo = accrualAbs - totalRealisasi;
           
           // Update rollover untuk periode berikutnya (kelebihan realisasi)
           rollover = Math.max(0, totalAvailable - capAccrual);

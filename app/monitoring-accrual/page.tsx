@@ -3515,8 +3515,8 @@ export default function MonitoringAccrualPage() {
                                         <td className="px-4 py-3 text-right text-blue-700 bg-white">
                                           {formatCurrency(periode.totalRealisasi || 0)}
                                         </td>
-                                        <td className="px-4 py-3 text-right text-gray-800 font-semibold bg-white">
-                                          {formatCurrency(periode.saldo || 0)}
+                                        <td className={`px-4 py-3 text-right font-semibold bg-white ${(periode.saldo ?? 0) < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                                          {formatCurrency(periode.saldo ?? 0)}
                                         </td>
                                         <td className="px-4 py-3 text-center bg-white">
                                           <div className="flex items-center justify-center gap-1">
