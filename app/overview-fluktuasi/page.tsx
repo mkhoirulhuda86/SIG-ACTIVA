@@ -979,7 +979,7 @@ export default function OverviewFluktuasiPage() {
                   <>
                   <div className="flex items-start gap-2">
                     <InlineDonut data={donutData} total={donutTotal} />
-                    <div className="flex flex-col gap-1 flex-1 min-w-0 mt-2">
+                    <div className="flex flex-col gap-1 flex-1 min-w-0 mt-2 overflow-y-auto" style={{ maxHeight: 140 }}>
                       {donutData.map((d, i) => {
                         const pct = donutSum > 0 ? (d.value / donutSum * 100).toFixed(1) : '0.0';
                         return (
@@ -995,6 +995,7 @@ export default function OverviewFluktuasiPage() {
                     </div>
                   </div>
                   <Separator className="my-2" />
+                  <div className="overflow-y-auto" style={{ maxHeight: 160 }}>
                   <table className="w-full" style={{ fontSize: 9.5 }}>
                     <tbody>
                       {donutData.map((d, i) => {
@@ -1008,6 +1009,11 @@ export default function OverviewFluktuasiPage() {
                           </tr>
                         );
                       })}
+                    </tbody>
+                  </table>
+                  </div>
+                  <table className="w-full" style={{ fontSize: 9.5 }}>
+                    <tbody>
                       <tr className="border-t border-gray-100">
                         <td colSpan={2} className="font-bold text-slate-700 py-1">Total</td>
                         <td className="text-right font-bold text-slate-800 font-mono py-1">{fmtCompact(totalFiltered)}</td>
