@@ -1,7 +1,7 @@
 'use client';
 
 import { Bell, User, LogOut, Menu, AlertCircle, TrendingUp, Package, RefreshCw } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { animate, stagger } from 'animejs';
 import { gsap } from 'gsap';
 import { cn } from '@/lib/utils';
@@ -9,7 +9,7 @@ import { Button } from './ui/button';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
-import { ScrollArea } from './ui/scroll-area';
+import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 
 interface HeaderProps {
   title: string;
@@ -123,7 +123,7 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       setLoadingNotifs(true);
       const res = await fetch('/api/notifications');
@@ -137,7 +137,11 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
         setNotificationCount(unread);
       }
     } catch { /* silent */ } finally { setLoadingNotifs(false); }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notificationCount]);
+
+  // Real-time: refresh whenever accrual / prepaid / material data changes on any page
+  useRealtimeUpdates(['accrual', 'prepaid', 'material'], fetchNotifications);
 
   const markAsRead = (id: string) => {
     const next = new Set(readNotifications); next.add(id);
@@ -264,7 +268,7 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
               </div>
 
               {/* List */}
-              <ScrollArea className="flex-1">
+              <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(80vh - 56px)' }}>
                 {loadingNotifs ? (
                   <div className="p-6 text-center">
                     <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-primary mx-auto" />
@@ -309,7 +313,7 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
                     })}
                   </div>
                 )}
-              </ScrollArea>
+              </div>
             </div>
           )}
         </div>
