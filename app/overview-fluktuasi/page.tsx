@@ -970,7 +970,15 @@ export default function OverviewFluktuasiPage() {
                 </CardHeader>
                 <CardContent className="p-3 pt-2">
                   <div className="flex items-start gap-2">
-                    <InlineDonut data={byKlasifikasi.slice(0, 10).map(d => ({ ...d, value: Math.abs(d.value) }))} total={donutTotal} />
+                    {(() => {
+                      const slices = byKlasifikasi.slice(0, 10).map(d => ({ ...d, value: Math.abs(d.value) }));
+                      const sliceSum = slices.reduce((s, d) => s + d.value, 0);
+                      const others = donutTotal - sliceSum;
+                      const donutData = others > 0.5
+                        ? [...slices, { label: 'Lainnya', value: others, color: '#cbd5e1' }]
+                        : slices;
+                      return <InlineDonut data={donutData} total={donutTotal} />;
+                    })()}
                     <div className="flex flex-col gap-1 flex-1 min-w-0 mt-2">
                       {byKlasifikasi.slice(0, 7).map((d, i) => {
                         const pct = donutTotal > 0 ? (Math.abs(d.value) / donutTotal * 100).toFixed(1) : '0.0';
