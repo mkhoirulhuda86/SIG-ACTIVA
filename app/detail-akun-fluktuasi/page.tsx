@@ -776,28 +776,31 @@ export default function DetailAkunFluktuasiPage() {
                 <table className="w-full" style={{ fontSize: 10.5, borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: 'linear-gradient(90deg,#1e3a5f,#1e40af)' }}>
-                      <th className="px-3 py-1.5 text-left text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>Kode Akun</th>
                       <th className="px-3 py-1.5 text-left text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>Sub Akun</th>
+                      <th className="px-3 py-1.5 text-left text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>Kode Akun</th>
                       <th className="px-3 py-1.5 text-right text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>Amount</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {accountSummaryRows.map(({ code, total, color }, i) => {
+                    {accountSummaryRows.map(({ code, total }, i) => {
                       const sg = subGroupForCode(code);
+                      const rowColor = sg?.color ?? '#64748b';
                       return (
                         <tr key={i}
                           className={`${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'} hover:bg-blue-50/50 transition-colors duration-100`}
                           style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td className="px-3 py-1.5 font-mono font-semibold" style={{ color }}>
-                            {code}
-                          </td>
                           <td className="px-3 py-1.5">
-                            {sg && (
+                            {sg ? (
                               <span className="inline-block px-1 py-0.5 rounded text-[8.5px] font-mono font-bold"
                                 style={{ backgroundColor: sg.color + '18', color: sg.color }}>
                                 {sg.label}
                               </span>
+                            ) : (
+                              <span className="text-slate-400 text-[8.5px]">—</span>
                             )}
+                          </td>
+                          <td className="px-3 py-1.5 font-mono font-semibold" style={{ color: rowColor }}>
+                            {code}
                           </td>
                           <td className="px-3 py-1.5 text-right font-mono font-bold"
                             style={{ color: total >= 0 ? '#16a34a' : '#dc2626' }}>
