@@ -127,9 +127,10 @@ function DonutChart({ data, total }: { data: { label: string; value: number; col
     </div>
   );
   const R = 80, r = 50, cx = 100, cy = 100;
+  const dataSum = data.reduce((s, d) => s + Math.abs(d.value), 0) || 1;
   let angle = -90;
   const slices = data.map(d => {
-    const sweep = (Math.abs(d.value) / total) * 360;
+    const sweep = (Math.abs(d.value) / dataSum) * 360;
     const start = angle;
     angle += sweep;
     return { ...d, startAngle: start, sweep };
