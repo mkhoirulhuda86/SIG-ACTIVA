@@ -677,21 +677,21 @@ export default function OverviewFluktuasiPage() {
     let totalFiltered = 0;
 
     for (const r of filtered) {
-      // total
-      totalFiltered += r.amount;
-
-      // byPeriode
-      periodeMap.set(r.periode, (periodeMap.get(r.periode) ?? 0) + r.amount);
-
-      // top10 accounts
-      accMap.set(r.accountCode, (accMap.get(r.accountCode) ?? 0) + r.amount);
-
       // byKlasifikasi
       const activeParts = filterKlasifikasi.size > 0
         ? r.klasifikasiParts.filter(k => filterKlasifikasi.has(k))
         : r.klasifikasiParts;
       const share = r.amount / r.klasifikasiParts.length;
       for (const k of activeParts) klasMap.set(k, (klasMap.get(k) ?? 0) + share);
+
+      // total — use share-based sum so it matches the klasifikasi panel
+      totalFiltered += share * activeParts.length;
+
+      // byPeriode
+      periodeMap.set(r.periode, (periodeMap.get(r.periode) ?? 0) + r.amount);
+
+      // top10 accounts
+      accMap.set(r.accountCode, (accMap.get(r.accountCode) ?? 0) + r.amount);
 
       // listingRows
       const ex = listMap.get(r.accountCode);
