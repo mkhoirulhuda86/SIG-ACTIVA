@@ -640,6 +640,21 @@ export default function OverviewFluktuasiPage() {
   const { years, byYear, allKlasifikasi, allAccounts, allPeriodes } = recordStats;
   const compPeriode = compPeriodeRaw || (allPeriodes.length > 0 ? allPeriodes[allPeriodes.length - 1] : '');
 
+  // ── Klasifikasi amounts for filter panel — account+year filter only (no klasifikasi filter)
+  // This ensures the filter panel always shows all available klasifikasi for the selected accounts,
+  // regardless of what is currently checked in the klasifikasi filter.
+  const klasAmtForPanel = useMemo(() => {
+    const m = new Map<string, number>();
+    const yearPrefix = selectedYear !== 'all' ? selectedYear + '.' : null;
+    for (const r of records) {
+      if (yearPrefix && !r.periode.startsWith(yearPrefix)) continue;
+      if (filterAccount.size > 0 && !filterAccount.has(r.accountCode)) continue;
+      const share = r.amount / r.klasifikasiParts.length;
+      for (const k of r.klasifikasiParts) m.set(k, (m.get(k) ?? 0) + share);
+    }
+    return m;
+  }, [records, selectedYear, filterAccount]);
+
   // ── Filter pass ────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     const yearPrefix = selectedYear !== 'all' ? selectedYear + '.' : null;
@@ -1289,11 +1304,10 @@ export default function OverviewFluktuasiPage() {
                   </div>
                   <div className="border border-gray-200 rounded-lg bg-gray-50 max-h-40 overflow-y-auto p-1.5">
                     {allKlasifikasi.map(k => {
-                      const entry     = byKlasifikasi.find(d => d.label === k);
-                      const color     = entry?.color ?? '#94a3b8';
-                      const amt       = entry?.value ?? 0;
-                      // hide items with no data in current filter unless already selected
+                      const amt       = klasAmtForPanel.get(k) ?? 0;
+                      // hide items with no data for the selected accounts
                       if (amt === 0 && !filterKlasifikasi.has(k) && filterAccount.size > 0) return null;
+                      const color     = byKlasifikasi.find(d => d.label === k)?.color ?? '#94a3b8';
                       const isChecked = filterKlasifikasi.size === 0 || filterKlasifikasi.has(k);
                       return (
                         <label key={k} className="flex items-center gap-1.5 px-1 py-0.5 rounded-md cursor-pointer hover:bg-blue-50 transition-colors duration-150">
