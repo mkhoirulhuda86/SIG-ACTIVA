@@ -683,7 +683,7 @@ export default function DetailAkunFluktuasiPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="px-3 pb-3 flex flex-col items-center gap-2">
-              <DonutChart data={topAccounts} total={donutTotal} />
+              <DonutChart data={topAccounts} total={totalFiltered} />
               <div className="w-full space-y-1 overflow-y-auto" style={{ maxHeight: 200 }}>
                 {topAccounts.slice(0, 12).map((d, i) => {
                   const pct = donutTotal > 0 ? (Math.abs(d.value) / donutTotal * 100).toFixed(1) : '0.0';

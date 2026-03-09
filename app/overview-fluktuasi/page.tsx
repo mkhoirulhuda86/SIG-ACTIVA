@@ -978,7 +978,7 @@ export default function OverviewFluktuasiPage() {
                     return (
                   <>
                   <div className="flex items-start gap-2">
-                    <InlineDonut data={donutData} total={donutTotal} />
+                    <InlineDonut data={donutData} total={totalFiltered} />
                     <div className="flex flex-col gap-1 flex-1 min-w-0 mt-2 overflow-y-auto" style={{ maxHeight: 140 }}>
                       {donutData.map((d, i) => {
                         const pct = donutSum > 0 ? (d.value / donutSum * 100).toFixed(1) : '0.0';
