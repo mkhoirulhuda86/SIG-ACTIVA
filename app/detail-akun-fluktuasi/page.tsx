@@ -67,6 +67,13 @@ const SUB_GROUP_PREFIXES: { prefix: string; label: string; color: string }[] = [
   { prefix: '715',  label: '71510000', color: '#d97706' },
   { prefix: '716',  label: '71600000', color: '#7c3aed' },
 ];
+const SUB_AKUN_GROUPS = [
+  { label: '71300000', color: '#2563eb' },
+  { label: '71400000', color: '#16a34a' },
+  { label: '71510000', color: '#d97706' },
+  { label: '71600000', color: '#7c3aed' },
+];
+
 // Pre-built cache: code prefix → sub-group (O(1) lookup per code)
 const _subGroupCache = new Map<string, { prefix: string; label: string; color: string } | null>();
 const subGroupForCode = (code: string) => {
@@ -342,6 +349,7 @@ export default function DetailAkunFluktuasiPage() {
   const [searchAkunRaw,     setSearchAkunRaw]     = useState('');
   const [filterAkun,        setFilterAkun]        = useState<Set<string>>(new Set());
   const [filterKlasifikasi, setFilterKlasifikasi] = useState<Set<string>>(new Set());
+  const [filterSubAkun,     setFilterSubAkun]     = useState<Set<string>>(new Set());
 
   // Debounce search input to avoid re-filtering on every keystroke
   const searchAkun = useDeferredValue(searchAkunRaw);
@@ -358,8 +366,9 @@ export default function DetailAkunFluktuasiPage() {
   const tableRef     = useRef<HTMLDivElement>(null);
   const resetBtnRef  = useRef<HTMLButtonElement>(null);
   const akunListRef  = useRef<HTMLDivElement>(null);
-  const klasListRef  = useRef<HTMLDivElement>(null);
-  const tableBodyRef = useRef<HTMLTableSectionElement>(null);
+  const klasListRef    = useRef<HTMLDivElement>(null);
+  const subAkunListRef = useRef<HTMLDivElement>(null);
+  const tableBodyRef   = useRef<HTMLTableSectionElement>(null);
 
   useEffect(() => {
     // slim=1: skip remark/uploadedBy/fileName/createdAt/updatedAt — smaller payload
@@ -431,6 +440,20 @@ export default function DetailAkunFluktuasiPage() {
     });
   }, [filterKlasifikasi]);
 
+  // ── Animate sub-akun filter items ────────────────────────────────────────
+  useEffect(() => {
+    if (!subAkunListRef.current) return;
+    const items = Array.from(subAkunListRef.current.querySelectorAll('.sub-akun-item')).slice(0, 10);
+    if (!items.length) return;
+    animate(items, {
+      opacity: [0, 1],
+      translateX: [8, 0],
+      duration: 220,
+      delay: stagger(16),
+      ease: 'easeOutExpo',
+    });
+  }, [filterSubAkun]);
+
   // ── Animate table rows on page/filter change ─────────────────────────────
   useEffect(() => {
     if (!tableBodyRef.current) return;
@@ -444,7 +467,7 @@ export default function DetailAkunFluktuasiPage() {
       delay: stagger(12),
       ease: 'easeOutExpo',
     });
-  }, [listPage, filterAkun, filterKlasifikasi, selectedYear]);
+  }, [listPage, filterSubAkun, filterAkun, filterKlasifikasi, selectedYear]);
 
   // ── Derived ──────────────────────────────────────────────────────────────
   const years = useMemo(() => {
@@ -476,11 +499,12 @@ export default function DetailAkunFluktuasiPage() {
 
   const filtered = useMemo(() => records.filter(r => {
     if (selectedYear !== 'all' && !r.periode.startsWith(selectedYear + '.')) return false;
+    if (filterSubAkun.size > 0 && !filterSubAkun.has(subGroupForCode(r.accountCode)?.label ?? '')) return false;
     if (filterAkun.size > 0 && !filterAkun.has(r.accountCode)) return false;
     // Use pre-cached _parts — no split on every filter pass
     if (filterKlasifikasi.size > 0 && !r._parts.some(k => filterKlasifikasi.has(k))) return false;
     return true;
-  }), [records, selectedYear, filterAkun, filterKlasifikasi]);
+  }), [records, selectedYear, filterSubAkun, filterAkun, filterKlasifikasi]);
 
   const totalFiltered = useMemo(() => filtered.reduce((s, r) => s + r.amount, 0), [filtered]);
 
@@ -489,6 +513,15 @@ export default function DetailAkunFluktuasiPage() {
     filtered.forEach(r => m.set(r.accountCode, (m.get(r.accountCode) ?? 0) + r.amount));
     return m;
   }, [filtered]);
+
+  const subAkunTotals = useMemo(() => {
+    const m = new Map<string, number>();
+    accountTotalsMap.forEach((total, code) => {
+      const lbl = subGroupForCode(code)?.label;
+      if (lbl) m.set(lbl, (m.get(lbl) ?? 0) + total);
+    });
+    return m;
+  }, [accountTotalsMap]);
 
   const topAccounts = useMemo(() => {
     const entries = [...accountTotalsMap.entries()]
@@ -582,9 +615,14 @@ export default function DetailAkunFluktuasiPage() {
     setSelectedYear('all');
     setSearchAkunRaw('');
     setFilterAkun(new Set());
+    setFilterSubAkun(new Set());
     setFilterKlasifikasi(new Set());
     setListPage(0);
   }, []);
+
+  const toggleSubAkun = useCallback((lbl: string) => setFilterSubAkun(prev => {
+    const n = new Set(prev); n.has(lbl) ? n.delete(lbl) : n.add(lbl); return n;
+  }), []);
 
   const toggleAkun = useCallback((code: string) => setFilterAkun(prev => {
     const n = new Set(prev); n.has(code) ? n.delete(code) : n.add(code); return n;
@@ -645,6 +683,9 @@ export default function DetailAkunFluktuasiPage() {
       <div ref={pillsRef} className="flex items-center justify-between px-4 pt-3 pb-1 flex-wrap gap-2">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Filter aktif:</span>
+          <Badge variant="outline" className="text-[9px] px-2 py-0.5 h-5 bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold">
+            {filterSubAkun.size > 0 ? `${filterSubAkun.size} sub akun` : 'Semua sub akun'}
+          </Badge>
           <Badge variant="outline" className="text-[9px] px-2 py-0.5 h-5 bg-blue-50 text-blue-700 border-blue-200 font-semibold">
             {filterAkun.size > 0 ? `${filterAkun.size} akun` : 'Semua akun'}
           </Badge>
@@ -874,6 +915,28 @@ export default function DetailAkunFluktuasiPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="px-3 pb-3 flex flex-col gap-3">
+
+              {/* Sub Akun filter */}
+              <div className="flex flex-col min-h-0">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Sub Akun</p>
+                <div ref={subAkunListRef} className="border border-slate-200 rounded-lg bg-slate-50/60 overflow-hidden shadow-inner">
+                  {SUB_AKUN_GROUPS.map(sg => {
+                    const isChecked = filterSubAkun.size === 0 || filterSubAkun.has(sg.label);
+                    const amt = subAkunTotals.get(sg.label) ?? 0;
+                    return (
+                      <label key={sg.label}
+                        className="sub-akun-item flex items-center gap-2 px-2 py-1.5 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-indigo-50/70 transition-colors duration-150">
+                        <input type="checkbox" checked={isChecked}
+                          onChange={() => { toggleSubAkun(sg.label); setListPage(0); }}
+                          className="w-3 h-3 rounded" style={{ accentColor: sg.color }} />
+                        <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: sg.color }} />
+                        <span className="flex-1 text-[10px] font-mono font-bold text-slate-700">{sg.label}</span>
+                        <span className="text-[8.5px] font-mono text-slate-400 flex-shrink-0">{fmtCompact(amt)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* Akun filter with search */}
               <div className="flex flex-col flex-1 min-h-0">

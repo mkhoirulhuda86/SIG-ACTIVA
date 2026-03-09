@@ -36,9 +36,8 @@ const menuItems: MenuItem[] = [
     requireAdmin: false,
     badge: null,
     children: [
-      { label: 'Overview Fluktuasi', href: '/overview-fluktuasi'      },
-      { label: 'Sub Akun Fluktuasi', href: '/sub-akun-fluktuasi'      },
-      { label: 'Detail Per Akun',    href: '/detail-akun-fluktuasi'   },
+      { label: 'Overview Fluktuasi', href: '/overview-fluktuasi'    },
+      { label: 'Detail Per Akun',    href: '/detail-akun-fluktuasi' },
     ],
   },
   { icon: TrendingUp,      label: 'Monitoring Prepaid', href: '/monitoring-prepaid', requireAdmin: false, badge: null },
@@ -60,7 +59,7 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const footerRef = useRef<HTMLDivElement>(null);
 
   // Track which parent menus are open (by href)
-  const fluktuasiSubPaths = ['/overview-fluktuasi', '/sub-akun-fluktuasi', '/detail-akun-fluktuasi'];
+  const fluktuasiSubPaths = ['/overview-fluktuasi', '/detail-akun-fluktuasi'];
   const [openMenus, setOpenMenus] = useState<Set<string>>(() => {
     // Auto-open if current path is a child
     if (typeof window !== 'undefined') {
