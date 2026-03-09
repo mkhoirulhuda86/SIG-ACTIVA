@@ -993,7 +993,7 @@ export default function DetailAkunFluktuasiPage() {
             <table className="w-full" style={{ fontSize: 10.5, borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'linear-gradient(90deg,#1e3a5f,#1e40af)' }}>
-                  {['#','Kode Akun','Sub Akun','Klasifikasi','Total Amount','Jml Periode'].map(h => (
+                  {['#','Sub Akun','Kode Akun','Klasifikasi','Total Amount','Jml Periode'].map(h => (
                     <th key={h} style={{
                       padding: '7px 12px',
                       textAlign: h === 'Total Amount' || h === 'Jml Periode' ? 'right' : 'left',
@@ -1012,19 +1012,13 @@ export default function DetailAkunFluktuasiPage() {
                 {listingPage.map((row, ri) => {
                   const globalRi = listPage * LIST_PAGE_SIZE + ri;
                   const isPos    = row.total >= 0;
-                  const color    = codeColorMap.get(row.accountCode) ?? '#94a3b8';
                   const sg       = subGroupForCode(row.accountCode);
+                  const rowColor = sg?.color ?? '#94a3b8';
                   return (
                     <tr key={ri}
                       className={`${ri % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'} hover:bg-blue-50/40 transition-colors duration-100 cursor-default`}
                       style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td className="px-3 py-1.5 text-slate-400 text-[9px]">{globalRi + 1}.</td>
-                      <td className="px-3 py-1.5">
-                        <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold font-mono transition-all duration-150 hover:scale-105"
-                          style={{ backgroundColor: color + '18', color }}>
-                          {row.accountCode}
-                        </span>
-                      </td>
                       <td className="px-3 py-1.5">
                         {sg ? (
                           <span className="inline-block px-1 py-0.5 rounded text-[8.5px] font-mono font-bold"
@@ -1032,6 +1026,12 @@ export default function DetailAkunFluktuasiPage() {
                             {sg.label}
                           </span>
                         ) : <span className="text-slate-300">-</span>}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold font-mono transition-all duration-150 hover:scale-105"
+                          style={{ backgroundColor: rowColor + '18', color: rowColor }}>
+                          {row.accountCode}
+                        </span>
                       </td>
                       <td className="px-3 py-1.5 max-w-[200px]">
                         <div className="flex flex-wrap gap-0.5">
