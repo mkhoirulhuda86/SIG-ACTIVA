@@ -165,6 +165,53 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // 4. Check Fluktuasi — unclassified accounts and large-amount records
+    const fluktuasiStats = await prisma.fluktuasiAkunPeriode.groupBy({
+      by: ['accountCode'],
+      _sum: { amount: true },
+      _count: { accountCode: true },
+      where: { klasifikasi: '' },
+      orderBy: { _sum: { amount: 'desc' } },
+      take: 5,
+    });
+
+    if (fluktuasiStats.length > 0) {
+      const totalUnclassified = fluktuasiStats.length;
+      const maxAmount = Math.abs(fluktuasiStats[0]._sum.amount ?? 0);
+      notifications.push({
+        id: `fluktuasi-unclassified-${fluktuasiStats.map(r => r.accountCode).join('-')}`,
+        type: 'fluktuasi',
+        title: 'Akun Fluktuasi Belum Terklasifikasi',
+        message: `${totalUnclassified} kode akun belum memiliki klasifikasi. Terbesar: ${fluktuasiStats[0].accountCode} (${Math.abs(fluktuasiStats[0]._sum.amount ?? 0).toLocaleString('id-ID')})`,
+        link: '/fluktuasi-oi',
+        priority: maxAmount > 100_000_000 ? 'high' : 'medium',
+        createdAt: today.toISOString(),
+      });
+    }
+
+    // Large single-period fluktuasi amounts (top 3 outliers)
+    const largeFluktuasi = await prisma.fluktuasiAkunPeriode.findMany({
+      where: { amount: { gt: 500_000_000 } },
+      orderBy: { amount: 'desc' },
+      select: { id: true, accountCode: true, periode: true, amount: true, klasifikasi: true, updatedAt: true },
+      take: 3,
+    });
+
+    largeFluktuasi.forEach(r => {
+      const [yr, mo] = r.periode.split('.');
+      const MONTHS_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+      const periodeLabel = `${MONTHS_ID[parseInt(mo) - 1]} ${yr}`;
+      notifications.push({
+        id: `fluktuasi-large-${r.id}`,
+        type: 'fluktuasi',
+        title: 'Fluktuasi Nilai Besar',
+        message: `Akun ${r.accountCode} periode ${periodeLabel}: Rp ${r.amount.toLocaleString('id-ID')}${r.klasifikasi ? ` (${r.klasifikasi.split(';')[0].trim()})` : ' — belum terklasifikasi'}`,
+        link: '/overview-fluktuasi',
+        priority: r.amount > 1_000_000_000 ? 'high' : 'medium',
+        createdAt: r.updatedAt.toISOString(),
+      });
+    });
+
     // Sort by priority and date (newest first)
     const priorityOrder: { [key: string]: number } = { high: 1, medium: 2, low: 3 };
     notifications.sort((a, b) => {

@@ -19,7 +19,7 @@ interface HeaderProps {
 
 interface Notification {
   id: string;
-  type: 'accrual' | 'prepaid' | 'material';
+  type: 'accrual' | 'prepaid' | 'material' | 'fluktuasi';
   title: string;
   message: string;
   link: string;
@@ -141,7 +141,7 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
   }, [notificationCount]);
 
   // Real-time: refresh whenever accrual / prepaid / material data changes on any page
-  useRealtimeUpdates(['accrual', 'prepaid', 'material'], fetchNotifications);
+  useRealtimeUpdates(['accrual', 'prepaid', 'material', 'fluktuasi'], fetchNotifications);
 
   const markAsRead = (id: string) => {
     const next = new Set(readNotifications); next.add(id);
@@ -185,9 +185,10 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
   };
 
   const getNotifIcon = (type: string) => ({
-    accrual:  <TrendingUp  size={14} className="text-blue-500" />,
-    prepaid:  <AlertCircle size={14} className="text-orange-500" />,
-    material: <Package     size={14} className="text-purple-500" />,
+    accrual:   <TrendingUp  size={14} className="text-blue-500" />,
+    prepaid:   <AlertCircle size={14} className="text-orange-500" />,
+    material:  <Package     size={14} className="text-purple-500" />,
+    fluktuasi: <TrendingUp  size={14} className="text-indigo-500" />,
   }[type] ?? <Bell size={14} className="text-muted-foreground" />);
 
   const initials = userName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
