@@ -597,7 +597,7 @@ export default function SubAkunFluktuasiPage() {
             </p>
           </div>
           <div className="flex flex-col items-center gap-3 flex-1">
-            <DonutChart data={donutData} total={donutTotal} />
+            <DonutChart data={donutData} total={totalFiltered} />
             <div className="w-full space-y-1.5">
               {donutData.map((d, i) => {
                 const pct = donutTotal > 0 ? (Math.abs(d.value) / donutTotal * 100).toFixed(1) : '0.0';
