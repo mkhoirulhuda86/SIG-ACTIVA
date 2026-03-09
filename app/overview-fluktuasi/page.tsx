@@ -243,9 +243,11 @@ function InlineDonut({ data, total }: { data: { label: string; value: number; co
     </div>
   );
   const R = 42, r = 26, cx = 50, cy = 50;
+  // Use sum of the passed slices for angle math so arcs always fill 360°
+  const dataSum = data.reduce((s, d) => s + d.value, 0) || 1;
   let angle = -90;
   const slices = data.map(d => {
-    const sweep = (d.value / total) * 360;
+    const sweep = (d.value / dataSum) * 360;
     const start = angle;
     angle += sweep;
     return { ...d, startAngle: start, sweep };
@@ -970,15 +972,7 @@ export default function OverviewFluktuasiPage() {
                 </CardHeader>
                 <CardContent className="p-3 pt-2">
                   <div className="flex items-start gap-2">
-                    {(() => {
-                      const slices = byKlasifikasi.slice(0, 10).map(d => ({ ...d, value: Math.abs(d.value) }));
-                      const sliceSum = slices.reduce((s, d) => s + d.value, 0);
-                      const others = donutTotal - sliceSum;
-                      const donutData = others > 0.5
-                        ? [...slices, { label: 'Lainnya', value: others, color: '#cbd5e1' }]
-                        : slices;
-                      return <InlineDonut data={donutData} total={donutTotal} />;
-                    })()}
+                    <InlineDonut data={byKlasifikasi.slice(0, 10).map(d => ({ ...d, value: Math.abs(d.value) }))} total={donutTotal} />
                     <div className="flex flex-col gap-1 flex-1 min-w-0 mt-2">
                       {byKlasifikasi.slice(0, 7).map((d, i) => {
                         const pct = donutTotal > 0 ? (Math.abs(d.value) / donutTotal * 100).toFixed(1) : '0.0';
