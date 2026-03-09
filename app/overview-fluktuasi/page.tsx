@@ -971,11 +971,17 @@ export default function OverviewFluktuasiPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-3 pt-2">
+                  {(() => {
+                    const donutData = (filterKlasifikasi.size === 0 ? byKlasifikasi.slice(0, 10) : byKlasifikasi)
+                      .map(d => ({ ...d, value: Math.abs(d.value) }));
+                    const donutSum = donutData.reduce((s, d) => s + d.value, 0);
+                    return (
+                  <>
                   <div className="flex items-start gap-2">
-                    <InlineDonut data={byKlasifikasi.slice(0, 10).map(d => ({ ...d, value: Math.abs(d.value) }))} total={donutTotal} />
+                    <InlineDonut data={donutData} total={donutTotal} />
                     <div className="flex flex-col gap-1 flex-1 min-w-0 mt-2">
-                      {byKlasifikasi.slice(0, 7).map((d, i) => {
-                        const pct = donutTotal > 0 ? (Math.abs(d.value) / donutTotal * 100).toFixed(1) : '0.0';
+                      {donutData.map((d, i) => {
+                        const pct = donutSum > 0 ? (d.value / donutSum * 100).toFixed(1) : '0.0';
                         return (
                           <div key={i} className="flex items-center gap-1.5">
                             <span className="flex-shrink-0 rounded-sm" style={{ width: 8, height: 8, backgroundColor: d.color }} />
@@ -991,8 +997,8 @@ export default function OverviewFluktuasiPage() {
                   <Separator className="my-2" />
                   <table className="w-full" style={{ fontSize: 9.5 }}>
                     <tbody>
-                      {byKlasifikasi.slice(0, 6).map((d, i) => {
-                        const pct = donutTotal > 0 ? (Math.abs(d.value) / donutTotal * 100) : 0;
+                      {donutData.map((d, i) => {
+                        const pct = donutSum > 0 ? (d.value / donutSum * 100) : 0;
                         return (
                           <tr key={i} className="hover:bg-slate-50 transition-colors duration-150 rounded">
                             <td className="text-slate-400 py-0.5">{i + 1}.</td>
@@ -1009,6 +1015,9 @@ export default function OverviewFluktuasiPage() {
                       </tr>
                     </tbody>
                   </table>
+                  </>
+                    );
+                  })()}
                 </CardContent>
               </Card>
 
