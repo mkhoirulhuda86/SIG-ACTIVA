@@ -697,7 +697,7 @@ export default function DetailAkunFluktuasiPage() {
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Filter aktif:</span>
           <Badge variant="outline" className="text-[9px] px-2 py-0.5 h-5 bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold">
-            {filterSubAkun.size > 0 ? `${filterSubAkun.size} sub akun` : 'Semua sub akun'}
+            {filterSubAkun.size > 0 ? `${filterSubAkun.size} account group` : 'Semua account group'}
           </Badge>
           <Badge variant="outline" className="text-[9px] px-2 py-0.5 h-5 bg-blue-50 text-blue-700 border-blue-200 font-semibold">
             {filterAkun.size > 0 ? `${filterAkun.size} akun` : 'Semua akun'}
@@ -706,7 +706,7 @@ export default function DetailAkunFluktuasiPage() {
             {filterKlasifikasi.size > 0 ? `${filterKlasifikasi.size} klasifikasi` : 'Semua klasifikasi'}
           </Badge>
           <Badge variant="outline" className="text-[9px] px-2 py-0.5 h-5 bg-slate-50 text-slate-600 border-slate-200 font-semibold">
-            {allAkunCodes.length} kode akun total
+            {allAkunCodes.length} G/L account total
           </Badge>
           {selectedYear !== 'all' && (
             <Badge variant="outline" className="text-[9px] px-2 py-0.5 h-5 bg-amber-50 text-amber-700 border-amber-200 font-semibold">
@@ -733,7 +733,7 @@ export default function DetailAkunFluktuasiPage() {
             <CardHeader className="pb-1 pt-3 px-3">
               <CardTitle className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center flex items-center justify-center gap-1.5">
                 <Layers size={11} className="text-blue-500" />
-                DISTRIBUSI PER KODE AKUN
+                DISTRIBUSI PER G/L ACCOUNT
               </CardTitle>
             </CardHeader>
             <CardContent className="px-3 pb-3 flex flex-col items-center gap-2">
@@ -824,14 +824,14 @@ export default function DetailAkunFluktuasiPage() {
               <div className="border-r border-slate-100">
                 <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/80">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1">
-                    <BarChart3 size={9} className="text-blue-500" /> Top 10 Kode Akun
+                    <BarChart3 size={9} className="text-blue-500" /> Top 10 G/L Account
                   </p>
                 </div>
                 <table className="w-full" style={{ fontSize: 10.5, borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: 'linear-gradient(90deg,#1e3a5f,#1e40af)' }}>
-                      <th className="px-3 py-1.5 text-left text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>Sub Akun</th>
-                      <th className="px-3 py-1.5 text-left text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>Kode Akun</th>
+                      <th className="px-3 py-1.5 text-left text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>Account Group</th>
+                      <th className="px-3 py-1.5 text-left text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>G/L Account</th>
                       <th className="px-3 py-1.5 text-right text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>Amount</th>
                     </tr>
                   </thead>
@@ -929,9 +929,9 @@ export default function DetailAkunFluktuasiPage() {
             </CardHeader>
             <CardContent className="px-3 pb-3 flex flex-col gap-3">
 
-              {/* Sub Akun filter */}
+              {/* Account Group filter */}
               <div className="flex flex-col min-h-0">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Sub Akun</p>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Account Group</p>
                 <div ref={subAkunListRef} className="border border-slate-200 rounded-lg bg-slate-50/60 overflow-hidden shadow-inner">
                   {SUB_AKUN_GROUPS.map(sg => {
                     const isChecked = filterSubAkun.size === 0 || filterSubAkun.has(sg.label);
@@ -953,12 +953,12 @@ export default function DetailAkunFluktuasiPage() {
 
               {/* Akun filter with search */}
               <div className="flex flex-col flex-1 min-h-0">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Kode Akun</p>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">G/L Account</p>
                 <div className="relative mb-1.5">
                   <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                   <Input
                     type="text"
-                    placeholder="Cari kode akun..."
+                    placeholder="Cari G/L Account..."
                     value={searchAkunRaw}
                     onChange={e => setSearchAkunRaw(e.target.value)}
                     className="pl-7 h-7 text-[10px] border-slate-200 bg-slate-50/80 focus:bg-white focus:border-blue-400 transition-colors duration-200"
@@ -1038,7 +1038,7 @@ export default function DetailAkunFluktuasiPage() {
             <div>
               <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest flex items-center gap-1.5">
                 <List size={10} className="text-blue-500" />
-                LISTING OUTSTANDING PER KODE AKUN
+                LISTING OUTSTANDING PER G/L ACCOUNT
               </p>
               <p className="text-[9px] text-slate-400 mt-0.5">
                 {listingRows.length.toLocaleString('id-ID')} entri
@@ -1069,7 +1069,7 @@ export default function DetailAkunFluktuasiPage() {
             <table className="w-full" style={{ fontSize: 10.5, borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'linear-gradient(90deg,#1e3a5f,#1e40af)' }}>
-                  {['#','Sub Akun','Kode Akun','Klasifikasi','Total Amount','Jml Periode'].map(h => (
+                  {['#','Account Group','G/L Account','Klasifikasi','Total Amount','Jml Periode'].map(h => (
                     <th key={h} style={{
                       padding: '7px 12px',
                       textAlign: h === 'Total Amount' || h === 'Jml Periode' ? 'right' : 'left',

@@ -1325,7 +1325,7 @@ export default function OverviewFluktuasiPage() {
                 </div>
 
                 <div>
-                  <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Kode Akun</p>
+                  <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">G/L Account</p>
                   <div className="border border-gray-200 rounded-lg bg-gray-50 max-h-44 overflow-y-auto p-1.5">
                     {allAccounts.map(a => {
                       const amt       = accountAmountsByYear.get(a) ?? 0;
@@ -1426,7 +1426,7 @@ export default function OverviewFluktuasiPage() {
                 <table className="w-full" style={{ fontSize: 10.5, borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: 'linear-gradient(90deg,#1e3a5f,#1e40af)' }}>
-                      {['#','Kode Akun','Klasifikasi','Total Amount','Jml Periode'].map(h => (
+                      {['#','G/L Account','Klasifikasi','Total Amount','Jml Periode'].map(h => (
                         <th key={h} style={{
                           padding: '8px 12px',
                           textAlign: h === 'Total Amount' ? 'right' : 'left',

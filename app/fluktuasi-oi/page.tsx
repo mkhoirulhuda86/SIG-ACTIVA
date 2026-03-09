@@ -452,8 +452,8 @@ const buildRekapFromAkunPeriodes = (
     r.remark.split(';').map((s) => s.trim()).filter(Boolean).forEach((k) => entry.remark.add(k));
   }
 
-  // 3. Headers: ['Kode Akun', ...periods]
-  const headers         = ['Kode Akun', ...allPeriodes];
+  // 3. Headers: ['G/L Account', ...periods]
+  const headers         = ['G/L Account', ...allPeriodes];
   const originalHeaders = headers.slice();
   const accountColIdx   = 0;
 
@@ -2453,7 +2453,7 @@ export default function FluktuasiOIPage() {
                         type="text"
                         value={keywordAkunSearch}
                         onChange={(e) => { setKeywordAkunSearch(e.target.value); setKeywordPage(0); }}
-                        placeholder="Cari berdasarkan kode akun..."
+                        placeholder="Cari berdasarkan G/L Account..."
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-orange-400 text-sm"
                       />
                     </div>
@@ -2930,7 +2930,7 @@ export default function FluktuasiOIPage() {
               {activeSheet && (
                 <div ref={kaTableRef}>
                   <div className="px-4 py-2 border-b border-gray-100 text-xs text-gray-500 flex flex-wrap items-center gap-3">
-                    <span>Kode Akun: <span className="font-semibold text-gray-800">{activeSheet.sheetName}</span></span>
+                    <span>G/L Account: <span className="font-semibold text-gray-800">{activeSheet.sheetName}</span></span>
                     <span><span className="font-semibold text-gray-800">{kaRows.length}</span> baris</span>
                     <span><span className="font-semibold" style={{ color: '#4472C4' }}>{activeSheet.headers.length}</span> kolom asli + <span className="font-semibold" style={{ color: '#C00000' }}>3</span> kolom sistem</span>
                     {kaTotalPages > 1 && (
