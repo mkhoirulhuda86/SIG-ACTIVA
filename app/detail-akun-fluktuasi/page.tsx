@@ -494,8 +494,20 @@ export default function DetailAkunFluktuasiPage() {
   }, [records]);
 
   const filteredAkunOptions = useMemo(() =>
-    allAkunCodes.filter(c => c.toLowerCase().includes(searchAkun.toLowerCase())),
-  [allAkunCodes, searchAkun]);
+    allAkunCodes.filter(c => {
+      if (!c.toLowerCase().includes(searchAkun.toLowerCase())) return false;
+      if (filterSubAkun.size > 0 && !filterSubAkun.has(subGroupForCode(c)?.label ?? '')) return false;
+      return true;
+    }),
+  [allAkunCodes, searchAkun, filterSubAkun]);
+
+  // Filtered by year+klasifikasi only — used for sub-akun totals so amounts
+  // are always visible regardless of which sub-akun is selected
+  const baseFiltered = useMemo(() => records.filter(r => {
+    if (selectedYear !== 'all' && !r.periode.startsWith(selectedYear + '.')) return false;
+    if (filterKlasifikasi.size > 0 && !r._parts.some(k => filterKlasifikasi.has(k))) return false;
+    return true;
+  }), [records, selectedYear, filterKlasifikasi]);
 
   const filtered = useMemo(() => records.filter(r => {
     if (selectedYear !== 'all' && !r.periode.startsWith(selectedYear + '.')) return false;
@@ -516,12 +528,12 @@ export default function DetailAkunFluktuasiPage() {
 
   const subAkunTotals = useMemo(() => {
     const m = new Map<string, number>();
-    accountTotalsMap.forEach((total, code) => {
-      const lbl = subGroupForCode(code)?.label;
-      if (lbl) m.set(lbl, (m.get(lbl) ?? 0) + total);
+    baseFiltered.forEach(r => {
+      const lbl = subGroupForCode(r.accountCode)?.label;
+      if (lbl) m.set(lbl, (m.get(lbl) ?? 0) + r.amount);
     });
     return m;
-  }, [accountTotalsMap]);
+  }, [baseFiltered]);
 
   const topAccounts = useMemo(() => {
     const entries = [...accountTotalsMap.entries()]
