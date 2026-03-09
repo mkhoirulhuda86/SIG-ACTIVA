@@ -440,6 +440,80 @@ function KlasiBar({ label, pct, value, color, animDelay = 0 }: { label: string; 
   );
 }
 
+// ─── Year Comparison Row (2025 vs 2026) ──────────────────────────────────────
+function YearCompRow({
+  label, v2025, v2026, maxVal, rank, animDelay = 0,
+}: { label: string; v2025: number; v2026: number; maxVal: number; rank: number; animDelay?: number }) {
+  const bar25Ref = useRef<HTMLDivElement>(null);
+  const bar26Ref = useRef<HTMLDivElement>(null);
+  const rowRef   = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(false);
+
+  const pct25 = maxVal > 0 ? (Math.abs(v2025) / maxVal) * 100 : 0;
+  const pct26 = maxVal > 0 ? (Math.abs(v2026) / maxVal) * 100 : 0;
+  const delta = v2026 - v2025;
+  const deltaDir = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
+  const deltaPct = v2025 !== 0 ? (delta / Math.abs(v2025)) * 100 : null;
+
+  useEffect(() => {
+    if (mountedRef.current || !rowRef.current || !bar25Ref.current || !bar26Ref.current) return;
+    mountedRef.current = true;
+    gsap.fromTo(rowRef.current, { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.45, delay: animDelay / 1000, ease: 'power3.out' });
+    gsap.fromTo(bar25Ref.current, { width: '0%' }, { width: `${pct25}%`, duration: 0.9, delay: animDelay / 1000 + 0.1, ease: 'power3.out' });
+    gsap.fromTo(bar26Ref.current, { width: '0%' }, { width: `${pct26}%`, duration: 0.9, delay: animDelay / 1000 + 0.2, ease: 'power3.out' });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!mountedRef.current || !bar25Ref.current || !bar26Ref.current) return;
+    gsap.to(bar25Ref.current, { width: `${pct25}%`, duration: 0.5, ease: 'power2.out' });
+    gsap.to(bar26Ref.current, { width: `${pct26}%`, duration: 0.5, ease: 'power2.out' });
+  }, [pct25, pct26]);
+
+  return (
+    <div ref={rowRef} className="flex flex-col gap-0.5 py-1 border-b border-slate-50 last:border-0">
+      {/* Label row */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-[9px] w-3 text-right flex-shrink-0 text-slate-400">{rank}.</span>
+        <span className="text-[10px] font-semibold text-slate-700 flex-1 min-w-0 truncate" title={label}>
+          {label.length > 26 ? label.slice(0, 26) + '…' : label}
+        </span>
+        <span
+          className="text-[9px] font-mono font-bold flex-shrink-0 px-1 rounded"
+          style={{
+            color: deltaDir === 'up' ? '#16a34a' : deltaDir === 'down' ? '#dc2626' : '#94a3b8',
+            backgroundColor: deltaDir === 'up' ? '#f0fdf4' : deltaDir === 'down' ? '#fef2f2' : '#f8fafc',
+          }}
+        >
+          {deltaDir === 'up' ? '▲' : deltaDir === 'down' ? '▼' : '─'}{' '}
+          {fmtCompact(Math.abs(delta))}
+          {deltaPct !== null && <span className="text-[8px] opacity-70 ml-0.5">({Math.abs(deltaPct).toFixed(0)}%)</span>}
+        </span>
+      </div>
+      {/* 2025 bar */}
+      <div className="flex items-center gap-1">
+        <span className="text-[8px] font-bold w-6 flex-shrink-0 text-right" style={{ color: '#2563eb' }}>25</span>
+        <div className="flex-1 relative h-[18px] rounded overflow-hidden bg-slate-100">
+          <div ref={bar25Ref} className="h-full rounded" style={{ width: '0%', backgroundColor: '#2563eb', opacity: 0.78 }} />
+          <span className="absolute inset-0 flex items-center px-1.5 text-[8.5px] font-semibold text-slate-700">
+            {v2025 !== 0 ? fmtCompact(v2025) : '—'}
+          </span>
+        </div>
+      </div>
+      {/* 2026 bar */}
+      <div className="flex items-center gap-1">
+        <span className="text-[8px] font-bold w-6 flex-shrink-0 text-right" style={{ color: '#16a34a' }}>26</span>
+        <div className="flex-1 relative h-[18px] rounded overflow-hidden bg-slate-100">
+          <div ref={bar26Ref} className="h-full rounded" style={{ width: '0%', backgroundColor: '#16a34a', opacity: 0.78 }} />
+          <span className="absolute inset-0 flex items-center px-1.5 text-[8.5px] font-semibold text-slate-700">
+            {v2026 !== 0 ? fmtCompact(v2026) : '—'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Animated Aging Chart ─────────────────────────────────────────────────────
 function AnimatedAgingChart({ buckets, maxAbsB, bColors, VW, slot, bw, BAR_MAX, BASE_Y }:
   { buckets: {label:string;value:number}[]; maxAbsB:number; bColors:string[]; VW:number; slot:number; bw:number; BAR_MAX:number; BASE_Y:number }) {
@@ -680,6 +754,37 @@ export default function OverviewFluktuasiPage() {
 
   // Default: show top 5 only; when user has explicitly picked items in filter → show all
   const gaugeData = filterKlasifikasi.size === 0 ? byKlasifikasi.slice(0, 5) : byKlasifikasi;
+
+  // ── 2025 vs 2026 comparison — ignores year filter, respects klasifikasi + account filters
+  const byKlasiByYear = useMemo(() => {
+    const map25 = new Map<string, number>();
+    const map26 = new Map<string, number>();
+    for (const r of records) {
+      if (filterKlasifikasi.size > 0 && !r.klasifikasiParts.some(k => filterKlasifikasi.has(k))) continue;
+      if (filterAccount.size > 0 && !filterAccount.has(r.accountCode)) continue;
+      if (r.year !== '2025' && r.year !== '2026') continue;
+      const activeParts = filterKlasifikasi.size > 0
+        ? r.klasifikasiParts.filter(k => filterKlasifikasi.has(k))
+        : r.klasifikasiParts;
+      const share = r.amount / r.klasifikasiParts.length;
+      const target = r.year === '2025' ? map25 : map26;
+      for (const k of activeParts) target.set(k, (target.get(k) ?? 0) + share);
+    }
+    const allKeys = new Set([...map25.keys(), ...map26.keys()]);
+    const rows = [...allKeys].map(k => ({
+      label: k,
+      v2025: map25.get(k) ?? 0,
+      v2026: map26.get(k) ?? 0,
+    }));
+    rows.sort((a, b) =>
+      Math.max(Math.abs(b.v2025), Math.abs(b.v2026)) - Math.max(Math.abs(a.v2025), Math.abs(a.v2026))
+    );
+    const maxVal   = Math.max(...rows.flatMap(r => [Math.abs(r.v2025), Math.abs(r.v2026)]), 1);
+    const total25  = rows.reduce((s, r) => s + r.v2025, 0);
+    const total26  = rows.reduce((s, r) => s + r.v2026, 0);
+    const displayRows = filterKlasifikasi.size === 0 ? rows.slice(0, 10) : rows;
+    return { rows, displayRows, maxVal, total25, total26 };
+  }, [records, filterKlasifikasi, filterAccount]);
 
   // Paginated listing (cheap slice — not in the large memo)
   const listingTotalPages = Math.ceil(listingRows.length / LIST_PAGE_SIZE);
@@ -958,34 +1063,86 @@ export default function OverviewFluktuasiPage() {
             {/* Center column */}
             <div className="flex flex-col gap-3">
 
-              {/* Gauges card */}
+              {/* Year comparison card */}
               <Card className="anim-card shadow-sm hover:shadow-md transition-shadow duration-300 border-0 bg-white">
                 <CardHeader className="p-3 pb-0">
                   <CardTitle className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center flex items-center justify-center gap-1.5">
-                    <Activity size={12} className="text-purple-500" /> KLASIFIKASI GROUPING FLUKTUASI
+                    <Activity size={12} className="text-purple-500" /> PERBANDINGAN 2025 vs 2026 PER KLASIFIKASI
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-3 pt-2">
-                  <div className="flex flex-wrap justify-center gap-3">
-                    {gaugeData.map((d, i) => (
-                      <SemiGauge key={i} value={Math.abs(d.value)} max={maxAbsKlasi} label={d.label} amount={d.value} color={d.color} animDelay={i * 60} />
-                    ))}
-                  </div>
-                  {filterKlasifikasi.size === 0 && byKlasifikasi.length > 5 && (
-                    <p className="text-center text-[9px] text-slate-400 mt-2">
-                      Menampilkan 5 dari {byKlasifikasi.length} klasifikasi —{' '}
-                      <span className="text-blue-500">centang semua di filter untuk lihat seluruhnya</span>
-                    </p>
-                  )}
-                  <Separator className="mt-3 mb-2" />
-                  <div className="space-y-2">
-                    {gaugeData.map((d, i) => {
-                      const pct = maxAbsKlasi > 0 ? (Math.abs(d.value) / maxAbsKlasi) * 100 : 0;
-                      return (
-                        <KlasiBar key={i} label={d.label} pct={pct} value={d.value} color={d.color} animDelay={i * 50} />
-                      );
-                    })}
-                  </div>
+                  {/* Summary totals */}
+                  {(() => {
+                    const { total25, total26, displayRows, rows, maxVal } = byKlasiByYear;
+                    const yoyDelta = total26 - total25;
+                    const yoyPct   = total25 !== 0 ? (yoyDelta / Math.abs(total25)) * 100 : null;
+                    return (
+                      <>
+                        <div className="flex items-center gap-2 mb-3 rounded-xl border border-slate-100 p-2 bg-slate-50">
+                          <div className="flex-1 text-center">
+                            <p className="text-[8.5px] font-semibold text-blue-400 uppercase tracking-wide mb-0.5">2025</p>
+                            <p className="text-sm font-extrabold font-mono text-slate-800">{fmtCompact(total25)}</p>
+                          </div>
+                          <div className="flex flex-col items-center px-2">
+                            <span className="text-[8px] text-slate-400">YoY</span>
+                            <span
+                              className="text-[11px] font-bold font-mono"
+                              style={{ color: yoyDelta > 0 ? '#16a34a' : yoyDelta < 0 ? '#dc2626' : '#94a3b8' }}
+                            >
+                              {yoyDelta > 0 ? '▲' : yoyDelta < 0 ? '▼' : '─'} {fmtCompact(Math.abs(yoyDelta))}
+                            </span>
+                            {yoyPct !== null && (
+                              <span className="text-[8px] text-slate-400">{Math.abs(yoyPct).toFixed(1)}%</span>
+                            )}
+                          </div>
+                          <div className="flex-1 text-center">
+                            <p className="text-[8.5px] font-semibold text-green-500 uppercase tracking-wide mb-0.5">2026</p>
+                            <p className="text-sm font-extrabold font-mono text-slate-800">{fmtCompact(total26)}</p>
+                          </div>
+                        </div>
+                        {/* Legend */}
+                        <div className="flex items-center gap-3 mb-2 px-1">
+                          <div className="flex items-center gap-1">
+                            <span className="w-3 h-2.5 rounded-sm inline-block" style={{ backgroundColor: '#2563eb', opacity: 0.8 }} />
+                            <span className="text-[9px] text-slate-500 font-semibold">2025</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="w-3 h-2.5 rounded-sm inline-block" style={{ backgroundColor: '#16a34a', opacity: 0.8 }} />
+                            <span className="text-[9px] text-slate-500 font-semibold">2026</span>
+                          </div>
+                          <span className="ml-auto text-[8.5px] text-slate-400">
+                            {displayRows.length < rows.length
+                              ? `Top ${displayRows.length} dari ${rows.length} klasifikasi`
+                              : `${rows.length} klasifikasi`}
+                          </span>
+                        </div>
+                        {/* Comparison rows */}
+                        <div className="overflow-y-auto" style={{ maxHeight: 340 }}>
+                          {displayRows.length === 0 ? (
+                            <p className="text-center text-slate-400 text-xs py-4">Tidak ada data 2025/2026</p>
+                          ) : (
+                            displayRows.map((row, i) => (
+                              <YearCompRow
+                                key={row.label}
+                                label={row.label}
+                                v2025={row.v2025}
+                                v2026={row.v2026}
+                                maxVal={maxVal}
+                                rank={i + 1}
+                                animDelay={i * 45}
+                              />
+                            ))
+                          )}
+                        </div>
+                        {filterKlasifikasi.size === 0 && rows.length > 10 && (
+                          <p className="text-center text-[9px] text-slate-400 mt-2">
+                            Menampilkan 10 dari {rows.length} klasifikasi —{' '}
+                            <span className="text-blue-500">centang di filter untuk lihat seluruhnya</span>
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </CardContent>
               </Card>
 
