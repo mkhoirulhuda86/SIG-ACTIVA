@@ -1289,8 +1289,11 @@ export default function OverviewFluktuasiPage() {
                   </div>
                   <div className="border border-gray-200 rounded-lg bg-gray-50 max-h-40 overflow-y-auto p-1.5">
                     {allKlasifikasi.map(k => {
-                      const color     = byKlasifikasi.find(d => d.label === k)?.color ?? '#94a3b8';
-                      const amt       = byKlasifikasi.find(d => d.label === k)?.value ?? 0;
+                      const entry     = byKlasifikasi.find(d => d.label === k);
+                      const color     = entry?.color ?? '#94a3b8';
+                      const amt       = entry?.value ?? 0;
+                      // hide items with no data in current filter unless already selected
+                      if (amt === 0 && !filterKlasifikasi.has(k) && filterAccount.size > 0) return null;
                       const isChecked = filterKlasifikasi.size === 0 || filterKlasifikasi.has(k);
                       return (
                         <label key={k} className="flex items-center gap-1.5 px-1 py-0.5 rounded-md cursor-pointer hover:bg-blue-50 transition-colors duration-150">
