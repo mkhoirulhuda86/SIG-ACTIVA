@@ -465,6 +465,28 @@ const buildYtdColIdxs = (
   const currMo = getMo(currAC);
   if (currMo === 0) return { currIdxs: [], prevIdxs: [], label: '' };
 
+  const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const endMoLabel = MONTHS_SHORT[currMo - 1] ?? String(currMo);
+  const label = currMo === 1
+    ? `Jan '${currYearStr.slice(2)} vs Jan '${prevYearStr.slice(2)}`
+    : `Jan-${endMoLabel} '${currYearStr.slice(2)} vs Jan-${endMoLabel} '${prevYearStr.slice(2)}`;
+
+  // ── Option A: use existing cumulative ("Up to" / "Total Up to") columns directly ──
+  // These already represent the Jan→currMo sum; use the LAST one per year (most recent).
+  let cumulCurrIdx = -1;
+  let cumulPrevIdx = -1;
+  for (let i = 0; i < amountCols.length; i++) {
+    const ac = amountCols[i];
+    if (!ac.isCumulative) continue;
+    const yr = ac.yearLabel.match(/20\d{2}/)?.[0] ?? '';
+    if (yr === currYearStr) cumulCurrIdx = i;      // last cumulative col for curr year
+    else if (yr === prevYearStr) cumulPrevIdx = i; // last cumulative col for prev year
+  }
+  if (cumulCurrIdx >= 0 && cumulPrevIdx >= 0) {
+    return { currIdxs: [cumulCurrIdx], prevIdxs: [cumulPrevIdx], label };
+  }
+
+  // ── Option B: sum point-in-time monthly columns Jan → currMo ─────────────
   const currIdxs: number[] = [];
   const prevIdxs: number[] = [];
   for (let i = 0; i < amountCols.length; i++) {
@@ -476,12 +498,6 @@ const buildYtdColIdxs = (
     if (yr === currYearStr) currIdxs.push(i);
     else if (yr === prevYearStr) prevIdxs.push(i);
   }
-
-  const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  const endMoLabel = MONTHS_SHORT[currMo - 1] ?? String(currMo);
-  const label = currMo === 1
-    ? `Jan '${currYearStr.slice(2)} vs Jan '${prevYearStr.slice(2)}`
-    : `Jan-${endMoLabel} '${currYearStr.slice(2)} vs Jan-${endMoLabel} '${prevYearStr.slice(2)}`;
 
   return { currIdxs, prevIdxs, label };
 };
@@ -1620,6 +1636,28 @@ export default function FluktuasiOIPage() {
         })
           .then((r) => r.json())
           .then(() => loadDbStats())
+          .then(async () => {
+            // ── If no rekap sheet was found in the uploaded file, rebuild the full
+            // rekap table from ALL periods stored in DB (current + previous uploads).
+            // The initial rekap shown above only covered the current file; this
+            // replaces it with the complete multi-period view once the DB save is done.
+            if (!rekapSheetName) {
+              try {
+                const resp  = await fetch('/api/fluktuasi/akun-periodes');
+                const dbData = await resp.json();
+                if (dbData.success && Array.isArray(dbData.data) && dbData.data.length > 0) {
+                  const allRecords: AkunPeriodeRecord[] = dbData.data;
+                  const fullRekap = buildRekapFromAkunPeriodes(allRecords);
+                  setRekapSheetData(fullRekap);
+                  setDbAkunPeriodes(allRecords);
+                  // Update IDB cache so next session loads the full rekap
+                  idbSaveSheets({ sheets: result, rekap: fullRekap, fileName: file.name });
+                }
+              } catch (e) {
+                console.warn('Could not rebuild full multi-period rekap from DB:', e);
+              }
+            }
+          })
           .catch((e) => console.error('Gagal menyimpan akun periodes:', e));
       }
 
