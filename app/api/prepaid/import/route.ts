@@ -191,11 +191,10 @@ export async function POST(request: NextRequest) {
       const openBalanceRaw  = colOpenBalance >= 0 ? parseNum(row[colOpenBalance]) : 0;
       const prepaidAmoRaw   = colPrepaidAmo  >= 0 ? parseNum(row[colPrepaidAmo])  : 0;
       const balanceRaw      = colBalance     >= 0 ? parseNum(row[colBalance])     : 0;
-      let totalAmount = Math.abs(openBalanceRaw) || Math.abs(prepaidAmoRaw) || Math.abs(balanceRaw);
+      let totalAmount = openBalanceRaw !== 0 ? openBalanceRaw : prepaidAmoRaw !== 0 ? prepaidAmoRaw : balanceRaw;
       
       // Jika amount = 0, tetap import dengan nilai 0 (user bisa update nanti)
-      if (totalAmount <= 0) {
-        totalAmount = 0;
+      if (totalAmount === 0) {
         warnings.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): amount=0 - data tetap diimport`);
       }
 
@@ -238,9 +237,9 @@ export async function POST(request: NextRequest) {
       for (let pi = 0; pi < numPeriod; pi++) {
         const colIdx = periodColIndices[pi];
         if (colIdx !== undefined) {
-          const amt = Math.abs(parseNum(row[colIdx]));
+          const amt = parseNum(row[colIdx]);
           periodeAmounts.push(amt);
-          if (amt > 0) hasPeriodValues = true;
+          if (amt !== 0) hasPeriodValues = true;
         } else {
           periodeAmounts.push(0);
         }
