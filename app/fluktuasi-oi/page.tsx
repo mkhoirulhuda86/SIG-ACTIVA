@@ -3239,10 +3239,17 @@ export default function FluktuasiOIPage() {
                           const addBg = globalRi % 2 === 0 ? '#fff5f5' : '#fff0f0';
                           return (
                           <tr key={ri} style={{ backgroundColor: rowBg }}>
-                            {activeSheet.headers.map((h) => (
-                              <td key={h} className="px-3 py-1.5 text-gray-700 whitespace-nowrap"
-                                style={{ border: '1px solid #e5e7eb' }}>{row[h] ?? ''}</td>
-                            ))}
+                            {activeSheet.headers.map((h) => {
+                              const val = row[h];
+                              const isDateCol = /date|tanggal|tgl/i.test(h);
+                              const display = isDateCol && typeof val === 'number' && val > 40000 && val < 70000
+                                ? excelSerialToDateStr(val)
+                                : (val ?? '');
+                              return (
+                                <td key={h} className="px-3 py-1.5 text-gray-700 whitespace-nowrap"
+                                  style={{ border: '1px solid #e5e7eb' }}>{display}</td>
+                              );
+                            })}
                             <td className="px-3 py-1.5 font-medium whitespace-nowrap text-gray-800"
                               style={{ border: '1px solid #fecaca', backgroundColor: addBg }}>
                               {row['__periode'] ?? ''}</td>
