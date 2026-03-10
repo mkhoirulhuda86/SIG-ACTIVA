@@ -3682,7 +3682,7 @@ export default function FluktuasiOIPage() {
                         <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM<br/>%</th>
                         <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
-                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
+                          style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
                           vs {prevLabel}
                         </th>
                         <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
@@ -3690,7 +3690,7 @@ export default function FluktuasiOIPage() {
                         <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY<br/>%</th>
                         <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
-                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
+                          style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
                           vs {yoyLabel}
                         </th>
                         <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
@@ -3702,7 +3702,7 @@ export default function FluktuasiOIPage() {
                             : (rekapSheetData.ytdLabel || 'YtD %')}
                         </th>
                         <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
-                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
+                          style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
                           vs {ytdPLabel || ytdCLabel || 'YtD'}
                         </th>
                       </tr>
