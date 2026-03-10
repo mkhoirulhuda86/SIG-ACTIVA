@@ -3492,7 +3492,7 @@ export default function FluktuasiOIPage() {
                         </select>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[11px] font-bold" style={{ color: '#548235' }}>YtD</span>
+                        <span className="text-[11px] font-bold text-black" style={{ color: '#b38200' }}>YtD</span>
                         <span className="text-[11px] text-gray-500">Tahun ini s.d.:</span>
                         <select className={sel} value={effYtdC}
                           onChange={e => setYtdSel(s => ({ curr: Number(e.target.value), prev: s?.prev ?? effYtdP }))}>
@@ -3611,12 +3611,12 @@ export default function FluktuasiOIPage() {
                         {/* Dynamic YtD value columns — group row */}
                         {hasYtdData && (
                           <>
-                            <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
-                              style={{ backgroundColor: '#548235', border: '1px solid #3a5c24' }}>
+                            <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
+                              style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>
                               {effYtdCAC?.yearLabel || 'YtD'}
                             </th>
-                            <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
-                              style={{ backgroundColor: '#548235', border: '1px solid #3a5c24' }}>
+                            <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
+                              style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>
                               {effYtdPAC?.yearLabel || 'YtD'}
                             </th>
                           </>
@@ -3633,10 +3633,10 @@ export default function FluktuasiOIPage() {
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY</th>
                         <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>Reason YoY</th>
-                        <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
-                          style={{ backgroundColor: '#548235', border: '1px solid #3a5c24' }}>YtD</th>
-                        <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
-                          style={{ backgroundColor: '#548235', border: '1px solid #3a5c24' }}>YtD</th>
+                        <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
+                          style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YtD</th>
+                        <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
+                          style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YtD</th>
                       </tr>
                       {/* ── Row 2: date labels ── */}
                       <tr>
@@ -3657,12 +3657,12 @@ export default function FluktuasiOIPage() {
                         {/* Dynamic YtD value column headers */}
                         {hasYtdData && (
                           <>
-                            <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
-                              style={{ backgroundColor: '#548235', border: '1px solid #3a5c24', minWidth: '100px' }}>
+                            <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
+                              style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00', minWidth: '100px' }}>
                               YtD {ytdCLabel}
                             </th>
-                            <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
-                              style={{ backgroundColor: '#548235', border: '1px solid #3a5c24', minWidth: '100px' }}>
+                            <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
+                              style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00', minWidth: '100px' }}>
                               YtD {ytdPLabel}
                             </th>
                           </>
@@ -3683,10 +3683,10 @@ export default function FluktuasiOIPage() {
                           style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
                           vs {yoyLabel}
                         </th>
-                        <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
-                          style={{ backgroundColor: '#548235', border: '1px solid #3a5c24' }}>GAP<br/>YtD</th>
-                        <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
-                          style={{ backgroundColor: '#548235', border: '1px solid #3a5c24', minWidth: '120px' }}>
+                        <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
+                          style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>GAP<br/>YtD</th>
+                        <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center"
+                          style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00', minWidth: '120px' }}>
                           {hasYtdData && ytdCLabel && ytdPLabel
                             ? `${ytdCLabel} vs ${ytdPLabel}`
                             : (rekapSheetData.ytdLabel || 'YtD %')}
@@ -3746,14 +3746,14 @@ export default function FluktuasiOIPage() {
                             {hasYtdData && (
                               <>
                                 <td className="px-3 py-1.5 whitespace-nowrap text-right"
-                                  style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#f0fce8' : '#e4f8d4',
-                                    color: s.text, fontWeight: s.weight, border: `1px solid ${isSpecial ? s.border : '#a3d97a'}`,
+                                  style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                                    color: s.text, fontWeight: s.weight, border: `1px solid ${isSpecial ? s.border : '#fde68a'}`,
                                     minWidth: '100px' }}>
                                   {rowHasData && row.ytdCurrV !== 0 ? fmtRp(row.ytdCurrV) : ''}
                                 </td>
                                 <td className="px-3 py-1.5 whitespace-nowrap text-right"
-                                  style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#f0fce8' : '#e4f8d4',
-                                    color: s.text, fontWeight: s.weight, border: `1px solid ${isSpecial ? s.border : '#a3d97a'}`,
+                                  style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                                    color: s.text, fontWeight: s.weight, border: `1px solid ${isSpecial ? s.border : '#fde68a'}`,
                                     minWidth: '100px' }}>
                                   {rowHasData && row.ytdPrevV !== 0 ? fmtRp(row.ytdPrevV) : ''}
                                 </td>
@@ -3793,14 +3793,14 @@ export default function FluktuasiOIPage() {
                               templateReason: rekapTemplateReasons.get(globalRi)?.yoy ?? '' })}
                             {/* GAP YtD */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#f0fce8' : '#e4f8d4',
-                                color: gapColor(row.gapYtD), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#a3d97a'}` }}>
+                              style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                                color: gapColor(row.gapYtD), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#fde68a'}` }}>
                               {!hideMomYoy && rowHasData && hasYtdData ? fmtRp(row.gapYtD) : ''}
                             </td>
                             {/* YtD % */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
-                              style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#f0fce8' : '#e4f8d4',
-                                color: gapColor(row.pctYtD), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#a3d97a'}` }}>
+                              style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
+                                color: gapColor(row.pctYtD), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#fde68a'}` }}>
                               {!hideMomYoy && rowHasData && hasYtdData ? fmtPct(row.pctYtD) : ''}
                             </td>
                           </tr>
