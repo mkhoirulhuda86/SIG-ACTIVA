@@ -44,6 +44,7 @@ type RekapSheetRow = {
   ytdPrevV: number;   // raw YtD value for prev-year endpoint (for display column)
   reasonMoM: string;  // auto-populated from kode akun Klasifikasi
   reasonYoY: string;  // auto-populated from kode akun Remark
+  reasonYtD: string;  // reason for YtD variance
 };
 
 type RekapSheetData = {
@@ -602,6 +603,7 @@ const buildRekapFromAkunPeriodes = (
       ytdPrevV: ytdPrev,
       reasonMoM: [...klasifikasi].filter(Boolean).join('; '),
       reasonYoY: '',
+      reasonYtD: '',
     });
   }
 
@@ -947,7 +949,7 @@ export default function FluktuasiOIPage() {
   const [kaPage,    setKaPage]    = useState(0);
   const [rekapPage, setRekapPage] = useState(0);
   // ── AI Reason State ────────────────────────────────────────────────────────
-  const [aiReasons,  setAiReasons]  = useState<Record<number, { mom?: string; yoy?: string }>>({});
+  const [aiReasons,  setAiReasons]  = useState<Record<number, { mom?: string; yoy?: string; ytd?: string }>>({}); 
   const [aiLoading,  setAiLoading]  = useState<Record<string, boolean>>({});
   const [aiErrors,   setAiErrors]   = useState<Record<string, string>>({});
   const [aiBatch,    setAiBatch]    = useState<{ done: number; total: number } | null>(null);
@@ -1835,7 +1837,7 @@ export default function FluktuasiOIPage() {
             const reasonMoM = acctEntry ? [...acctEntry.klasifikasi].join('; ') : '';
             const reasonYoY = acctEntry ? [...acctEntry.remark].join('; ') : '';
 
-            rekapRows.push({ values, type, gapMoM, pctMoM, gapYoY, pctYoY, gapYtD, pctYtD, ytdCurrV: ytdCurr, ytdPrevV: ytdPrev, reasonMoM, reasonYoY });
+            rekapRows.push({ values, type, gapMoM, pctMoM, gapYoY, pctYoY, gapYtD, pctYtD, ytdCurrV: ytdCurr, ytdPrevV: ytdPrev, reasonMoM, reasonYoY, reasonYtD: '' });
           }
 
           rekapData = {
@@ -1903,7 +1905,7 @@ export default function FluktuasiOIPage() {
   // ── Generate AI reason for a rekap row (with auto-retry on 429) ──────────
   const generateReason = async (
     rowIdx: number,
-    type: 'mom' | 'yoy' | 'both',
+    type: 'mom' | 'yoy' | 'ytd' | 'both',
     row: RekapSheetRow,
     accountName: string,
     _retry = 0,
@@ -1983,8 +1985,9 @@ export default function FluktuasiOIPage() {
         ...prev,
         [rowIdx]: {
           ...prev[rowIdx],
-          ...(type !== 'yoy' ? { mom: data.reasonMoM || data.reason || '' } : {}),
-          ...(type !== 'mom' ? { yoy: data.reasonYoY || data.reason || '' } : {}),
+          ...(type !== 'yoy' && type !== 'ytd' ? { mom: data.reasonMoM || data.reason || '' } : {}),
+          ...(type !== 'mom' && type !== 'ytd' ? { yoy: data.reasonYoY || data.reason || '' } : {}),
+          ...(type === 'ytd' ? { ytd: data.reasonYtD || data.reasonMoM || data.reason || '' } : {}),
         },
       }));
       return true;
@@ -2505,12 +2508,16 @@ export default function FluktuasiOIPage() {
   // Keyed by index into rekapDisplayRowsLive so AI state changes (aiReasons/
   // aiLoading) don't trigger expensive buildTemplateReason re-runs.
   const rekapTemplateReasons = useMemo(() => {
-    if (!rekapSheetData) return new Map<number, { mom: string; yoy: string }>();
+    if (!rekapSheetData) return new Map<number, { mom: string; yoy: string; ytd: string }>();
     const { accountColIdx, amountCols, momCurrIdx, momPrevIdx, yoyCurrIdx, yoyPrevIdx } = rekapSheetData;
     const effMC = momSel?.curr ?? momCurrIdx;
     const effMP = momSel?.prev ?? momPrevIdx;
     const effYC = yoySel?.curr ?? yoyCurrIdx;
     const effYP = yoySel?.prev ?? yoyPrevIdx;
+    const _ytdCI0 = rekapSheetData.ytdCurrColIdxs ?? [];
+    const _ytdPI0 = rekapSheetData.ytdPrevColIdxs ?? [];
+    const effYtdC = ytdSel?.curr ?? (_ytdCI0.length > 0 ? _ytdCI0[_ytdCI0.length - 1] : momCurrIdx);
+    const effYtdP = ytdSel?.prev ?? (_ytdPI0.length > 0 ? _ytdPI0[_ytdPI0.length - 1] : yoyPrevIdx);
     // Compute descColIdx (same logic as in the render IIFE)
     const amtColSet = new Set(amountCols.map((ac) => ac.colIdx));
     const firstAmtIdx = amountCols.length > 0 ? Math.min(...amountCols.map((ac) => ac.colIdx)) : Infinity;
@@ -2520,7 +2527,7 @@ export default function FluktuasiOIPage() {
         if (ci === accountColIdx || amtColSet.has(ci) || ci >= firstAmtIdx) return false;
         return rekapSheetData.rows.some((r) => String(r.values[ci] ?? '').trim() !== '');
       }) ?? -1;
-    const map = new Map<number, { mom: string; yoy: string }>();
+    const map = new Map<number, { mom: string; yoy: string; ytd: string }>();
     rekapDisplayRowsLive.forEach((row, idx) => {
       if (row.type !== 'detail') return;
       const descVal = descColIdx >= 0 ? String(row.values[descColIdx] ?? '') : '';
@@ -2530,10 +2537,13 @@ export default function FluktuasiOIPage() {
       const yoy = Math.abs(row.gapYoY) !== 0
         ? buildTemplateReason(row.gapYoY, row.pctYoY, descVal, 'yoy', amountCols, row.values, effYC, effYP)
         : '';
-      map.set(idx, { mom, yoy });
+      const ytd = Math.abs(row.gapYtD) !== 0
+        ? buildTemplateReason(row.gapYtD, row.pctYtD, descVal, 'yoy', amountCols, row.values, effYtdC, effYtdP)
+        : '';
+      map.set(idx, { mom, yoy, ytd });
     });
     return map;
-  }, [rekapDisplayRowsLive, rekapSheetData, momSel, yoySel]);
+  }, [rekapDisplayRowsLive, rekapSheetData, momSel, yoySel, ytdSel]);
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -3299,7 +3309,7 @@ export default function FluktuasiOIPage() {
               descVal, templateReason,
             }: {
               ri: number; globalRi: number; row: RekapSheetRow;
-              side: 'mom' | 'yoy'; baseReason: string; isSpecial: boolean;
+              side: 'mom' | 'yoy' | 'ytd'; baseReason: string; isSpecial: boolean;
               s: { bg: string; text: string; weight: string; border: string };
               descVal: string; templateReason: string;
             }) => {
@@ -3310,7 +3320,7 @@ export default function FluktuasiOIPage() {
               // Use key-existence check (not truthiness) so user can clear to empty string without reverting
               const hasOverride = side in (aiReasons[globalRi] ?? {});
               const aiError   = aiErrors[key];
-              const gapVal    = side === 'mom' ? row.gapMoM : row.gapYoY;
+              const gapVal    = side === 'mom' ? row.gapMoM : side === 'yoy' ? row.gapYoY : row.gapYtD;
               // template comes pre-computed from rekapTemplateReasons memo — no rebuild on every render
               const template  = isSpecial ? '' : templateReason;
               // hasOverride = user/AI has explicitly set a value (including empty string)
@@ -3401,8 +3411,8 @@ export default function FluktuasiOIPage() {
                       {rekapSheetData.rows.filter((r) => r.type === 'detail').length} akun detail
                       &ensp;·&ensp;{visibleAmountCols.length}{visibleAmtColIdxs !== null ? `/${amountCols.length}` : ''} kolom periode
                       &ensp;·&ensp;
-                      <span style={{ color: '#fca5a5' }}>6 kolom analisis</span>
-                      &ensp;(GAP MoM · MoM% · Reason MoM · GAP YoY · YoY% · Reason YoY)
+                      <span style={{ color: '#fca5a5' }}>9 kolom analisis</span>
+                      &ensp;(GAP MoM · MoM% · Reason MoM · GAP YoY · YoY% · Reason YoY · GAP YtD · YtD% · Reason YtD)
                     </p>
                   </div>
                   {/* Generate All AI Button */}
@@ -3637,6 +3647,8 @@ export default function FluktuasiOIPage() {
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YtD</th>
                         <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YtD</th>
+                        <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
+                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>Reason YtD</th>
                       </tr>
                       {/* ── Row 2: date labels ── */}
                       <tr>
@@ -3690,6 +3702,10 @@ export default function FluktuasiOIPage() {
                           {hasYtdData && ytdCLabel && ytdPLabel
                             ? `${ytdCLabel} vs ${ytdPLabel}`
                             : (rekapSheetData.ytdLabel || 'YtD %')}
+                        </th>
+                        <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
+                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
+                          vs {ytdPLabel || ytdCLabel || 'YtD'}
                         </th>
                       </tr>
                     </thead>
@@ -3803,6 +3819,10 @@ export default function FluktuasiOIPage() {
                                 color: gapColor(row.pctYtD), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#fde68a'}` }}>
                               {!hideMomYoy && rowHasData && hasYtdData ? fmtPct(row.pctYtD) : ''}
                             </td>
+                            {/* Reason YtD */}
+                            {ReasonCell({ ri, globalRi, row, side: 'ytd',
+                              baseReason: row.reasonYtD ?? '', isSpecial: hideReason || !hasYtdData, s, descVal,
+                              templateReason: rekapTemplateReasons.get(globalRi)?.ytd ?? '' })}
                           </tr>
                         );
                       })}
