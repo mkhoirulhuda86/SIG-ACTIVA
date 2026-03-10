@@ -2278,8 +2278,8 @@ export default function FluktuasiOIPage() {
         ytdCurrV = getYtdVal(ytdSel.curr);
         ytdPrevV = getYtdVal(ytdSel.prev);
       } else {
-        const ytdCI  = rekapSheetData.ytdCurrColIdxs;
-        const ytdPI  = rekapSheetData.ytdPrevColIdxs;
+        const ytdCI  = rekapSheetData.ytdCurrColIdxs ?? [];
+        const ytdPI  = rekapSheetData.ytdPrevColIdxs ?? [];
         ytdCurrV = ytdCI.reduce((s, i) => s + (ac[i] ? parseNum(row.values[ac[i].colIdx]) : 0), 0);
         ytdPrevV = ytdPI.reduce((s, i) => s + (ac[i] ? parseNum(row.values[ac[i].colIdx]) : 0), 0);
       }
@@ -3431,11 +3431,13 @@ export default function FluktuasiOIPage() {
                   const effYC = yoySel?.curr ?? yoyCurrIdx;
                   const effYP = yoySel?.prev ?? yoyPrevIdx;
                   // YtD defaults: last col of currYear vs last col of prevYear (from stored idxs)
-                  const defaultYtdC = rekapSheetData.ytdCurrColIdxs.length > 0
-                    ? rekapSheetData.ytdCurrColIdxs[rekapSheetData.ytdCurrColIdxs.length - 1]
+                  const _ytdCI = rekapSheetData.ytdCurrColIdxs ?? [];
+                  const _ytdPI = rekapSheetData.ytdPrevColIdxs ?? [];
+                  const defaultYtdC = _ytdCI.length > 0
+                    ? _ytdCI[_ytdCI.length - 1]
                     : momCurrIdx;
-                  const defaultYtdP = rekapSheetData.ytdPrevColIdxs.length > 0
-                    ? rekapSheetData.ytdPrevColIdxs[rekapSheetData.ytdPrevColIdxs.length - 1]
+                  const defaultYtdP = _ytdPI.length > 0
+                    ? _ytdPI[_ytdPI.length - 1]
                     : (yoyPrevIdx !== momCurrIdx ? yoyPrevIdx : 0);
                   const effYtdC = ytdSel?.curr ?? defaultYtdC;
                   const effYtdP = ytdSel?.prev ?? defaultYtdP;
@@ -3643,11 +3645,13 @@ export default function FluktuasiOIPage() {
                         <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
                           style={{ backgroundColor: '#548235', border: '1px solid #3a5c24', minWidth: '120px' }}>
                           {(() => {
-                            const defaultYtdC = rekapSheetData.ytdCurrColIdxs.length > 0
-                              ? rekapSheetData.ytdCurrColIdxs[rekapSheetData.ytdCurrColIdxs.length - 1]
+                            const _hCI = rekapSheetData.ytdCurrColIdxs ?? [];
+                            const _hPI = rekapSheetData.ytdPrevColIdxs ?? [];
+                            const defaultYtdC = _hCI.length > 0
+                              ? _hCI[_hCI.length - 1]
                               : rekapSheetData.momCurrIdx;
-                            const defaultYtdP = rekapSheetData.ytdPrevColIdxs.length > 0
-                              ? rekapSheetData.ytdPrevColIdxs[rekapSheetData.ytdPrevColIdxs.length - 1]
+                            const defaultYtdP = _hPI.length > 0
+                              ? _hPI[_hPI.length - 1]
                               : rekapSheetData.yoyPrevIdx;
                             const vc = amountCols[ytdSel?.curr ?? defaultYtdC];
                             const vp = amountCols[ytdSel?.prev ?? defaultYtdP];
@@ -3744,13 +3748,13 @@ export default function FluktuasiOIPage() {
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
                               style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#f0fce8' : '#e4f8d4',
                                 color: gapColor(row.gapYtD), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#a3d97a'}` }}>
-                              {!hideMomYoy && rowHasData && rekapSheetData.ytdCurrColIdxs.length > 0 ? fmtRp(row.gapYtD) : ''}
+                              {!hideMomYoy && rowHasData && (rekapSheetData.ytdCurrColIdxs ?? []).length > 0 ? fmtRp(row.gapYtD) : ''}
                             </td>
                             {/* YtD % */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
                               style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#f0fce8' : '#e4f8d4',
                                 color: gapColor(row.pctYtD), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#a3d97a'}` }}>
-                              {!hideMomYoy && rowHasData && rekapSheetData.ytdCurrColIdxs.length > 0 ? fmtPct(row.pctYtD) : ''}
+                              {!hideMomYoy && rowHasData && (rekapSheetData.ytdCurrColIdxs ?? []).length > 0 ? fmtPct(row.pctYtD) : ''}
                             </td>
                           </tr>
                         );
