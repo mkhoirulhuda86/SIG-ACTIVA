@@ -40,6 +40,8 @@ type RekapSheetRow = {
   pctYoY: number;
   gapYtD: number;
   pctYtD: number;
+  ytdCurrV: number;   // raw YtD value for current-year endpoint (for display column)
+  ytdPrevV: number;   // raw YtD value for prev-year endpoint (for display column)
   reasonMoM: string;  // auto-populated from kode akun Klasifikasi
   reasonYoY: string;  // auto-populated from kode akun Remark
 };
@@ -596,6 +598,8 @@ const buildRekapFromAkunPeriodes = (
       gapMoM,  pctMoM,
       gapYoY,  pctYoY,
       gapYtD,  pctYtD,
+      ytdCurrV: ytdCurr,
+      ytdPrevV: ytdPrev,
       reasonMoM: [...klasifikasi].filter(Boolean).join('; '),
       reasonYoY: '',
     });
@@ -1831,7 +1835,7 @@ export default function FluktuasiOIPage() {
             const reasonMoM = acctEntry ? [...acctEntry.klasifikasi].join('; ') : '';
             const reasonYoY = acctEntry ? [...acctEntry.remark].join('; ') : '';
 
-            rekapRows.push({ values, type, gapMoM, pctMoM, gapYoY, pctYoY, gapYtD, pctYtD, reasonMoM, reasonYoY });
+            rekapRows.push({ values, type, gapMoM, pctMoM, gapYoY, pctYoY, gapYtD, pctYtD, ytdCurrV: ytdCurr, ytdPrevV: ytdPrev, reasonMoM, reasonYoY });
           }
 
           rekapData = {
@@ -2286,7 +2290,7 @@ export default function FluktuasiOIPage() {
       const gapYtD  = ytdCurrV - ytdPrevV;
       const pctYtD  = ytdPrevV === 0 ? 0 : (gapYtD / Math.abs(ytdPrevV)) * 100;
 
-      let updated: RekapSheetRow = { ...row, gapMoM, pctMoM, gapYoY, pctYoY, gapYtD, pctYtD };
+      let updated: RekapSheetRow = { ...row, gapMoM, pctMoM, gapYoY, pctYoY, gapYtD, pctYtD, ytdCurrV: ytdCurrV, ytdPrevV: ytdPrevV };
 
       // ── Overlay klasifikasi/remark from live keywords ──
       if (sheetDataList.length && row.type === 'detail') {
@@ -3254,9 +3258,20 @@ export default function FluktuasiOIPage() {
           {/* ── Rekap Sheet Table ─────────────────────────────────────────── */}
           {rekapSheetData && (() => {
             const { accountColIdx, amountCols, momCurrIdx, momPrevIdx, yoyCurrIdx, yoyPrevIdx } = rekapSheetData;
-            // Columns visible in the table (null = all)
+            // Compute effective YtD column indices + display labels for the dynamic YtD value columns
+            const _ytdCI0   = rekapSheetData.ytdCurrColIdxs ?? [];
+            const _ytdPI0   = rekapSheetData.ytdPrevColIdxs ?? [];
+            const hasYtdData = _ytdCI0.length > 0 || ytdSel !== null;
+            const effYtdCIdx = ytdSel?.curr ?? (_ytdCI0.length > 0 ? _ytdCI0[_ytdCI0.length - 1] : momCurrIdx);
+            const effYtdPIdx = ytdSel?.prev ?? (_ytdPI0.length > 0 ? _ytdPI0[_ytdPI0.length - 1] : yoyPrevIdx);
+            const effYtdCAC  = amountCols[effYtdCIdx];
+            const effYtdPAC  = amountCols[effYtdPIdx];
+            const ytdCLabel  = effYtdCAC ? `${effYtdCAC.yearLabel ? effYtdCAC.yearLabel + ' ' : ''}${effYtdCAC.dateLabel}`.trim() : '';
+            const ytdPLabel  = effYtdPAC ? `${effYtdPAC.yearLabel ? effYtdPAC.yearLabel + ' ' : ''}${effYtdPAC.dateLabel}`.trim() : '';
+            // Columns visible in the table — cumulative (Up-to) cols hidden by default;
+            // they're replaced by the dynamic YtD value columns above
             const visibleAmountCols = visibleAmtColIdxs === null
-              ? amountCols
+              ? amountCols.filter(ac => !ac.isCumulative)
               : amountCols.filter((_, i) => visibleAmtColIdxs.has(i));
             const amtColSet  = new Set(amountCols.map(ac => ac.colIdx));
             // Find description columns: non-account, non-amount, before first amount col, AND have data
@@ -3522,8 +3537,8 @@ export default function FluktuasiOIPage() {
                             </div>
                             <div className="flex flex-col gap-1">
                               {amountCols.map((ac, i) => {
-                                const checked = visibleAmtColIdxs === null || visibleAmtColIdxs.has(i);
-                                const label = `${ac.yearLabel ? ac.yearLabel + ' ' : ''}${ac.dateLabel || ac.label}`.trim();
+                                const checked = visibleAmtColIdxs === null ? !ac.isCumulative : visibleAmtColIdxs.has(i);
+                                const label = `${ac.yearLabel ? ac.yearLabel + ' ' : ''}${ac.dateLabel || ac.label}${ac.isCumulative ? ' [Up to]' : ''}`.trim();
                                 return (
                                   <label key={i} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-1 py-0.5 rounded">
                                     <input
@@ -3532,7 +3547,7 @@ export default function FluktuasiOIPage() {
                                       onChange={() => {
                                         setVisibleAmtColIdxs(prev => {
                                           const current = prev === null
-                                            ? new Set(amountCols.map((_, idx) => idx))
+                                            ? new Set(amountCols.map((_, idx) => idx).filter(idx => !amountCols[idx].isCumulative))
                                             : new Set(prev);
                                           if (current.has(i)) {
                                             if (current.size <= 1) return prev; // keep at least 1
@@ -3540,13 +3555,15 @@ export default function FluktuasiOIPage() {
                                           } else {
                                             current.add(i);
                                           }
-                                          // if all selected, revert to null
-                                          return current.size === amountCols.length ? null : current;
+                                          // revert to null if matches default (all non-cumulative selected)
+                                          const defSet = new Set(amountCols.map((_, idx) => idx).filter(idx => !amountCols[idx].isCumulative));
+                                          const isDefault = current.size === defSet.size && [...current].every(ci => defSet.has(ci));
+                                          return isDefault ? null : current;
                                         });
                                       }}
                                       className="rounded"
                                     />
-                                    <span className="text-[11px] text-gray-700">{label}</span>
+                                    <span className={`text-[11px] ${ac.isCumulative ? 'text-amber-700 italic' : 'text-gray-700'}`}>{label}</span>
                                   </label>
                                 );
                               })}
@@ -3591,6 +3608,19 @@ export default function FluktuasiOIPage() {
                             {ac.yearLabel}
                           </th>
                         ))}
+                        {/* Dynamic YtD value columns — group row */}
+                        {hasYtdData && (
+                          <>
+                            <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
+                              style={{ backgroundColor: '#548235', border: '1px solid #3a5c24' }}>
+                              {effYtdCAC?.yearLabel || 'YtD'}
+                            </th>
+                            <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
+                              style={{ backgroundColor: '#548235', border: '1px solid #3a5c24' }}>
+                              {effYtdPAC?.yearLabel || 'YtD'}
+                            </th>
+                          </>
+                        )}
                         <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM</th>
                         <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
@@ -3624,6 +3654,19 @@ export default function FluktuasiOIPage() {
                             {ac.dateLabel || ac.label}
                           </th>
                         ))}
+                        {/* Dynamic YtD value column headers */}
+                        {hasYtdData && (
+                          <>
+                            <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
+                              style={{ backgroundColor: '#548235', border: '1px solid #3a5c24', minWidth: '100px' }}>
+                              YtD {ytdCLabel}
+                            </th>
+                            <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
+                              style={{ backgroundColor: '#548235', border: '1px solid #3a5c24', minWidth: '100px' }}>
+                              YtD {ytdPLabel}
+                            </th>
+                          </>
+                        )}
                         <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>GAP<br/>MoM</th>
                         <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
@@ -3644,22 +3687,9 @@ export default function FluktuasiOIPage() {
                           style={{ backgroundColor: '#548235', border: '1px solid #3a5c24' }}>GAP<br/>YtD</th>
                         <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
                           style={{ backgroundColor: '#548235', border: '1px solid #3a5c24', minWidth: '120px' }}>
-                          {(() => {
-                            const _hCI = rekapSheetData.ytdCurrColIdxs ?? [];
-                            const _hPI = rekapSheetData.ytdPrevColIdxs ?? [];
-                            const defaultYtdC = _hCI.length > 0
-                              ? _hCI[_hCI.length - 1]
-                              : rekapSheetData.momCurrIdx;
-                            const defaultYtdP = _hPI.length > 0
-                              ? _hPI[_hPI.length - 1]
-                              : rekapSheetData.yoyPrevIdx;
-                            const vc = amountCols[ytdSel?.curr ?? defaultYtdC];
-                            const vp = amountCols[ytdSel?.prev ?? defaultYtdP];
-                            if (!vc || !vp) return rekapSheetData.ytdLabel || 'YtD %';
-                            const lc = `${vc.yearLabel ? vc.yearLabel + ' ' : ''}${vc.dateLabel}`.trim();
-                            const lp = `${vp.yearLabel ? vp.yearLabel + ' ' : ''}${vp.dateLabel}`.trim();
-                            return `${lc} vs ${lp}`;
-                          })()}
+                          {hasYtdData && ytdCLabel && ytdPLabel
+                            ? `${ytdCLabel} vs ${ytdPLabel}`
+                            : (rekapSheetData.ytdLabel || 'YtD %')}
                         </th>
                       </tr>
                     </thead>
@@ -3712,7 +3742,24 @@ export default function FluktuasiOIPage() {
                                 </td>
                               );
                             })}
-                            {/* GAP MoM */}
+                            {/* Dynamic YtD value columns (shown when YtD data available) */}
+                            {hasYtdData && (
+                              <>
+                                <td className="px-3 py-1.5 whitespace-nowrap text-right"
+                                  style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#f0fce8' : '#e4f8d4',
+                                    color: s.text, fontWeight: s.weight, border: `1px solid ${isSpecial ? s.border : '#a3d97a'}`,
+                                    minWidth: '100px' }}>
+                                  {rowHasData && row.ytdCurrV !== 0 ? fmtRp(row.ytdCurrV) : ''}
+                                </td>
+                                <td className="px-3 py-1.5 whitespace-nowrap text-right"
+                                  style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#f0fce8' : '#e4f8d4',
+                                    color: s.text, fontWeight: s.weight, border: `1px solid ${isSpecial ? s.border : '#a3d97a'}`,
+                                    minWidth: '100px' }}>
+                                  {rowHasData && row.ytdPrevV !== 0 ? fmtRp(row.ytdPrevV) : ''}
+                                </td>
+                              </>
+                            )}
+                            {/* GAP MoM */}}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
                               style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.gapMoM), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#fde68a'}` }}>
@@ -3748,13 +3795,13 @@ export default function FluktuasiOIPage() {
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
                               style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#f0fce8' : '#e4f8d4',
                                 color: gapColor(row.gapYtD), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#a3d97a'}` }}>
-                              {!hideMomYoy && rowHasData && (rekapSheetData.ytdCurrColIdxs ?? []).length > 0 ? fmtRp(row.gapYtD) : ''}
+                              {!hideMomYoy && rowHasData && hasYtdData ? fmtRp(row.gapYtD) : ''}
                             </td>
                             {/* YtD % */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
                               style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#f0fce8' : '#e4f8d4',
                                 color: gapColor(row.pctYtD), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#a3d97a'}` }}>
-                              {!hideMomYoy && rowHasData && (rekapSheetData.ytdCurrColIdxs ?? []).length > 0 ? fmtPct(row.pctYtD) : ''}
+                              {!hideMomYoy && rowHasData && hasYtdData ? fmtPct(row.pctYtD) : ''}
                             </td>
                           </tr>
                         );
