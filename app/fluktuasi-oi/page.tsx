@@ -953,14 +953,16 @@ export default function FluktuasiOIPage() {
   const [uploadError, setUploadError] = useState<string>('');
   const [chat, setChat] = useState<ChatPanel | null>(null);
 
-  // Period selection for MoM / YoY — null = use auto-detected default
+  // Period selection for MoM / YoY / YtD — null = use auto-detected default
   const [momSel, setMomSel] = useState<{ curr: number; prev: number } | null>(null);
   const [yoySel, setYoySel] = useState<{ curr: number; prev: number } | null>(null);
+  // YtD: single amountCols index per year; if isCumulative → use directly, else sum Jan→mo
+  const [ytdSel, setYtdSel] = useState<{ curr: number; prev: number } | null>(null);
   // Column visibility — null = all visible; Set = only those amountCol indices
   const [visibleAmtColIdxs, setVisibleAmtColIdxs] = useState<Set<number> | null>(null);
   const [showColPicker,     setShowColPicker]     = useState(false);
   // Reset period selection when a new file is loaded
-  useEffect(() => { setMomSel(null); setYoySel(null); setVisibleAmtColIdxs(null); setShowColPicker(false); }, [rekapSheetData]);
+  useEffect(() => { setMomSel(null); setYoySel(null); setYtdSel(null); setVisibleAmtColIdxs(null); setShowColPicker(false); }, [rekapSheetData]);
   
   // ── Keyword Management States ──────────────────────────────────────────────
   const [keywords, setKeywords] = useState<Keyword[]>([]);
@@ -2242,12 +2244,46 @@ export default function FluktuasiOIPage() {
       const gapYoY  = yoyCurr - yoyPrev;
       const pctYoY  = yoyPrev === 0 ? 0 : (gapYoY / Math.abs(yoyPrev)) * 100;
 
-      // Recompute YtD from stored column-index sets
-      const ytdCI   = rekapSheetData.ytdCurrColIdxs;
-      const ytdPI   = rekapSheetData.ytdPrevColIdxs;
-      const ytdCurr = ytdCI.reduce((s, i) => s + (ac[i] ? parseNum(row.values[ac[i].colIdx]) : 0), 0);
-      const ytdPrevV = ytdPI.reduce((s, i) => s + (ac[i] ? parseNum(row.values[ac[i].colIdx]) : 0), 0);
-      const gapYtD  = ytdCurr - ytdPrevV;
+      // Recompute YtD — respect ytdSel if set, else fall back to stored column-index sets
+      // Helper: get YtD value for a single amountCols index (colIdx of the target "Up to" period).
+      // If the column is cumulative → use its value directly.
+      // If point-in-time → sum all non-cumulative same-year cols from Jan → mo.
+      const getYtdVal = (targetIdx: number): number => {
+        const tAC = ac[targetIdx];
+        if (!tAC) return 0;
+        if (tAC.isCumulative) return parseNum(row.values[tAC.colIdx]);
+        // Point-in-time: sum Jan → target month within same year
+        const YTDMM: Record<string, number> = {
+          jan:1,feb:2,mar:3,apr:4,mei:5,may:5,jun:6,jul:7,aug:8,agu:8,sep:9,oct:10,okt:10,nov:11,dec:12,des:12,
+        };
+        const getMoNum = (a: AmountCol) => {
+          const db = a.label.match(/^20\d{2}\.(\d{2})$/);
+          if (db) return parseInt(db[1]);
+          const txt = (a.dateLabel + ' ' + a.label).toLowerCase();
+          for (const [k, v] of Object.entries(YTDMM)) if (new RegExp(`\\b${k}\\b`).test(txt)) return v;
+          return 0;
+        };
+        const tMo  = getMoNum(tAC);
+        const tYr  = tAC.yearLabel.match(/20\d{2}/)?.[0] ?? '';
+        if (!tMo || !tYr) return parseNum(row.values[tAC.colIdx]);
+        return ac.reduce((sum, a, _i) => {
+          if (a.isCumulative) return sum;
+          if ((a.yearLabel.match(/20\d{2}/)?.[0] ?? '') !== tYr) return sum;
+          const mo = getMoNum(a);
+          return (mo >= 1 && mo <= tMo) ? sum + parseNum(row.values[a.colIdx]) : sum;
+        }, 0);
+      };
+      let ytdCurrV: number, ytdPrevV: number;
+      if (ytdSel) {
+        ytdCurrV = getYtdVal(ytdSel.curr);
+        ytdPrevV = getYtdVal(ytdSel.prev);
+      } else {
+        const ytdCI  = rekapSheetData.ytdCurrColIdxs;
+        const ytdPI  = rekapSheetData.ytdPrevColIdxs;
+        ytdCurrV = ytdCI.reduce((s, i) => s + (ac[i] ? parseNum(row.values[ac[i].colIdx]) : 0), 0);
+        ytdPrevV = ytdPI.reduce((s, i) => s + (ac[i] ? parseNum(row.values[ac[i].colIdx]) : 0), 0);
+      }
+      const gapYtD  = ytdCurrV - ytdPrevV;
       const pctYtD  = ytdPrevV === 0 ? 0 : (gapYtD / Math.abs(ytdPrevV)) * 100;
 
       let updated: RekapSheetRow = { ...row, gapMoM, pctMoM, gapYoY, pctYoY, gapYtD, pctYtD };
@@ -2264,7 +2300,7 @@ export default function FluktuasiOIPage() {
       }
       return updated;
     });
-  }, [rekapDisplayRows, acctReasonMapLive, rekapSheetData, sheetDataList, momSel, yoySel]);
+  }, [rekapDisplayRows, acctReasonMapLive, rekapSheetData, sheetDataList, momSel, yoySel, ytdSel]);
 
   const rekapTotalPages = Math.ceil(rekapDisplayRowsLive.length / REKAP_PAGE_SIZE);
   const rekapPageRows   = useMemo(() =>
@@ -3394,9 +3430,20 @@ export default function FluktuasiOIPage() {
                   const effMP = momSel?.prev ?? momPrevIdx;
                   const effYC = yoySel?.curr ?? yoyCurrIdx;
                   const effYP = yoySel?.prev ?? yoyPrevIdx;
+                  // YtD defaults: last col of currYear vs last col of prevYear (from stored idxs)
+                  const defaultYtdC = rekapSheetData.ytdCurrColIdxs.length > 0
+                    ? rekapSheetData.ytdCurrColIdxs[rekapSheetData.ytdCurrColIdxs.length - 1]
+                    : momCurrIdx;
+                  const defaultYtdP = rekapSheetData.ytdPrevColIdxs.length > 0
+                    ? rekapSheetData.ytdPrevColIdxs[rekapSheetData.ytdPrevColIdxs.length - 1]
+                    : (yoyPrevIdx !== momCurrIdx ? yoyPrevIdx : 0);
+                  const effYtdC = ytdSel?.curr ?? defaultYtdC;
+                  const effYtdP = ytdSel?.prev ?? defaultYtdP;
                   const colLabel = (i: number) => {
                     const a = amountCols[i];
-                    return a ? `${a.yearLabel ? a.yearLabel + ' ' : ''}${a.dateLabel}`.trim() : `Col ${i}`;
+                    if (!a) return `Col ${i}`;
+                    const tag = a.isCumulative ? ' [Up to]' : '';
+                    return `${a.yearLabel ? a.yearLabel + ' ' : ''}${a.dateLabel}${tag}`.trim();
                   };
                   const sel = "text-[11px] rounded border border-gray-300 bg-white px-1.5 py-0.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400";
                   return (
@@ -3427,8 +3474,22 @@ export default function FluktuasiOIPage() {
                           {amountCols.map((_, i) => <option key={i} value={i}>{colLabel(i)}</option>)}
                         </select>
                       </div>
-                      {(momSel || yoySel) && (
-                        <button onClick={() => { setMomSel(null); setYoySel(null); }}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[11px] font-bold" style={{ color: '#548235' }}>YtD</span>
+                        <span className="text-[11px] text-gray-500">Tahun ini s.d.:</span>
+                        <select className={sel} value={effYtdC}
+                          onChange={e => setYtdSel(s => ({ curr: Number(e.target.value), prev: s?.prev ?? effYtdP }))}>
+                          {amountCols.map((_, i) => <option key={i} value={i}>{colLabel(i)}</option>)}
+                        </select>
+                        <span className="text-[11px] text-gray-400">vs</span>
+                        <span className="text-[11px] text-gray-500">Tahun lalu s.d.:</span>
+                        <select className={sel} value={effYtdP}
+                          onChange={e => setYtdSel(s => ({ curr: s?.curr ?? effYtdC, prev: Number(e.target.value) }))}>
+                          {amountCols.map((_, i) => <option key={i} value={i}>{colLabel(i)}</option>)}
+                        </select>
+                      </div>
+                      {(momSel || yoySel || ytdSel) && (
+                        <button onClick={() => { setMomSel(null); setYoySel(null); setYtdSel(null); }}
                           className="text-[10px] px-2 py-0.5 rounded bg-gray-200 text-gray-600 hover:bg-gray-300">
                           Reset default
                         </button>
@@ -3581,7 +3642,20 @@ export default function FluktuasiOIPage() {
                           style={{ backgroundColor: '#548235', border: '1px solid #3a5c24' }}>GAP<br/>YtD</th>
                         <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
                           style={{ backgroundColor: '#548235', border: '1px solid #3a5c24', minWidth: '120px' }}>
-                          {rekapSheetData.ytdLabel || 'YtD %'}
+                          {(() => {
+                            const defaultYtdC = rekapSheetData.ytdCurrColIdxs.length > 0
+                              ? rekapSheetData.ytdCurrColIdxs[rekapSheetData.ytdCurrColIdxs.length - 1]
+                              : rekapSheetData.momCurrIdx;
+                            const defaultYtdP = rekapSheetData.ytdPrevColIdxs.length > 0
+                              ? rekapSheetData.ytdPrevColIdxs[rekapSheetData.ytdPrevColIdxs.length - 1]
+                              : rekapSheetData.yoyPrevIdx;
+                            const vc = amountCols[ytdSel?.curr ?? defaultYtdC];
+                            const vp = amountCols[ytdSel?.prev ?? defaultYtdP];
+                            if (!vc || !vp) return rekapSheetData.ytdLabel || 'YtD %';
+                            const lc = `${vc.yearLabel ? vc.yearLabel + ' ' : ''}${vc.dateLabel}`.trim();
+                            const lp = `${vp.yearLabel ? vp.yearLabel + ' ' : ''}${vp.dateLabel}`.trim();
+                            return `${lc} vs ${lp}`;
+                          })()}
                         </th>
                       </tr>
                     </thead>
