@@ -3759,7 +3759,7 @@ export default function FluktuasiOIPage() {
                                 </td>
                               </>
                             )}
-                            {/* GAP MoM */}}
+                            {/* GAP MoM */}
                             <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
                               style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                 color: gapColor(row.gapMoM), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#fde68a'}` }}>
