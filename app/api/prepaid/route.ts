@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
           orderBy: { periodeKe: 'asc' },
         },
       },
-      orderBy: { startDate: 'desc' },
+      orderBy: { startDate: 'asc' },
     });
 
     const prepaidsWithRemaining = prepaids.map((prepaid: any) => {
