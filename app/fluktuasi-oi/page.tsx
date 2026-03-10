@@ -38,6 +38,8 @@ type RekapSheetRow = {
   pctMoM: number;
   gapYoY: number;
   pctYoY: number;
+  gapYtD: number;
+  pctYtD: number;
   reasonMoM: string;  // auto-populated from kode akun Klasifikasi
   reasonYoY: string;  // auto-populated from kode akun Remark
 };
@@ -52,6 +54,9 @@ type RekapSheetData = {
   momPrevIdx: number;   // index in amountCols for MoM previous
   yoyCurrIdx: number;   // index in amountCols for YoY current
   yoyPrevIdx: number;   // index in amountCols for YoY previous (same month last year)
+  ytdCurrColIdxs: number[]; // amountCols indices for current-year YtD range (Jan→currMo)
+  ytdPrevColIdxs: number[]; // amountCols indices for prev-year YtD range (Jan→currMo)
+  ytdLabel: string;         // e.g. "Jan-Mar '26 vs Jan-Mar '25"
   rows: RekapSheetRow[];
 };
 
@@ -426,6 +431,61 @@ type AkunPeriodeRecord = {
   remark: string;
 };
 
+/**
+ * Compute which amountCols indices belong to the current-year YtD range
+ * (Jan through currMo) and the same range in the previous year.
+ * Works for both DB records (label = "YYYY.MM") and Excel headers (yearLabel + dateLabel).
+ */
+const buildYtdColIdxs = (
+  amountCols: AmountCol[],
+  currAmtColIdx: number,
+): { currIdxs: number[]; prevIdxs: number[]; label: string } => {
+  const currAC = amountCols[currAmtColIdx];
+  if (!currAC) return { currIdxs: [], prevIdxs: [], label: '' };
+  const currYearStr = currAC.yearLabel.match(/20\d{2}/)?.[0] ?? '';
+  const prevYearStr = currYearStr ? String(parseInt(currYearStr) - 1) : '';
+  if (!currYearStr || !prevYearStr) return { currIdxs: [], prevIdxs: [], label: '' };
+
+  const MONTH_MAP: Record<string, number> = {
+    jan:1, feb:2, mar:3, apr:4, mei:5, may:5, jun:6, jul:7,
+    aug:8, agu:8, sep:9, oct:10, okt:10, nov:11, dec:12, des:12,
+  };
+  const getMo = (ac: AmountCol): number => {
+    // DB label format: "YYYY.MM"
+    const dbM = ac.label.match(/^20\d{2}\.(\d{2})$/);
+    if (dbM) return parseInt(dbM[1]);
+    // Excel: scan dateLabel + label for month abbreviation
+    const text = (ac.dateLabel + ' ' + ac.label).toLowerCase();
+    for (const [k, v] of Object.entries(MONTH_MAP)) {
+      if (new RegExp(`\\b${k}\\b`).test(text)) return v;
+    }
+    return 0;
+  };
+
+  const currMo = getMo(currAC);
+  if (currMo === 0) return { currIdxs: [], prevIdxs: [], label: '' };
+
+  const currIdxs: number[] = [];
+  const prevIdxs: number[] = [];
+  for (let i = 0; i < amountCols.length; i++) {
+    const ac = amountCols[i];
+    if (ac.isCumulative) continue;
+    const mo = getMo(ac);
+    if (mo === 0 || mo > currMo) continue;
+    const yr = ac.yearLabel.match(/20\d{2}/)?.[0] ?? '';
+    if (yr === currYearStr) currIdxs.push(i);
+    else if (yr === prevYearStr) prevIdxs.push(i);
+  }
+
+  const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const endMoLabel = MONTHS_SHORT[currMo - 1] ?? String(currMo);
+  const label = currMo === 1
+    ? `Jan '${currYearStr.slice(2)} vs Jan '${prevYearStr.slice(2)}`
+    : `Jan-${endMoLabel} '${currYearStr.slice(2)} vs Jan-${endMoLabel} '${prevYearStr.slice(2)}`;
+
+  return { currIdxs, prevIdxs, label };
+};
+
 /** Build a synthetic RekapSheetData from a list of account-periode records */
 const buildRekapFromAkunPeriodes = (
   records: AkunPeriodeRecord[],
@@ -485,6 +545,10 @@ const buildRekapFromAkunPeriodes = (
   if (yoyPrevIdx < 0) yoyPrevIdx = 0;
   if (yoyPrevIdx === yoyCurrIdx && amountCols.length > 1) yoyPrevIdx = 0;
 
+  // YtD: Jan–currMo of currYr vs Jan–currMo of prevYr
+  const { currIdxs: ytdCurrColIdxs, prevIdxs: ytdPrevColIdxs, label: ytdLabel } =
+    buildYtdColIdxs(amountCols, momCurrIdx);
+
   // 6. Build rows
   const rows: RekapSheetRow[] = [];
   const sortedAccounts = [...accountMap.keys()].sort();
@@ -505,11 +569,17 @@ const buildRekapFromAkunPeriodes = (
     const gapYoY = yoyCurr - yoyPrev;
     const pctYoY = yoyPrev !== 0 ? (gapYoY / Math.abs(yoyPrev)) * 100 : 0;
 
+    const ytdCurr = ytdCurrColIdxs.reduce((s, i) => s + (amounts.get(allPeriodes[i] ?? '') ?? 0), 0);
+    const ytdPrev = ytdPrevColIdxs.reduce((s, i) => s + (amounts.get(allPeriodes[i] ?? '') ?? 0), 0);
+    const gapYtD  = ytdCurr - ytdPrev;
+    const pctYtD  = ytdPrev !== 0 ? (gapYtD / Math.abs(ytdPrev)) * 100 : 0;
+
     rows.push({
       values,
       type:       'detail',
       gapMoM,  pctMoM,
       gapYoY,  pctYoY,
+      gapYtD,  pctYtD,
       reasonMoM: [...klasifikasi].filter(Boolean).join('; '),
       reasonYoY: '',
     });
@@ -525,6 +595,9 @@ const buildRekapFromAkunPeriodes = (
     momPrevIdx,
     yoyCurrIdx,
     yoyPrevIdx,
+    ytdCurrColIdxs,
+    ytdPrevColIdxs,
+    ytdLabel,
     rows,
   };
 };
@@ -1681,6 +1754,10 @@ export default function FluktuasiOIPage() {
             yoyPrevIdx = yoyCurrIdx > 0 ? 0 : 1;
           }
 
+          // YtD: Jan–currMo of currYr vs Jan–currMo of prevYr
+          const { currIdxs: ytdCurrColIdxs, prevIdxs: ytdPrevColIdxs, label: ytdLabel } =
+            buildYtdColIdxs(amountCols, momCurrIdx);
+
           // Build rows
           const rekapRows: RekapSheetRow[] = [];
           for (let r = hRow2 + 1; r < rawR.length; r++) {
@@ -1703,13 +1780,18 @@ export default function FluktuasiOIPage() {
             const gapYoY = yoyCurr - yoyPrev;
             const pctYoY = yoyPrev === 0 ? 0 : (gapYoY / Math.abs(yoyPrev)) * 100;
 
+            const ytdCurr = ytdCurrColIdxs.reduce((s, i) => s + (amountCols[i] ? parseNum(rawRow?.[amountCols[i].colIdx]) : 0), 0);
+            const ytdPrev = ytdPrevColIdxs.reduce((s, i) => s + (amountCols[i] ? parseNum(rawRow?.[amountCols[i].colIdx]) : 0), 0);
+            const gapYtD  = ytdCurr - ytdPrev;
+            const pctYtD  = ytdPrev === 0 ? 0 : (gapYtD / Math.abs(ytdPrev)) * 100;
+
             // Auto-populate reasons from kode akun lookup
             const acctCode = String(values[accountColIdx] ?? '').trim();
             const acctEntry = acctReasonMap[acctCode];
             const reasonMoM = acctEntry ? [...acctEntry.klasifikasi].join('; ') : '';
             const reasonYoY = acctEntry ? [...acctEntry.remark].join('; ') : '';
 
-            rekapRows.push({ values, type, gapMoM, pctMoM, gapYoY, pctYoY, reasonMoM, reasonYoY });
+            rekapRows.push({ values, type, gapMoM, pctMoM, gapYoY, pctYoY, gapYtD, pctYtD, reasonMoM, reasonYoY });
           }
 
           rekapData = {
@@ -1722,6 +1804,9 @@ export default function FluktuasiOIPage() {
             momPrevIdx,
             yoyCurrIdx,
             yoyPrevIdx,
+            ytdCurrColIdxs,
+            ytdPrevColIdxs,
+            ytdLabel,
             rows: rekapRows,
           };
           setRekapSheetData(rekapData);
@@ -2118,7 +2203,16 @@ export default function FluktuasiOIPage() {
       const pctMoM  = prev === 0 ? 0 : (gapMoM / Math.abs(prev)) * 100;
       const gapYoY  = yoyCurr - yoyPrev;
       const pctYoY  = yoyPrev === 0 ? 0 : (gapYoY / Math.abs(yoyPrev)) * 100;
-      let updated: RekapSheetRow = { ...row, gapMoM, pctMoM, gapYoY, pctYoY };
+
+      // Recompute YtD from stored column-index sets
+      const ytdCI   = rekapSheetData.ytdCurrColIdxs;
+      const ytdPI   = rekapSheetData.ytdPrevColIdxs;
+      const ytdCurr = ytdCI.reduce((s, i) => s + (ac[i] ? parseNum(row.values[ac[i].colIdx]) : 0), 0);
+      const ytdPrevV = ytdPI.reduce((s, i) => s + (ac[i] ? parseNum(row.values[ac[i].colIdx]) : 0), 0);
+      const gapYtD  = ytdCurr - ytdPrevV;
+      const pctYtD  = ytdPrevV === 0 ? 0 : (gapYtD / Math.abs(ytdPrevV)) * 100;
+
+      let updated: RekapSheetRow = { ...row, gapMoM, pctMoM, gapYoY, pctYoY, gapYtD, pctYtD };
 
       // ── Overlay klasifikasi/remark from live keywords ──
       if (sheetDataList.length && row.type === 'detail') {
@@ -3408,6 +3502,10 @@ export default function FluktuasiOIPage() {
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY</th>
                         <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>Reason YoY</th>
+                        <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
+                          style={{ backgroundColor: '#548235', border: '1px solid #3a5c24' }}>YtD</th>
+                        <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
+                          style={{ backgroundColor: '#548235', border: '1px solid #3a5c24' }}>YtD</th>
                       </tr>
                       {/* ── Row 2: date labels ── */}
                       <tr>
@@ -3440,6 +3538,12 @@ export default function FluktuasiOIPage() {
                         <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
                           style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
                           vs {yoyLabel}
+                        </th>
+                        <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
+                          style={{ backgroundColor: '#548235', border: '1px solid #3a5c24' }}>GAP<br/>YtD</th>
+                        <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
+                          style={{ backgroundColor: '#548235', border: '1px solid #3a5c24', minWidth: '120px' }}>
+                          {rekapSheetData.ytdLabel || 'YtD %'}
                         </th>
                       </tr>
                     </thead>
@@ -3524,6 +3628,18 @@ export default function FluktuasiOIPage() {
                             {ReasonCell({ ri, globalRi, row, side: 'yoy',
                               baseReason: row.reasonYoY, isSpecial: hideReason, s, descVal,
                               templateReason: rekapTemplateReasons.get(globalRi)?.yoy ?? '' })}
+                            {/* GAP YtD */}
+                            <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
+                              style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#f0fce8' : '#e4f8d4',
+                                color: gapColor(row.gapYtD), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#a3d97a'}` }}>
+                              {!hideMomYoy && rowHasData && rekapSheetData.ytdCurrColIdxs.length > 0 ? fmtRp(row.gapYtD) : ''}
+                            </td>
+                            {/* YtD % */}
+                            <td className="px-3 py-1.5 whitespace-nowrap text-right font-medium"
+                              style={{ backgroundColor: hideMomYoy || isSectionTotal ? s.bg : ri % 2 === 0 ? '#f0fce8' : '#e4f8d4',
+                                color: gapColor(row.pctYtD), fontWeight: s.weight, border: `1px solid ${isSectionTotal ? s.border : '#a3d97a'}` }}>
+                              {!hideMomYoy && rowHasData && rekapSheetData.ytdCurrColIdxs.length > 0 ? fmtPct(row.pctYtD) : ''}
+                            </td>
                           </tr>
                         );
                       })}
