@@ -3242,9 +3242,13 @@ export default function FluktuasiOIPage() {
                             {activeSheet.headers.map((h) => {
                               const val = row[h];
                               const isDateCol = /date|tanggal|tgl/i.test(h);
-                              const display = isDateCol && typeof val === 'number' && val > 40000 && val < 70000
-                                ? excelSerialToDateStr(val)
-                                : (val ?? '');
+                              const isAmountCol = /amount|amt|nilai|jumlah/i.test(h);
+                              let display: React.ReactNode = val ?? '';
+                              if (isDateCol && typeof val === 'number' && val > 40000 && val < 70000) {
+                                display = excelSerialToDateStr(val);
+                              } else if (isAmountCol && typeof val === 'number') {
+                                display = val.toLocaleString('id-ID');
+                              }
                               return (
                                 <td key={h} className="px-3 py-1.5 text-gray-700 whitespace-nowrap"
                                   style={{ border: '1px solid #e5e7eb' }}>{display}</td>
