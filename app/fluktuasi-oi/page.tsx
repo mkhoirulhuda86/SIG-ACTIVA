@@ -859,9 +859,7 @@ const rekapRowStyle = (type: RekapSheetRow['type'], ri: number) =>
 
 const amtColBg = (ac: AmountCol) => {
   if (ac.isCumulative) return '#E36C09';
-  const yr = ac.yearLabel.match(/20(\d{2})/);
-  if (!yr) return '#244185';
-  return parseInt(yr[1]) < 26 ? '#1F3864' : '#244185';
+  return '#1F3864';
 };
 
 const KA_PAGE_SIZE   = 100;
@@ -3662,7 +3660,7 @@ export default function FluktuasiOIPage() {
                         ))}
                         {visibleAmountCols.map((ac) => (
                           <th key={ac.colIdx} className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
-                            style={{ backgroundColor: amtColBg(ac), border: '1px solid rgba(255,255,255,0.2)', minWidth: '90px' }}>
+                            style={{ backgroundColor: ac.isCumulative ? '#E36C09' : '#244185', border: '1px solid rgba(255,255,255,0.2)', minWidth: '90px' }}>
                             {ac.dateLabel || ac.label}
                           </th>
                         ))}
