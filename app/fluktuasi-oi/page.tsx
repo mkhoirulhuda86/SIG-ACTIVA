@@ -3297,8 +3297,8 @@ export default function FluktuasiOIPage() {
                 });
               });
             const descColIdx = descColIdxList[0] ?? -1;
-            const prevAmt    = amountCols[momPrevIdx];
-            const yoyPrev    = amountCols[yoyPrevIdx];
+            const prevAmt    = amountCols[momSel?.prev ?? momPrevIdx];
+            const yoyPrev    = amountCols[yoySel?.prev ?? yoyPrevIdx];
             const prevLabel  = prevAmt?.dateLabel  || prevAmt?.label  || '';
             const yoyLabel   = yoyPrev?.dateLabel  || yoyPrev?.label  || '';
             const hasData    = (row: RekapSheetRow) => row.values.some(v => v !== '' && v !== null);
