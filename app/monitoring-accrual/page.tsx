@@ -178,6 +178,7 @@ function calculateAccrualAmount(item: Accrual): number {
 export default function MonitoringAccrualPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [filterBulan, setFilterBulan] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [filterType, setFilterType] = useState('All');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -576,9 +577,32 @@ export default function MonitoringAccrualPage() {
     return cache;
   }, [filteredData, calculateItemAccrual, calculateActualRealisasi]);
 
+  // All unique bulan values across all accrual data, sorted chronologically
+  const availableBulan = useMemo(() => {
+    const bulanOrder: Record<string, number> = {
+      'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
+      'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11,
+    };
+    const set = new Set<string>();
+    accrualData.forEach(item => item.periodes?.forEach(p => set.add(p.bulan)));
+    return [...set].sort((a, b) => {
+      const [aMon, aYr] = a.split(' ');
+      const [bMon, bYr] = b.split(' ');
+      const aVal = parseInt(aYr) * 12 + (bulanOrder[aMon] ?? 0);
+      const bVal = parseInt(bYr) * 12 + (bulanOrder[bMon] ?? 0);
+      return aVal - bVal;
+    });
+  }, [accrualData]);
+
   // Calculate total saldo for metric card — uses filteredData so it matches what's visible
   const totalSaldo = useMemo(() => {
     return filteredData.reduce((sum, item) => {
+      if (filterBulan) {
+        // Per-period mode: sum only the accrual - realisasi for the selected month
+        const periode = item.periodes?.find(p => p.bulan === filterBulan);
+        if (!periode) return sum;
+        return sum + (Math.abs(periode.amountAccrual) - (periode.totalRealisasi ?? 0));
+      }
       const cached = itemTotalsCache.get(item.id);
       if (cached) {
         return sum + (cached.saldoAwal + cached.accrual - cached.realisasi);
@@ -588,7 +612,7 @@ export default function MonitoringAccrualPage() {
       const realisasi = calculateItemRealisasi(item);
       return sum + (saldoAwal + accrual - realisasi);
     }, 0);
-  }, [filteredData, itemTotalsCache]);
+  }, [filteredData, itemTotalsCache, filterBulan]);
 
   // ── Animated metric counters (placed here after useMemo) ─────────────
   useEffect(() => {
@@ -3087,11 +3111,25 @@ export default function MonitoringAccrualPage() {
                     />
                   </div>
 
+                  {/* Period filter */}
+                  <select
+                    value={filterBulan}
+                    onChange={(e) => setFilterBulan(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-400 text-xs transition-all"
+                  >
+                    <option value="">Semua Periode</option>
+                    {availableBulan.map(b => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+
                   {/* Outstanding Saldo inline */}
                   <div ref={metricCard1Ref} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm shrink-0" style={{ opacity: 0 }}>
                     <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
                     <div className="leading-tight">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Outstanding Saldo</p>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">
+                        Outstanding Saldo{filterBulan ? ` · ${filterBulan}` : ''}
+                      </p>
                       <p className="text-xs font-bold text-slate-800 font-mono">{formatCurrency(Math.abs(displaySaldo))}</p>
                     </div>
                   </div>
