@@ -903,6 +903,7 @@ export default function FluktuasiOIPage() {
   const [dbAkunPeriodes,  setDbAkunPeriodes]  = useState<AkunPeriodeRecord[]>([]);
   const [loadingDbRekap,  setLoadingDbRekap]  = useState(false);
   const [dbPeriodeStats,  setDbPeriodeStats]  = useState<{ periodes: string[]; accounts: number } | null>(null);
+  const [selectedPeriodes, setSelectedPeriodes] = useState<Set<string>>(new Set());
 
   // ── Animation refs ────────────────────────────────────────────────────────
   const pageContentRef   = useRef<HTMLDivElement>(null);
@@ -1146,6 +1147,52 @@ export default function FluktuasiOIPage() {
   };
 
   // ── DB Akun Periode helpers ────────────────────────────────────────────────
+  const PERIODE_MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const formatPeriodeLabel = (p: string) => {
+    const [yr, mo] = p.split('.');
+    return `${PERIODE_MONTHS[parseInt(mo) - 1] ?? mo} ${yr}`;
+  };
+
+  // Sync selection saat periode tersimpan berubah (default: semua terpilih)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (dbPeriodeStats) {
+      setSelectedPeriodes(new Set(dbPeriodeStats.periodes));
+    } else {
+      setSelectedPeriodes(new Set());
+    }
+  }, [dbPeriodeStats]);
+
+  const togglePeriode = (p: string) => {
+    setSelectedPeriodes(prev => {
+      const next = new Set(prev);
+      if (next.has(p)) next.delete(p); else next.add(p);
+      return next;
+    });
+  };
+
+  const deleteSelectedPeriodes = async () => {
+    const toDelete = [...selectedPeriodes];
+    if (toDelete.length === 0) return;
+    const label = toDelete.length === 1
+      ? `periode ${formatPeriodeLabel(toDelete[0])}`
+      : `${toDelete.length} periode terpilih`;
+    if (!confirm(`Hapus ${label} dari database? Tindakan ini tidak dapat dibatalkan.`)) return;
+    setLoadingDbRekap(true);
+    try {
+      await Promise.all(
+        toDelete.map(p => fetch(`/api/fluktuasi/akun-periodes?periode=${encodeURIComponent(p)}`, { method: 'DELETE' }))
+      );
+      setRekapSheetData(null);
+      toast.success(`${label} berhasil dihapus.`);
+      await loadDbStats();
+    } catch {
+      toast.error('Gagal menghapus periode terpilih');
+    } finally {
+      setLoadingDbRekap(false);
+    }
+  };
+
   const loadDbStats = useCallback(async () => {
     try {
       const res = await fetch('/api/fluktuasi/akun-periodes');
@@ -1179,7 +1226,10 @@ export default function FluktuasiOIPage() {
       setDbPeriodeStats({ periodes, accounts: new Set(records.map((r) => r.accountCode)).size });
       // Hanya bangun & tampilkan rekap dari DB jika belum ada data dari file upload
       if (sheetDataList.length === 0) {
-        const rekap = buildRekapFromAkunPeriodes(records);
+        // Filter berdasarkan periode yang terpilih (selectedPeriodes kosong = ambil semua)
+        const aktivePeriodes = selectedPeriodes.size > 0 ? selectedPeriodes : new Set(periodes);
+        const filtered = records.filter(r => aktivePeriodes.has(r.periode));
+        const rekap = buildRekapFromAkunPeriodes(filtered.length > 0 ? filtered : records);
         setRekapSheetData(rekap);
         setAiReasons({});
       }
@@ -2799,25 +2849,36 @@ export default function FluktuasiOIPage() {
                 <h2 className="text-lg font-semibold text-gray-800">Data Tersimpan (Multi-Periode)</h2>
                 <p className="text-sm text-gray-500 mt-1">
                   Setiap upload otomatis menyimpan agregat per kode akun per periode.
-                  Bangun rekap dari semua periode untuk analisis lintas bulan/tahun.
+                  Klik periode untuk memilih, lalu bangun rekap atau hapus periode yang salah.
                 </p>
               </div>
               <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={loadAndBuildRekapFromDB}
-                  disabled={loadingDbRekap}
+                  disabled={loadingDbRekap || selectedPeriodes.size === 0}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition text-sm font-medium disabled:opacity-50"
                 >
                   {loadingDbRekap
                     ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />Memuat…</>
-                    : <><FileSpreadsheet size={16} />Bangun Rekap dari Semua Periode</>
+                    : dbPeriodeStats && selectedPeriodes.size < dbPeriodeStats.periodes.length
+                      ? <><FileSpreadsheet size={16} />Bangun Rekap ({selectedPeriodes.size} Periode)</>
+                      : <><FileSpreadsheet size={16} />Bangun Rekap dari Semua Periode</>
                   }
                 </button>
+                {dbPeriodeStats && selectedPeriodes.size > 0 && selectedPeriodes.size < dbPeriodeStats.periodes.length && (
+                  <button
+                    onClick={deleteSelectedPeriodes}
+                    disabled={loadingDbRekap}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition text-sm font-medium disabled:opacity-50"
+                  >
+                    <Trash2 size={16} />Hapus Periode Terpilih
+                  </button>
+                )}
                 <button
                   onClick={clearDbData}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
                 >
-                  <Trash2 size={16} />Hapus Data DB
+                  <Trash2 size={16} />Hapus Semua Data DB
                 </button>
               </div>
             </div>
@@ -2834,7 +2895,7 @@ export default function FluktuasiOIPage() {
               </div>
             ) : dbPeriodeStats ? (
               <div ref={dbStatsRef} className="px-5 pb-5">
-                <div className="flex flex-wrap gap-3 mb-3">
+                <div className="flex flex-wrap items-center gap-3 mb-3">
                   <div className="bg-teal-50 border border-teal-200 rounded-lg px-4 py-2 text-sm flex items-center gap-2">
                     <Sparkles size={14} className="text-teal-500" />
                     <span className="font-semibold text-teal-800">{dbPeriodeStats.accounts}</span>
@@ -2842,22 +2903,54 @@ export default function FluktuasiOIPage() {
                   </div>
                   <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2 text-sm flex items-center gap-2">
                     <Sparkles size={14} className="text-indigo-500" />
-                    <span className="font-semibold text-indigo-800">{dbPeriodeStats.periodes.length}</span>
+                    <span className="font-semibold text-indigo-800">
+                      {selectedPeriodes.size === dbPeriodeStats.periodes.length
+                        ? dbPeriodeStats.periodes.length
+                        : `${selectedPeriodes.size} / ${dbPeriodeStats.periodes.length}`}
+                    </span>
                     <span className="text-indigo-600">periode tersimpan</span>
                   </div>
+                  {/* Pilih semua / batal pilih */}
+                  {selectedPeriodes.size === dbPeriodeStats.periodes.length ? (
+                    <button
+                      onClick={() => setSelectedPeriodes(new Set())}
+                      className="text-xs text-gray-500 hover:text-gray-700 underline underline-offset-2 transition-colors"
+                    >
+                      Batal Pilih Semua
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setSelectedPeriodes(new Set(dbPeriodeStats.periodes))}
+                      className="text-xs text-teal-600 hover:text-teal-800 underline underline-offset-2 transition-colors"
+                    >
+                      Pilih Semua
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {dbPeriodeStats.periodes.map((p) => {
-                    const [yr, mo] = p.split('.');
-                    const MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-                    const label = `${MONTHS[parseInt(mo)-1] ?? mo} ${yr}`;
+                    const isSelected = selectedPeriodes.has(p);
+                    const label = formatPeriodeLabel(p);
                     return (
-                      <span key={p} className="js-periode-badge inline-flex px-2.5 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium border border-teal-200 hover:bg-teal-200 transition-colors cursor-default">
+                      <button
+                        key={p}
+                        onClick={() => togglePeriode(p)}
+                        title={isSelected ? `Klik untuk batal pilih ${label}` : `Klik untuk pilih ${label}`}
+                        className={`js-periode-badge inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                          isSelected
+                            ? 'bg-teal-100 text-teal-800 border-teal-300 hover:bg-teal-200'
+                            : 'bg-gray-100 text-gray-400 border-gray-200 hover:bg-gray-200 line-through'
+                        }`}
+                      >
+                        {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />}
                         {label}
-                      </span>
+                      </button>
                     );
                   })}
                 </div>
+                {selectedPeriodes.size === 0 && (
+                  <p className="mt-2 text-xs text-amber-600">Pilih minimal satu periode untuk membangun rekap atau menghapus.</p>
+                )}
               </div>
             ) : (
               <div className="px-5 pb-5 text-sm text-gray-400 italic">
