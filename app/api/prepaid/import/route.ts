@@ -248,76 +248,52 @@ export async function POST(request: NextRequest) {
         totalAmount, numPeriod, startDate: startDate!, hasPeriodValues, periodeAmounts, rowIdx: ri });
     }
 
-    // ── Grouping: rows yang sama persis (kdAkr + deskripsi + costCenter + startDate + numPeriod) → 1 Prepaid
-    // Setiap baris dengan kombinasi unik kdAkr + deskripsi + costCenter = record terpisah
-    type GroupKey = string;
-    const groups = new Map<GroupKey, ParsedRow[]>();
-    for (const pr of parsedRows) {
-      const key = `${pr.kdAkr}|${pr.deskripsi}|${pr.costCenter}|${pr.startDate.getFullYear()}-${pr.startDate.getMonth()}|${pr.numPeriod}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(pr);
-    }
-
-    // ── Build semua create data lalu jalankan paralel ──────────────────────
+    // ── Tiap baris Excel = 1 record Prepaid (no grouping) ─────────────────
+    // Urutan Excel dipertahankan via prisma.$transaction (sequential IDs)
     type CreateTask = { kdAkr: string; data: Parameters<typeof prisma.prepaid.create>[0]['data'] };
     const tasks: CreateTask[] = [];
 
-    for (const [, rows] of groups) {
-      const first = rows[0];
-      const multiCC = rows.length > 1;
+    for (const pr of parsedRows) {
+      const pembagianType = pr.hasPeriodValues ? 'manual' : 'otomatis';
 
-      // totalAmount = sum semua rows (beda cost center punya amount sendiri)
-      const totalAmount = rows.reduce((s, r) => s + r.totalAmount, 0);
-      const pembagianType = rows.some(r => r.hasPeriodValues) ? 'manual' : 'otomatis';
-
-      // Build periodes: amountPrepaid = sum amount semua cost center di periode ke-n
       const periodes: any[] = [];
-      for (let pi = 0; pi < first.numPeriod; pi++) {
-        const pd = new Date(first.startDate);
+      for (let pi = 0; pi < pr.numPeriod; pi++) {
+        const pd = new Date(pr.startDate);
         pd.setMonth(pd.getMonth() + pi);
         const bulanNama = `${BULAN_ID[pd.getMonth()]} ${pd.getFullYear()}`;
-
         const amtPrepaid = pembagianType === 'manual'
-          ? rows.reduce((s, r) => s + (r.periodeAmounts[pi] ?? 0), 0)
-          : totalAmount / first.numPeriod;
-
-        const costcenters = multiCC ? rows.map(r => ({
-          costCenter: r.costCenter || undefined,
-          kdAkunBiaya: r.namaAkun || undefined,
-          amount: pembagianType === 'manual' ? (r.periodeAmounts[pi] ?? 0) : r.totalAmount / first.numPeriod,
-        })) : [];
-
+          ? (pr.periodeAmounts[pi] ?? 0)
+          : pr.totalAmount / pr.numPeriod;
         periodes.push({
           periodeKe: pi + 1,
           bulan: bulanNama,
           tahun: pd.getFullYear(),
           amountPrepaid: amtPrepaid,
           isAmortized: false,
-          ...(costcenters.length > 0 ? { costcenters: { create: costcenters } } : {}),
         });
       }
 
-      if (totalAmount === 0) {
-        warnings.push(`Akun ${first.kdAkr}: amount=0 - data tetap diimport`);
+      if (pr.totalAmount === 0) {
+        warnings.push(`Akun ${pr.kdAkr}: amount=0 - data tetap diimport`);
       }
 
       tasks.push({
-        kdAkr: first.kdAkr,
+        kdAkr: pr.kdAkr,
         data: {
-          companyCode: first.companyCode || undefined,
-          noPo: first.noPo || undefined,
-          kdAkr: first.kdAkr,
-          alokasi: first.alokasi,
-          namaAkun: first.namaAkun,
+          companyCode: pr.companyCode || undefined,
+          noPo: pr.noPo || undefined,
+          kdAkr: pr.kdAkr,
+          alokasi: pr.alokasi,
+          namaAkun: pr.namaAkun,
           vendor: '',
-          deskripsi: first.deskripsi,
+          deskripsi: pr.deskripsi,
           headerText: undefined,
           klasifikasi: undefined,
-          totalAmount,
-          remaining: totalAmount,
-          costCenter: multiCC ? undefined : (first.costCenter || undefined),
-          startDate: first.startDate,
-          period: first.numPeriod,
+          totalAmount: pr.totalAmount,
+          remaining: pr.totalAmount,
+          costCenter: pr.costCenter || undefined,
+          startDate: pr.startDate,
+          period: pr.numPeriod,
           periodUnit: 'bulan',
           type: 'Linear',
           pembagianType,
@@ -326,21 +302,28 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Jalankan semua insert secara paralel (jauh lebih cepat dari sequential)
-    const results = await Promise.allSettled(
-      tasks.map(t => prisma.prepaid.create({ data: t.data }))
-    );
-
+    // Jalankan dalam satu transaction → sequential IDs → urutan sesuai Excel
     let createdCount = 0;
     let skippedCount = 0;
-    results.forEach((r, i) => {
-      if (r.status === 'fulfilled') {
-        createdCount++;
-      } else {
-        warnings.push(`ERROR Akun ${tasks[i].kdAkr}: ${r.reason?.message ?? r.reason}`);
-        skippedCount++;
+
+    try {
+      const created = await prisma.$transaction(
+        tasks.map(t => prisma.prepaid.create({ data: t.data })),
+        { timeout: 30000 }
+      );
+      createdCount = created.length;
+    } catch (err: any) {
+      // Fallback: coba satu per satu agar error per-baris bisa dilaporkan
+      for (const t of tasks) {
+        try {
+          await prisma.prepaid.create({ data: t.data });
+          createdCount++;
+        } catch (e: any) {
+          warnings.push(`ERROR Akun ${t.kdAkr}: ${e.message}`);
+          skippedCount++;
+        }
       }
-    });
+    }
 
     broadcast('prepaid');
     return NextResponse.json({
