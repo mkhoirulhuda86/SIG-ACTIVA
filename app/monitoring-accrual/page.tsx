@@ -1009,7 +1009,9 @@ export default function MonitoringAccrualPage() {
             const periodAmount = activePeriode ? Math.abs(activePeriode.amountAccrual) : 0;
             if (periodAmount > 0) {
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
+              const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
               const ht = headerText || item.headerText || '';
+              const lt = `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`.trim();
               
               // Kumpulkan rincian dari periode aktif saja
               const allRincian = activePeriode?.costcenters || [];
@@ -1029,7 +1031,7 @@ export default function MonitoringAccrualPage() {
                 rowAkr.getCell(4).value = docDate; rowAkr.getCell(5).value = docDate; rowAkr.getCell(6).value = 'IDR';
                 rowAkr.getCell(7).value = ''; rowAkr.getCell(8).value = ht; rowAkr.getCell(9).value = '';
                 rowAkr.getCell(10).value = item.kdAkr; rowAkr.getCell(11).value = -Math.round(total); rowAkr.getCell(11).numFmt = '0';
-                rowAkr.getCell(12).value = ht; rowAkr.getCell(13).value = ''; rowAkr.getCell(14).value = '';
+                rowAkr.getCell(12).value = lt; rowAkr.getCell(13).value = ''; rowAkr.getCell(14).value = '';
                 rowAkr.getCell(15).value = ''; rowAkr.getCell(16).value = ''; rowAkr.getCell(17).value = '';
                 rowAkr.getCell(18).value = ''; rowAkr.getCell(19).value = 'G';
                 // DEBIT - per rincian
@@ -1039,7 +1041,7 @@ export default function MonitoringAccrualPage() {
                   rowBiaya.getCell(4).value = docDate; rowBiaya.getCell(5).value = docDate; rowBiaya.getCell(6).value = 'IDR';
                   rowBiaya.getCell(7).value = ''; rowBiaya.getCell(8).value = g.headerText; rowBiaya.getCell(9).value = '';
                   rowBiaya.getCell(10).value = g.kdAkunBiaya; rowBiaya.getCell(11).value = Math.round(g.amount); rowBiaya.getCell(11).numFmt = '0';
-                  rowBiaya.getCell(12).value = g.lineText; rowBiaya.getCell(13).value = ''; rowBiaya.getCell(14).value = g.costCenter;
+                  rowBiaya.getCell(12).value = lt; rowBiaya.getCell(13).value = ''; rowBiaya.getCell(14).value = g.costCenter;
                   rowBiaya.getCell(15).value = ''; rowBiaya.getCell(16).value = ''; rowBiaya.getCell(17).value = '';
                   rowBiaya.getCell(18).value = ''; rowBiaya.getCell(19).value = 'G';
                 }
@@ -1050,7 +1052,7 @@ export default function MonitoringAccrualPage() {
                 row1.getCell(4).value = docDate; row1.getCell(5).value = docDate; row1.getCell(6).value = 'IDR';
                 row1.getCell(7).value = ''; row1.getCell(8).value = ht; row1.getCell(9).value = '';
                 row1.getCell(10).value = item.kdAkunBiaya; row1.getCell(11).value = Math.round(periodAmount); row1.getCell(11).numFmt = '0';
-                row1.getCell(12).value = ht; row1.getCell(13).value = ''; row1.getCell(14).value = item.costCenter || '';
+                row1.getCell(12).value = lt; row1.getCell(13).value = ''; row1.getCell(14).value = item.costCenter || '';
                 row1.getCell(15).value = ''; row1.getCell(16).value = ''; row1.getCell(17).value = '';
                 row1.getCell(18).value = ''; row1.getCell(19).value = 'G';
                 const row2 = worksheet.getRow(currentRow++);
@@ -1058,7 +1060,7 @@ export default function MonitoringAccrualPage() {
                 row2.getCell(4).value = docDate; row2.getCell(5).value = docDate; row2.getCell(6).value = 'IDR';
                 row2.getCell(7).value = ''; row2.getCell(8).value = ht; row2.getCell(9).value = '';
                 row2.getCell(10).value = item.kdAkr; row2.getCell(11).value = -Math.round(periodAmount); row2.getCell(11).numFmt = '0';
-                row2.getCell(12).value = ht; row2.getCell(13).value = ''; row2.getCell(14).value = '';
+                row2.getCell(12).value = lt; row2.getCell(13).value = ''; row2.getCell(14).value = '';
                 row2.getCell(15).value = ''; row2.getCell(16).value = ''; row2.getCell(17).value = '';
                 row2.getCell(18).value = ''; row2.getCell(19).value = 'G';
               }
@@ -1094,7 +1096,9 @@ export default function MonitoringAccrualPage() {
             const periodAmountTxt = activePeriodeTxt ? Math.abs(activePeriodeTxt.amountAccrual) : 0;
             if (periodAmountTxt > 0) {
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
+              const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
               const ht = headerText || item.headerText || '';
+              const lt = `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`.trim();
               
               // Kumpulkan rincian dari periode aktif saja
               const allRincian = activePeriodeTxt?.costcenters || [];
@@ -1110,20 +1114,20 @@ export default function MonitoringAccrualPage() {
                 const total = Array.from(grp.values()).reduce((s, g) => s + g.amount, 0);
                 // KREDIT - Kode Akun Accrual (sum)
                 rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
-                  ht, '', item.kdAkr, (-Math.round(total)).toString(), ht, '', '', '', '', '', '', 'G']);
+                  ht, '', item.kdAkr, (-Math.round(total)).toString(), lt, '', '', '', '', '', '', 'G']);
                 // DEBIT - per rincian
                 for (const [, g] of grp) {
                   rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
-                    g.headerText, '', g.kdAkunBiaya, Math.round(g.amount).toString(), g.lineText, '', g.costCenter, '', '', '', '', 'G']);
+                    g.headerText, '', g.kdAkunBiaya, Math.round(g.amount).toString(), lt, '', g.costCenter, '', '', '', '', 'G']);
                 }
               } else {
                 // Fallback: 1 DEBIT + 1 KREDIT
                 rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
                   ht, '', item.kdAkunBiaya, Math.round(periodAmountTxt).toString(),
-                  ht, '', item.costCenter || '', '', '', '', '', 'G']);
+                  lt, '', item.costCenter || '', '', '', '', '', 'G']);
                 rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
                   ht, '', item.kdAkr, (-Math.round(periodAmountTxt)).toString(),
-                  ht, '', '', '', '', '', '', 'G']);
+                  lt, '', '', '', '', '', '', 'G']);
               }
             }
           });
@@ -1309,8 +1313,9 @@ export default function MonitoringAccrualPage() {
     // Gunakan tanggal hari ini sebagai doc date dan posting date jurnal accrual
     const todayAcc = new Date();
     const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
+    const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
     const ht = headerText || item.headerText || '';
-    const lt = lineText || ht;
+    const lt = `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`.trim();
     
     const rows: string[][] = [];
     const rincian = periode.costcenters || [];
@@ -1325,7 +1330,7 @@ export default function MonitoringAccrualPage() {
       for (const r of rincian) {
         rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
           r.headerText || ht, '', r.kdAkunBiaya || item.kdAkunBiaya, Math.round(Math.abs(r.amount)).toString(),
-          r.lineText || lt, '', r.costCenter || '', '', '', '', '', 'G']);
+          lt, '', r.costCenter || '', '', '', '', '', 'G']);
       }
     } else {
       // Fallback: 1 baris DEBIT + 1 baris KREDIT
@@ -1470,7 +1475,8 @@ export default function MonitoringAccrualPage() {
       const todayAcc = new Date();
       const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
       const ht = headerText || item.headerText || '';
-      const lt = lineText || ht;
+      const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
+      const lt = `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`.trim();
       let currentRow = 3;
       
       const writeRow = (hkont: string, wrbtr: number, kostl: string, bktxt = ht, sgtxt = lt) => {
@@ -1493,7 +1499,7 @@ export default function MonitoringAccrualPage() {
         const total = rincian.reduce((s, r) => s + Math.abs(r.amount), 0);
         writeRow(item.kdAkr, -Math.round(total), '');
         for (const r of rincian) {
-          writeRow(r.kdAkunBiaya || item.kdAkunBiaya, Math.round(Math.abs(r.amount)), r.costCenter || '', r.headerText || ht, r.lineText || ht);
+          writeRow(r.kdAkunBiaya || item.kdAkunBiaya, Math.round(Math.abs(r.amount)), r.costCenter || '', r.headerText || ht, lt);
         }
       } else {
         // Fallback: 1 baris DEBIT + 1 baris KREDIT
@@ -5218,8 +5224,8 @@ export default function MonitoringAccrualPage() {
           <div ref={jurnalHeaderModalPanelRef} className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
             <div className="px-6 py-4 bg-gradient-to-r from-green-600 to-green-700 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-white">Teks Jurnal Realisasi</h2>
-                <p className="text-green-100 text-xs mt-0.5">Isi Header Text dan Line Text untuk kolom SAP</p>
+                <h2 className="text-lg font-bold text-white">Header Text Jurnal</h2>
+                <p className="text-green-100 text-xs mt-0.5">Isi Header Text untuk kolom SAP (Line Text otomatis)</p>
               </div>
               <button onClick={() => setShowJurnalHeaderModal(false)} className="text-white hover:text-green-100 rounded-full hover:bg-white/10 p-1"><X size={22} /></button>
             </div>
@@ -5237,23 +5243,8 @@ export default function MonitoringAccrualPage() {
                   autoFocus
                 />
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Line Text <span className="text-gray-400 font-normal">(sgtxt – kolom 12)</span>
-                </label>
-                <input
-                  type="text"
-                  value={jurnalLineInput}
-                  onChange={(e) => setJurnalLineInput(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="Masukkan line text..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      setShowJurnalHeaderModal(false);
-                      jurnalPendingCallback?.(jurnalHeaderInput, jurnalLineInput);
-                    }
-                  }}
-                />
+              <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                Line Text otomatis: <span className="font-mono text-gray-700">pcd [No PO] [Deskripsi] [mmyy]</span>
               </div>
             </div>
             <div className="px-6 pb-6 flex justify-end gap-3">
@@ -5264,7 +5255,7 @@ export default function MonitoringAccrualPage() {
               <button
                 onClick={() => {
                   setShowJurnalHeaderModal(false);
-                  jurnalPendingCallback?.(jurnalHeaderInput, jurnalLineInput);
+                  jurnalPendingCallback?.(jurnalHeaderInput, '');
                 }}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
               >Download</button>
