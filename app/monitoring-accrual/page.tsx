@@ -594,20 +594,43 @@ export default function MonitoringAccrualPage() {
 
   // Calculate total saldo for metric card � uses filteredData so it matches what's visible
   const totalSaldo = useMemo(() => {
+    // When filterMonth only (no year): find the latest year in the data that has that month,
+    // then compute cumulative from period-1 up to that month-year chronologically.
+    let monthOnlyTargetYear: number | null = null;
+    if (filterMonth && !filterYear) {
+      filteredData.forEach(item => {
+        item.periodes?.forEach(p => {
+          const [mon, yr] = p.bulan.split(' ');
+          if (mon === filterMonth) {
+            const y = parseInt(yr);
+            if (monthOnlyTargetYear === null || y > monthOnlyTargetYear) monthOnlyTargetYear = y;
+          }
+        });
+      });
+    }
+
     return filteredData.reduce((sum, item) => {
       if (filterMonth || filterYear) {
-        // Cumulative mode: saldo_awal + accrual(s.d. bulan filter) - realisasi(s.d. bulan filter)
+        // Cumulative mode: saldo_awal + accrual(s.d. periode filter) - realisasi(s.d. periode filter)
         const saldoAwal = getSaldoAwal(item);
         const upToPeriodes = item.periodes?.filter(p => {
           const [mon, yr] = p.bulan.split(' ');
+          const pDate = new Date(parseInt(yr), BULAN_NAMES.indexOf(mon), 1);
           if (filterMonth && filterYear) {
-            const pDate = new Date(parseInt(yr), BULAN_NAMES.indexOf(mon), 1);
             const targetDate = new Date(parseInt(filterYear), BULAN_NAMES.indexOf(filterMonth), 1);
             return pDate <= targetDate;
           }
-          if (filterYear) return yr === filterYear;
-          // filterMonth saja: semua tahun, up to index bulan tsb
-          return BULAN_NAMES.indexOf(mon) <= BULAN_NAMES.indexOf(filterMonth);
+          if (filterMonth && monthOnlyTargetYear !== null) {
+            // Cumulative up to latest <filterMonth> in the dataset (incl. all preceding periods)
+            const targetDate = new Date(monthOnlyTargetYear, BULAN_NAMES.indexOf(filterMonth), 1);
+            return pDate <= targetDate;
+          }
+          if (filterYear) {
+            // Cumulative up to end of selected year
+            const targetDate = new Date(parseInt(filterYear), 11, 1);
+            return pDate <= targetDate;
+          }
+          return false;
         }) ?? [];
         const accrualUpTo = upToPeriodes.reduce((s, p) => s + Math.abs(p.amountAccrual), 0);
         const realisasiUpTo = upToPeriodes.reduce((s, p) => s + (p.totalRealisasi ?? 0), 0);
