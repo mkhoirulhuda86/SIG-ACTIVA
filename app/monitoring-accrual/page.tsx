@@ -118,7 +118,7 @@ interface RealisasiData {
   costCenter?: string;
 }
 
-// Saldo awal: nilai tetap dari import (saldo akhir/outstanding). Tidak ada logika periode — tidak berubah saat periode berganti.
+// Saldo awal: nilai tetap dari import (saldo akhir/outstanding). Tidak ada logika periode ï¿½ tidak berubah saat periode berganti.
 function getSaldoAwal(item: Accrual): number {
   if (item.saldoAwal != null && item.saldoAwal !== undefined) return Number(item.saldoAwal);
   return Math.abs(item.totalAmount ?? 0);
@@ -130,7 +130,7 @@ function calculateItemSaldo(item: Accrual, totalAccrual: number, totalRealisasi:
   return saldoAwal + totalAccrual - totalRealisasi;
 }
 
-// Total Accrual: logika lama — hanya periode yang sudah jatuh tempo ATAU yang punya realisasi efektif (dengan rollover) yang diakui
+// Total Accrual: logika lama ï¿½ hanya periode yang sudah jatuh tempo ATAU yang punya realisasi efektif (dengan rollover) yang diakui
 function calculateAccrualAmount(item: Accrual): number {
   if (!item.periodes || item.periodes.length === 0) return 0;
 
@@ -591,7 +591,7 @@ export default function MonitoringAccrualPage() {
     return [...set].sort((a, b) => a - b);
   }, [accrualData]);
 
-  // Calculate total saldo for metric card — uses filteredData so it matches what's visible
+  // Calculate total saldo for metric card ï¿½ uses filteredData so it matches what's visible
   const totalSaldo = useMemo(() => {
     return filteredData.reduce((sum, item) => {
       if (filterMonth || filterYear) {
@@ -950,8 +950,8 @@ export default function MonitoringAccrualPage() {
     }
     setJurnalPendingItems(itemArr);
     setJurnalPendingCallback(() => callback);
-    // Pre-fill with the first existing headerText found
-    setJurnalHeaderInput(itemArr.find(i => i.headerText)?.headerText || '');
+    // Pre-fill: pakai headerText item jika ada, kalau tidak jaga nilai terakhir yang diketik
+    setJurnalHeaderInput(prev => itemArr.find(i => i.headerText)?.headerText || prev);
     setShowJurnalHeaderModal(true);
   };
 
@@ -2969,9 +2969,9 @@ export default function MonitoringAccrualPage() {
       const updated = result.updatedCount ?? 0;
       let message = `Import Excel selesai!\n\nBaris diproses: ${result.results.length}`;
       if (created > 0 || updated > 0) {
-        message += `\n• Dibuat baru: ${created}\n• Di-update: ${updated}`;
+        message += `\nï¿½ Dibuat baru: ${created}\nï¿½ Di-update: ${updated}`;
       }
-      message += `\n\n(Jika ada baris yang match kode akun + klasifikasi / no PO + vendor, data di-update bukan dibuat baru — total baris di tabel = jumlah accrual unik.)`;
+      message += `\n\n(Jika ada baris yang match kode akun + klasifikasi / no PO + vendor, data di-update bukan dibuat baru ï¿½ total baris di tabel = jumlah accrual unik.)`;
       
       if (result.errors && result.errors.length > 0) {
         message += `\n\nError (${result.errors.length}):\n${result.errors.slice(0, 5).map((e: any) => `${e.kdAkr || 'N/A'}: ${e.error}`).join('\n')}`;
@@ -3146,7 +3146,7 @@ export default function MonitoringAccrualPage() {
                     />
                   </div>
 
-                  {/* Period filter — month + year */}
+                  {/* Period filter ï¿½ month + year */}
                   <select
                     value={filterMonth}
                     onChange={(e) => setFilterMonth(e.target.value)}
@@ -3173,7 +3173,7 @@ export default function MonitoringAccrualPage() {
                     <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
                     <div className="leading-tight">
                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">
-                        Outstanding Saldo{(filterMonth || filterYear) ? ` · ${filterMonth || ''}${filterMonth && filterYear ? ' ' : ''}${filterYear || ''}` : ''}
+                        Outstanding Saldo{(filterMonth || filterYear) ? ` ï¿½ ${filterMonth || ''}${filterMonth && filterYear ? ' ' : ''}${filterYear || ''}` : ''}
                       </p>
                       <p className="text-xs font-bold text-slate-800 font-mono">{formatCurrency(Math.abs(displaySaldo))}</p>
                     </div>
@@ -4299,7 +4299,7 @@ export default function MonitoringAccrualPage() {
                                   </div>
                                   {hasMultiple && (
                                     <div className="text-xs text-blue-600 mt-1">
-                                      {items.length} Cost Center berbeda • Total: {formatCurrency(totalAmount)}
+                                      {items.length} Cost Center berbeda ï¿½ Total: {formatCurrency(totalAmount)}
                                     </div>
                                   )}
                                 </div>
@@ -4484,7 +4484,7 @@ export default function MonitoringAccrualPage() {
                 <p className="text-sm text-amber-100 mt-1">
                   {costCenterModalPeriode.bulan} - Periode {costCenterModalPeriode.periodeKe}
                   {costCenterModalAccrual && (
-                    <span className="ml-2">· {costCenterModalAccrual.vendor}</span>
+                    <span className="ml-2">ï¿½ {costCenterModalAccrual.vendor}</span>
                   )}
                 </p>
               </div>
@@ -4583,10 +4583,10 @@ export default function MonitoringAccrualPage() {
                   </label>
                 </div>
                 <p className="text-xs text-gray-400 mt-2">
-                  Excel: Kolom A = Amount · B = Cost Center · C = Kode Akun Biaya · D = Keterangan
+                  Excel: Kolom A = Amount ï¿½ B = Cost Center ï¿½ C = Kode Akun Biaya ï¿½ D = Keterangan
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  XML SAP: kolom J (Amount) · K (Cost Center) · I (Kode Akun Biaya)
+                  XML SAP: kolom J (Amount) ï¿½ K (Cost Center) ï¿½ I (Kode Akun Biaya)
                 </p>
               </div>
 
@@ -4780,7 +4780,7 @@ export default function MonitoringAccrualPage() {
                                   </div>
                                   {hasMultiple && (
                                     <div className="text-xs text-amber-600 mt-1">
-                                      {items.length} Cost Center berbeda · Total: {formatCurrency(totalGroupAmount)}
+                                      {items.length} Cost Center berbeda ï¿½ Total: {formatCurrency(totalGroupAmount)}
                                     </div>
                                   )}
                                 </div>
@@ -5242,7 +5242,7 @@ export default function MonitoringAccrualPage() {
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Header Text <span className="text-gray-400 font-normal">(bktxt – kolom 8)</span>
+                  Header Text <span className="text-gray-400 font-normal">(bktxt ï¿½ kolom 8)</span>
                 </label>
                 <input
                   type="text"
