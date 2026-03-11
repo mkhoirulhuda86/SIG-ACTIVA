@@ -248,13 +248,12 @@ export async function POST(request: NextRequest) {
         totalAmount, numPeriod, startDate: startDate!, hasPeriodValues, periodeAmounts, rowIdx: ri });
     }
 
-    // ── Grouping: rows yang sama persis (kdAkr + deskripsi + startDate + numPeriod) → 1 Prepaid
-    // Rows dengan deskripsi berbeda = item prepaid yang berbeda → baris terpisah
-    // Rows dengan deskripsi sama tapi CC berbeda = cost-center breakdown → digabung
+    // ── Grouping: rows yang sama persis (kdAkr + deskripsi + costCenter + startDate + numPeriod) → 1 Prepaid
+    // Setiap baris dengan kombinasi unik kdAkr + deskripsi + costCenter = record terpisah
     type GroupKey = string;
     const groups = new Map<GroupKey, ParsedRow[]>();
     for (const pr of parsedRows) {
-      const key = `${pr.kdAkr}|${pr.deskripsi}|${pr.startDate.getFullYear()}-${pr.startDate.getMonth()}|${pr.numPeriod}`;
+      const key = `${pr.kdAkr}|${pr.deskripsi}|${pr.costCenter}|${pr.startDate.getFullYear()}-${pr.startDate.getMonth()}|${pr.numPeriod}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(pr);
     }
