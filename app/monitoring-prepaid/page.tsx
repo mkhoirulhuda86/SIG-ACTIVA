@@ -969,7 +969,7 @@ export default function MonitoringPrepaidPage() {
                           {/* ── Expanded Detail Row ─────────────────── */}
                           {isExpanded && (
                             <tr>
-                              <td colSpan={17} className="px-0 py-0 bg-gradient-to-r from-red-50/80 to-slate-50 border-b border-red-100">
+                              <td colSpan={18} className="px-0 py-0 bg-gradient-to-r from-red-50/80 to-slate-50 border-b border-red-100">
                                 <div className="expand-detail px-6 pt-3 pb-4">
                                   <div className="flex items-center gap-2 mb-3">
                                     <span className="w-1 h-4 rounded-full bg-red-500 inline-block" />
@@ -1044,7 +1044,7 @@ export default function MonitoringPrepaidPage() {
                                                 )}
                                               </td>
                                               <td className="px-3 py-2 text-center whitespace-nowrap">
-                                                {displayAmount > 0 ? (
+                                                {displayAmount !== 0 ? (
                                                   <div className="flex items-center justify-center gap-1">
                                                     <button onClick={() => handleDownloadJurnalSAPPeriode(item, p, displayAmount)}
                                                       className="inline-flex items-center gap-1 text-[9px] font-semibold px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded transition-colors active:scale-90"

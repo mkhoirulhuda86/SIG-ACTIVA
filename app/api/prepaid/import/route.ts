@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
       const openBalanceRaw  = colOpenBalance >= 0 ? parseNum(row[colOpenBalance]) : 0;
       const prepaidAmoRaw   = colPrepaidAmo  >= 0 ? parseNum(row[colPrepaidAmo])  : 0;
       const balanceRaw      = colBalance     >= 0 ? parseNum(row[colBalance])     : 0;
-      let totalAmount = openBalanceRaw !== 0 ? openBalanceRaw : prepaidAmoRaw !== 0 ? prepaidAmoRaw : balanceRaw;
+      let totalAmount = Math.abs(openBalanceRaw !== 0 ? openBalanceRaw : prepaidAmoRaw !== 0 ? prepaidAmoRaw : balanceRaw);
       
       // Jika amount = 0, tetap import dengan nilai 0 (user bisa update nanti)
       if (totalAmount === 0) {
@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
       for (let pi = 0; pi < numPeriod; pi++) {
         const colIdx = periodColIndices[pi];
         if (colIdx !== undefined) {
-          const amt = parseNum(row[colIdx]);
+          const amt = Math.abs(parseNum(row[colIdx]));
           periodeAmounts.push(amt);
           if (amt !== 0) hasPeriodValues = true;
         } else {
