@@ -120,7 +120,7 @@ interface RealisasiData {
 
 // Saldo awal: nilai tetap dari import (saldo akhir/outstanding). Tidak ada logika periode � tidak berubah saat periode berganti.
 function getSaldoAwal(item: Accrual): number {
-  if (item.saldoAwal != null && item.saldoAwal !== undefined) return Number(item.saldoAwal);
+  if (item.saldoAwal != null && item.saldoAwal !== undefined) return Math.abs(Number(item.saldoAwal));
   return Math.abs(item.totalAmount ?? 0);
 }
 
