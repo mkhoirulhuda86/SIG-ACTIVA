@@ -5275,11 +5275,10 @@ export default function MonitoringAccrualPage() {
                         body: JSON.stringify({ headerText: jurnalHeaderInput }),
                       });
                     });
-                    if (toSave.length > 0) {
-                      setAccrualData(prev => prev.map(a =>
-                        toSave.some(s => s.id === a.id) ? { ...a, headerText: jurnalHeaderInput } : a
-                      ));
-                    }
+                    // Update display for ALL pending items (not just toSave)
+                    setAccrualData(prev => prev.map(a =>
+                      jurnalPendingItems.some(s => s.id === a.id) ? { ...a, headerText: a.headerText || jurnalHeaderInput } : a
+                    ));
                   }
                   jurnalPendingCallback?.(jurnalHeaderInput, '');
                 }}
