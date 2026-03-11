@@ -258,8 +258,9 @@ export async function POST(request: NextRequest) {
       groups.get(key)!.push(pr);
     }
 
-    let createdCount = 0;
-    let skippedCount = 0;
+    // ── Build semua create data lalu jalankan paralel ──────────────────────
+    type CreateTask = { kdAkr: string; data: Parameters<typeof prisma.prepaid.create>[0]['data'] };
+    const tasks: CreateTask[] = [];
 
     for (const [, rows] of groups) {
       const first = rows[0];
@@ -276,12 +277,10 @@ export async function POST(request: NextRequest) {
         pd.setMonth(pd.getMonth() + pi);
         const bulanNama = `${BULAN_ID[pd.getMonth()]} ${pd.getFullYear()}`;
 
-        // Sum amount periode ke-pi dari semua rows
         const amtPrepaid = pembagianType === 'manual'
           ? rows.reduce((s, r) => s + (r.periodeAmounts[pi] ?? 0), 0)
           : totalAmount / first.numPeriod;
 
-        // Cost center entries untuk periode ini
         const costcenters = multiCC ? rows.map(r => ({
           costCenter: r.costCenter || undefined,
           kdAkunBiaya: r.namaAkun || undefined,
@@ -302,35 +301,46 @@ export async function POST(request: NextRequest) {
         warnings.push(`Akun ${first.kdAkr}: amount=0 - data tetap diimport`);
       }
 
-      try {
-        await prisma.prepaid.create({
-          data: {
-            companyCode: first.companyCode || undefined,
-            noPo: first.noPo || undefined,
-            kdAkr: first.kdAkr,
-            alokasi: first.alokasi,
-            namaAkun: first.namaAkun,
-            vendor: '',
-            deskripsi: first.deskripsi,
-            headerText: undefined,
-            klasifikasi: undefined,
-            totalAmount,
-            remaining: totalAmount,
-            costCenter: multiCC ? undefined : (first.costCenter || undefined),
-            startDate: first.startDate,
-            period: first.numPeriod,
-            periodUnit: 'bulan',
-            type: 'Linear',
-            pembagianType,
-            periodes: { create: periodes },
-          },
-        });
+      tasks.push({
+        kdAkr: first.kdAkr,
+        data: {
+          companyCode: first.companyCode || undefined,
+          noPo: first.noPo || undefined,
+          kdAkr: first.kdAkr,
+          alokasi: first.alokasi,
+          namaAkun: first.namaAkun,
+          vendor: '',
+          deskripsi: first.deskripsi,
+          headerText: undefined,
+          klasifikasi: undefined,
+          totalAmount,
+          remaining: totalAmount,
+          costCenter: multiCC ? undefined : (first.costCenter || undefined),
+          startDate: first.startDate,
+          period: first.numPeriod,
+          periodUnit: 'bulan',
+          type: 'Linear',
+          pembagianType,
+          periodes: { create: periodes },
+        },
+      });
+    }
+
+    // Jalankan semua insert secara paralel (jauh lebih cepat dari sequential)
+    const results = await Promise.allSettled(
+      tasks.map(t => prisma.prepaid.create({ data: t.data }))
+    );
+
+    let createdCount = 0;
+    let skippedCount = 0;
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') {
         createdCount++;
-      } catch (err: any) {
-        warnings.push(`ERROR Akun ${first.kdAkr}: ${err.message}`);
+      } else {
+        warnings.push(`ERROR Akun ${tasks[i].kdAkr}: ${r.reason?.message ?? r.reason}`);
         skippedCount++;
       }
-    }
+    });
 
     broadcast('prepaid');
     return NextResponse.json({
