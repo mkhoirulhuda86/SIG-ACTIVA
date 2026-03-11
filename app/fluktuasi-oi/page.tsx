@@ -2164,8 +2164,8 @@ export default function FluktuasiOIPage() {
                     (dColIdx >= 0 ? String(row[hdrs[dColIdx]] ?? '') : '');
       return {
         ...row,
-        __klasifikasi: matchKeywords(rawK, scopedKw, 'klasifikasi', docno, row) || row['__klasifikasi'] || '',
-        __remark:      matchKeywords(rawR, scopedKw, 'remark',       docno, row) || row['__remark']      || '',
+        __klasifikasi: matchKeywords(rawK, scopedKw, 'klasifikasi', docno, row),
+        __remark:      matchKeywords(rawR, scopedKw, 'remark',       docno, row),
       } as Record<string, any>;
     });
   }, [kaPageRows, keywords, activeSheet]);
