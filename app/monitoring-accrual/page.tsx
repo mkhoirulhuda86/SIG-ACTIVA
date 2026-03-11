@@ -3824,7 +3824,6 @@ export default function MonitoringAccrualPage() {
                     name="totalAmount"
                     value={formData.totalAmount}
                     onChange={handleInputChange}
-                    min="0"
                     step="0.01"
                     className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
                     placeholder="Contoh: 50000000"
@@ -3840,7 +3839,6 @@ export default function MonitoringAccrualPage() {
                     name="saldoAwal"
                     value={formData.saldoAwal}
                     onChange={handleInputChange}
-                    min="0"
                     step="0.01"
                     className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm transition-all"
                     placeholder="Opsional"
