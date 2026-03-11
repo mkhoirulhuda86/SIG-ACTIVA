@@ -1020,9 +1020,9 @@ export default function MonitoringAccrualPage() {
                 // Group by kdAkunBiaya+costCenter
                 const grp = new Map<string, { kdAkunBiaya: string; costCenter: string; amount: number; headerText: string; lineText: string }>();
                 for (const r of allRincian) {
-                  const k = `${r.kdAkunBiaya || item.kdAkunBiaya}||${r.costCenter || ''}`;
+                  const k = `${r.kdAkunBiaya || item.kdAkunBiaya}||${r.costCenter || item.costCenter || ''}`;
                   const e = grp.get(k);
-                  if (e) e.amount += Math.abs(r.amount); else grp.set(k, { kdAkunBiaya: r.kdAkunBiaya || item.kdAkunBiaya, costCenter: r.costCenter || '', amount: Math.abs(r.amount), headerText: r.headerText || ht, lineText: r.lineText || ht });
+                  if (e) e.amount += Math.abs(r.amount); else grp.set(k, { kdAkunBiaya: r.kdAkunBiaya || item.kdAkunBiaya, costCenter: r.costCenter || item.costCenter || '', amount: Math.abs(r.amount), headerText: r.headerText || ht, lineText: r.lineText || ht });
                 }
                 const total = Array.from(grp.values()).reduce((s, g) => s + g.amount, 0);
                 // KREDIT - Kode Akun Accrual (sum)
@@ -1107,9 +1107,9 @@ export default function MonitoringAccrualPage() {
                 // Group by kdAkunBiaya+costCenter
                 const grp = new Map<string, { kdAkunBiaya: string; costCenter: string; amount: number; headerText: string; lineText: string }>();
                 for (const r of allRincian) {
-                  const k = `${r.kdAkunBiaya || item.kdAkunBiaya}||${r.costCenter || ''}`;
+                  const k = `${r.kdAkunBiaya || item.kdAkunBiaya}||${r.costCenter || item.costCenter || ''}`;
                   const e = grp.get(k);
-                  if (e) e.amount += Math.abs(r.amount); else grp.set(k, { kdAkunBiaya: r.kdAkunBiaya || item.kdAkunBiaya, costCenter: r.costCenter || '', amount: Math.abs(r.amount), headerText: r.headerText || ht, lineText: r.lineText || ht });
+                  if (e) e.amount += Math.abs(r.amount); else grp.set(k, { kdAkunBiaya: r.kdAkunBiaya || item.kdAkunBiaya, costCenter: r.costCenter || item.costCenter || '', amount: Math.abs(r.amount), headerText: r.headerText || ht, lineText: r.lineText || ht });
                 }
                 const total = Array.from(grp.values()).reduce((s, g) => s + g.amount, 0);
                 // KREDIT - Kode Akun Accrual (sum)
@@ -1330,7 +1330,7 @@ export default function MonitoringAccrualPage() {
       for (const r of rincian) {
         rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
           r.headerText || ht, '', r.kdAkunBiaya || item.kdAkunBiaya, Math.round(Math.abs(r.amount)).toString(),
-          lt, '', r.costCenter || '', '', '', '', '', 'G']);
+          lt, '', r.costCenter || item.costCenter || '', '', '', '', '', 'G']);
       }
     } else {
       // Fallback: 1 baris DEBIT + 1 baris KREDIT
@@ -1499,7 +1499,7 @@ export default function MonitoringAccrualPage() {
         const total = rincian.reduce((s, r) => s + Math.abs(r.amount), 0);
         writeRow(item.kdAkr, -Math.round(total), '');
         for (const r of rincian) {
-          writeRow(r.kdAkunBiaya || item.kdAkunBiaya, Math.round(Math.abs(r.amount)), r.costCenter || '', r.headerText || ht, lt);
+          writeRow(r.kdAkunBiaya || item.kdAkunBiaya, Math.round(Math.abs(r.amount)), r.costCenter || item.costCenter || '', r.headerText || ht, lt);
         }
       } else {
         // Fallback: 1 baris DEBIT + 1 baris KREDIT
