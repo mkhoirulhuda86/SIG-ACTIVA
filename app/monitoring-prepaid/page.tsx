@@ -106,6 +106,7 @@ export default function MonitoringPrepaidPage() {
   const [ccForm, setCcForm] = useState({ amount: '', costCenter: '', kdAkunBiaya: '', headerText: '', lineText: '' });
   const [editingCcId, setEditingCcId] = useState<number | null>(null);
   const [submittingCc, setSubmittingCc] = useState(false);
+  const [openCcGroupDropdown, setOpenCcGroupDropdown] = useState<string | null>(null);
 
   // Custom confirm dialog
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -534,6 +535,90 @@ export default function MonitoringPrepaidPage() {
       console.error('Error generating Jurnal SAP per periodo:', error);
       toast.error('Gagal membuat jurnal SAP. Silakan coba lagi.');
     }
+  };
+
+  // Download Jurnal SAP Excel per grup Kode Akun Biaya (dari modal Rincian CC)
+  const handleDownloadJurnalCcGroupXls = async (entries: PrepaidPeriodeCostCenter[], kdAkunBiaya: string) => {
+    if (!ccModalPrepaid || !ccModalPeriode) return;
+    try {
+      const ExcelJSLib = await loadExcelJS();
+      const workbook = new ExcelJSLib.Workbook();
+      const worksheet = workbook.addWorksheet('Jurnal SAP');
+      const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFE699' } };
+      const headers1 = ['xblnr','bukrs','blart','bldat','budat','waers','kursf','bktxt','zuonr','hkont','wrbtr','sgtxt','prctr','kostl','','nplnr','aufnr','valut','flag'];
+      const headers2 = ['Reference','company','doc type','doc date','posting date','currency','kurs','header text','Vendor/cu:','account','amount','line text','profit center','cost center','','Network','order numi','value date',''];
+      worksheet.getRow(1).height = 15; worksheet.getRow(1).values = headers1;
+      worksheet.getRow(1).eachCell((cell: any) => { cell.fill = headerFill; cell.font = { name: 'Calibri', size: 11, bold: true }; cell.alignment = { horizontal: 'center', vertical: 'bottom' }; });
+      worksheet.getRow(2).height = 15; worksheet.getRow(2).values = headers2;
+      worksheet.getRow(2).eachCell((cell: any) => { cell.fill = headerFill; cell.font = { name: 'Calibri', size: 11, bold: true }; cell.alignment = { horizontal: 'center', vertical: 'bottom' }; });
+      worksheet.columns = [{width:12},{width:10},{width:9},{width:9},{width:12},{width:10},{width:8},{width:30},{width:12},{width:12},{width:15},{width:30},{width:12},{width:12},{width:3},{width:10},{width:12},{width:12},{width:5}];
+      const parts = ccModalPeriode.bulan.split(' ');
+      const pm = BULAN_MAP[parts[0]] ?? 0;
+      const py = parseInt(parts[1]);
+      const lastDay = new Date(py, pm + 1, 0).getDate();
+      const docDate = `${py}${String(pm + 1).padStart(2, '0')}${String(lastDay).padStart(2, '0')}`;
+      const total = entries.reduce((s, e) => s + e.amount, 0);
+      const fallbackHeader = ccModalPrepaid.headerText || '';
+      let currentRow = 3;
+      const writeRow = (hkont: string, wrbtr: number, kostl: string, bktxt: string, sgtxt: string) => {
+        const row = worksheet.getRow(currentRow++);
+        row.height = 15;
+        row.getCell(1).value = ''; row.getCell(2).value = ccModalPrepaid!.companyCode || '';
+        row.getCell(3).value = 'SA'; row.getCell(4).value = docDate; row.getCell(5).value = docDate;
+        row.getCell(6).value = 'IDR'; row.getCell(7).value = ''; row.getCell(8).value = bktxt;
+        row.getCell(9).value = ''; row.getCell(10).value = hkont;
+        row.getCell(11).value = Math.round(Math.abs(wrbtr)) * (wrbtr < 0 ? -1 : 1);
+        row.getCell(11).numFmt = '0';
+        row.getCell(12).value = sgtxt; row.getCell(13).value = ''; row.getCell(14).value = kostl;
+        row.getCell(15).value = ''; row.getCell(16).value = ''; row.getCell(17).value = '';
+        row.getCell(18).value = ''; row.getCell(19).value = 'G';
+        for (let col = 1; col <= 19; col++) {
+          const cell = row.getCell(col);
+          cell.font = { name: 'Aptos Narrow', size: 12 };
+          cell.alignment = { horizontal: col === 11 ? 'right' : 'left', vertical: 'bottom' };
+        }
+      };
+      writeRow(ccModalPrepaid.kdAkr, -Math.round(total), ccModalPrepaid.alokasi || '', fallbackHeader, fallbackHeader);
+      for (const e of entries) {
+        writeRow(e.kdAkunBiaya || kdAkunBiaya, Math.round(e.amount), e.costCenter || ccModalPrepaid.costCenter || '', e.headerText || fallbackHeader, e.lineText || fallbackHeader);
+      }
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Jurnal_SAP_Prepaid_${kdAkunBiaya}_${ccModalPeriode.bulan.replace(' ', '_')}.xlsx`;
+      document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error generating jurnal CC prepaid:', error);
+      toast.error('Gagal membuat jurnal SAP. Silakan coba lagi.');
+    }
+  };
+
+  // Download Jurnal SAP TXT per grup Kode Akun Biaya
+  const handleDownloadJurnalCcGroupTxt = (entries: PrepaidPeriodeCostCenter[], kdAkunBiaya: string) => {
+    if (!ccModalPrepaid || !ccModalPeriode) return;
+    const parts = ccModalPeriode.bulan.split(' ');
+    const pm = BULAN_MAP[parts[0]] ?? 0;
+    const py = parseInt(parts[1]);
+    const lastDay = new Date(py, pm + 1, 0).getDate();
+    const docDate = `${py}${String(pm + 1).padStart(2, '0')}${String(lastDay).padStart(2, '0')}`;
+    const total = entries.reduce((s, e) => s + e.amount, 0);
+    const fallbackHeader = ccModalPrepaid.headerText || '';
+    const companyCode = ccModalPrepaid.companyCode || '';
+    const rows: string[][] = [
+      ['', companyCode, 'SA', docDate, docDate, 'IDR', '', fallbackHeader, '', ccModalPrepaid.kdAkr, (-Math.round(total)).toString(), fallbackHeader, '', ccModalPrepaid.alokasi || '', '', '', '', '', 'G'],
+    ];
+    for (const e of entries) {
+      rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '', e.headerText || fallbackHeader, '', e.kdAkunBiaya || kdAkunBiaya, Math.round(e.amount).toString(), e.lineText || fallbackHeader, '', e.costCenter || ccModalPrepaid.costCenter || '', '', '', '', '', 'G']);
+    }
+    const txtContent = rows.map(row => row.join('\t')).join('\n');
+    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Jurnal_SAP_Prepaid_${kdAkunBiaya}_${ccModalPeriode.bulan.replace(' ', '_')}.txt`;
+    document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
   };
 
   const handleOpenCcModal = async (prepaid: Prepaid, periode: PrepaidPeriode) => {
@@ -1345,7 +1430,7 @@ export default function MonitoringPrepaidPage() {
                 </form>
 
                 {/* Daftar Rincian */}
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden" onClick={() => openCcGroupDropdown && setOpenCcGroupDropdown(null)}>
                   <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-gray-700">Daftar Rincian {ccData.length > 0 && <span className="text-xs text-gray-400 font-normal ml-1">({ccData.length} data)</span>}</h3>
                   </div>
@@ -1353,43 +1438,97 @@ export default function MonitoringPrepaidPage() {
                     <div className="p-6 text-center text-xs text-gray-400">Memuat rincian...</div>
                   ) : ccData.length === 0 ? (
                     <div className="p-6 text-center text-xs text-gray-400">Belum ada rincian untuk periode ini</div>
-                  ) : (
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-amber-50 border-b border-amber-100">
-                          <th className="px-4 py-2 text-right text-amber-700 font-semibold">Amount</th>
-                          <th className="px-4 py-2 text-center text-amber-700 font-semibold">Cost Center</th>
-                          <th className="px-4 py-2 text-center text-amber-700 font-semibold">Kd. Akun Biaya</th>
-                          <th className="px-4 py-2 text-center text-amber-700 font-semibold">Header Text</th>
-                          <th className="px-4 py-2 text-center text-amber-700 font-semibold">Line Text</th>
-                          <th className="px-4 py-2 text-center text-amber-700 font-semibold">Aksi</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {ccData.map((entry) => (
-                          <tr key={entry.id} className="border-b border-gray-100 hover:bg-amber-50/30">
-                            <td className="px-4 py-2 text-right font-mono font-semibold text-amber-900">{formatCurrency(entry.amount)}</td>
-                            <td className="px-4 py-2 text-center">{entry.costCenter || '—'}</td>
-                            <td className="px-4 py-2 text-center font-mono">{entry.kdAkunBiaya || '—'}</td>
-                            <td className="px-4 py-2 text-center">{entry.headerText || '—'}</td>
-                            <td className="px-4 py-2 text-center">{entry.lineText || '—'}</td>
-                            <td className="px-4 py-2 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <button onClick={() => { setEditingCcId(entry.id); setCcForm({ amount: entry.amount.toString(), costCenter: entry.costCenter || '', kdAkunBiaya: entry.kdAkunBiaya || '', headerText: entry.headerText || '', lineText: entry.lineText || '' }); }}
-                                  className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded transition-colors">
-                                  <Edit size={14} />
-                                </button>
-                                <button onClick={() => handleDeleteCc(entry.id)}
-                                  className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors">
-                                  <Trash2 size={14} />
-                                </button>
+                  ) : (() => {
+                    const grouped = ccData.reduce((acc, entry) => {
+                      const key = entry.kdAkunBiaya || '-';
+                      if (!acc[key]) acc[key] = [];
+                      acc[key].push(entry);
+                      return acc;
+                    }, {} as Record<string, PrepaidPeriodeCostCenter[]>);
+                    return (
+                      <div>
+                        {Object.entries(grouped).map(([kdAkunBiaya, items]) => {
+                          const totalGroup = items.reduce((s, e) => s + e.amount, 0);
+                          return (
+                            <div key={kdAkunBiaya} className="mb-3 border border-gray-100 rounded-lg overflow-hidden mx-3 my-3">
+                              {/* Group header */}
+                              <div className="bg-gradient-to-r from-amber-50 to-amber-100 px-4 py-2.5 flex items-center justify-between">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-medium text-amber-700">Kode Akun Biaya:</span>
+                                    <span className="font-mono font-bold text-sm text-amber-900">{kdAkunBiaya}</span>
+                                    <span className="text-xs text-amber-600">({items.length} entri)</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  {/* Download Jurnal dropdown */}
+                                  <div className="relative">
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setOpenCcGroupDropdown(openCcGroupDropdown === kdAkunBiaya ? null : kdAkunBiaya); }}
+                                      className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded transition-colors flex items-center gap-1 shadow-sm"
+                                    >
+                                      <Download size={13} />
+                                      <span className="font-medium">Download Jurnal</span>
+                                      <ChevronDown size={11} />
+                                    </button>
+                                    {openCcGroupDropdown === kdAkunBiaya && (
+                                      <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 overflow-hidden min-w-[120px]">
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); handleDownloadJurnalCcGroupXls(items, kdAkunBiaya); setOpenCcGroupDropdown(null); }}
+                                          className="w-full text-left px-4 py-2.5 text-xs hover:bg-green-50 text-green-700 font-medium flex items-center gap-2">
+                                          <Download size={12} /> XLS (Excel)
+                                        </button>
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); handleDownloadJurnalCcGroupTxt(items, kdAkunBiaya); setOpenCcGroupDropdown(null); }}
+                                          className="w-full text-left px-4 py-2.5 text-xs hover:bg-blue-50 text-blue-700 font-medium flex items-center gap-2 border-t border-gray-100">
+                                          <Download size={12} /> TXT
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <span className="text-base font-bold text-amber-900">{formatCurrency(totalGroup)}</span>
+                                </div>
                               </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+                              {/* Entries table */}
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="bg-gray-50 border-b border-gray-200">
+                                    <th className="px-4 py-2 text-right text-gray-600 font-semibold">Amount</th>
+                                    <th className="px-4 py-2 text-left text-gray-600 font-semibold">Cost Center</th>
+                                    <th className="px-4 py-2 text-left text-gray-600 font-semibold">Header Text</th>
+                                    <th className="px-4 py-2 text-left text-gray-600 font-semibold">Line Text</th>
+                                    <th className="px-4 py-2 text-center text-gray-600 font-semibold">Aksi</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {items.map((entry) => (
+                                    <tr key={entry.id} className="border-b border-gray-100 hover:bg-amber-50/30">
+                                      <td className="px-4 py-2 text-right font-mono font-semibold text-amber-900">{formatCurrency(entry.amount)}</td>
+                                      <td className="px-4 py-2">{entry.costCenter || '—'}</td>
+                                      <td className="px-4 py-2">{entry.headerText || '—'}</td>
+                                      <td className="px-4 py-2">{entry.lineText || '—'}</td>
+                                      <td className="px-4 py-2 text-center">
+                                        <div className="flex items-center justify-center gap-1">
+                                          <button onClick={() => { setEditingCcId(entry.id); setCcForm({ amount: entry.amount.toString(), costCenter: entry.costCenter || '', kdAkunBiaya: entry.kdAkunBiaya || '', headerText: entry.headerText || '', lineText: entry.lineText || '' }); }}
+                                            className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded transition-colors">
+                                            <Edit size={14} />
+                                          </button>
+                                          <button onClick={() => handleDeleteCc(entry.id)}
+                                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors">
+                                            <Trash2 size={14} />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
