@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -118,7 +118,7 @@ interface RealisasiData {
   costCenter?: string;
 }
 
-// Saldo awal: nilai tetap dari import (saldo akhir/outstanding). Tidak ada logika periode — tidak berubah saat periode berganti.
+// Saldo awal: nilai tetap dari import (saldo akhir/outstanding). Tidak ada logika periode � tidak berubah saat periode berganti.
 function getSaldoAwal(item: Accrual): number {
   if (item.saldoAwal != null && item.saldoAwal !== undefined) return Number(item.saldoAwal);
   return Math.abs(item.totalAmount ?? 0);
@@ -130,7 +130,7 @@ function calculateItemSaldo(item: Accrual, totalAccrual: number, totalRealisasi:
   return saldoAwal + totalAccrual - totalRealisasi;
 }
 
-// Total Accrual: logika lama — hanya periode yang sudah jatuh tempo ATAU yang punya realisasi efektif (dengan rollover) yang diakui
+// Total Accrual: logika lama � hanya periode yang sudah jatuh tempo ATAU yang punya realisasi efektif (dengan rollover) yang diakui
 function calculateAccrualAmount(item: Accrual): number {
   if (!item.periodes || item.periodes.length === 0) return 0;
 
@@ -278,7 +278,7 @@ export default function MonitoringAccrualPage() {
     setConfirmDialog({ message, subMessage, onConfirm });
   }, []);
 
-  // ── Animation refs ──────────────────────────────────────────────
+  // -- Animation refs ----------------------------------------------
   const pageRef                   = useRef<HTMLDivElement>(null);
   const skeletonRef               = useRef<HTMLDivElement>(null);
   const filterBarRef              = useRef<HTMLDivElement>(null);
@@ -292,7 +292,7 @@ export default function MonitoringAccrualPage() {
   const importGlobalModalPanelRef = useRef<HTMLDivElement>(null);
   const importExcelModalPanelRef  = useRef<HTMLDivElement>(null);
 
-  // ── Display states for animated metric counters ─────────────────
+  // -- Display states for animated metric counters -----------------
   const [displaySaldo,    setDisplaySaldo]    = useState(0);
   const [displayCount,    setDisplayCount]    = useState(0);
   const [displayPeriodes, setDisplayPeriodes] = useState(0);
@@ -449,7 +449,7 @@ export default function MonitoringAccrualPage() {
   // Realtime: refresh list when another user mutates accrual/realisasi data
   useRealtimeUpdates(['accrual'], () => { fetchAccrualData(); });
 
-  // ── Skeleton entrance animation (runs when loading === true) ──────────
+  // -- Skeleton entrance animation (runs when loading === true) ----------
   useEffect(() => {
     if (!loading || !skeletonRef.current) return;
     const cards = skeletonRef.current.querySelectorAll('.sk-card');
@@ -461,7 +461,7 @@ export default function MonitoringAccrualPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
-  // ── Page entrance animation ─────────────────────────────────────────
+  // -- Page entrance animation -----------------------------------------
   useEffect(() => {
     if (loading) return;
     if (filterBarRef.current) {
@@ -476,9 +476,9 @@ export default function MonitoringAccrualPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
-  // ── Animated metric counters and table rows animation are placed after useMemo declarations below ──
+  // -- Animated metric counters and table rows animation are placed after useMemo declarations below --
 
-  // ── Modal open animations ─────────────────────────────────────────────
+  // -- Modal open animations ---------------------------------------------
   useEffect(() => {
     if (showModal && modalPanelRef.current) {
       gsap.fromTo(modalPanelRef.current, { opacity: 0, scale: 0.93, y: 28 }, { opacity: 1, scale: 1, y: 0, duration: 0.36, ease: 'back.out(1.5)' });
@@ -591,7 +591,7 @@ export default function MonitoringAccrualPage() {
     return [...set].sort((a, b) => a - b);
   }, [accrualData]);
 
-  // Calculate total saldo for metric card — uses filteredData so it matches what's visible
+  // Calculate total saldo for metric card � uses filteredData so it matches what's visible
   const totalSaldo = useMemo(() => {
     return filteredData.reduce((sum, item) => {
       if (filterMonth || filterYear) {
@@ -616,7 +616,7 @@ export default function MonitoringAccrualPage() {
     }, 0);
   }, [filteredData, itemTotalsCache, filterMonth, filterYear]);
 
-  // ── Animated metric counters (placed here after useMemo) ─────────────
+  // -- Animated metric counters (placed here after useMemo) -------------
   useEffect(() => {
     if (loading) return;
     const proxy1 = { value: 0 };
@@ -628,7 +628,7 @@ export default function MonitoringAccrualPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, totalSaldo, accrualData.length, totalPeriodes]);
 
-  // ── Table rows animation (placed here after useMemo) ─────────────────
+  // -- Table rows animation (placed here after useMemo) -----------------
   useEffect(() => {
     if (!tableBodyRef.current) return;
     const rows = tableBodyRef.current.querySelectorAll('tr');
@@ -943,7 +943,7 @@ export default function MonitoringAccrualPage() {
   // Tampilkan dialog header/line text sebelum download jurnal realisasi
   const promptJurnalTexts = (callback: (headerText: string, lineText: string) => void, items?: Accrual | Accrual[]) => {
     const itemArr = items ? (Array.isArray(items) ? items : [items]) : [];
-    // If every item already has headerText saved in DB → skip modal entirely
+    // If every item already has headerText saved in DB ? skip modal entirely
     if (itemArr.length > 0 && itemArr.every(i => i.headerText)) {
       callback('', '');
       return;
@@ -1020,7 +1020,7 @@ export default function MonitoringAccrualPage() {
             if (periodAmount > 0) {
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
               const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
-              const ht = headerText || item.headerText || '';
+              const ht = item.headerText || headerText || '';
               const lt = (lineText || `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`).trim();
               
               // Kumpulkan rincian dari periode aktif saja
@@ -1107,7 +1107,7 @@ export default function MonitoringAccrualPage() {
             if (periodAmountTxt > 0) {
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
               const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
-              const ht = headerText || item.headerText || '';
+              const ht = item.headerText || headerText || '';
               const lt = (lineText || `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`).trim();
               
               // Kumpulkan rincian dari periode aktif saja
@@ -1324,7 +1324,7 @@ export default function MonitoringAccrualPage() {
     const todayAcc = new Date();
     const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
     const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
-    const ht = headerText || item.headerText || '';
+    const ht = item.headerText || headerText || '';
     const lt = (lineText || `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`).trim();
     
     const rows: string[][] = [];
@@ -1484,7 +1484,7 @@ export default function MonitoringAccrualPage() {
       
       const todayAcc = new Date();
       const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
-      const ht = headerText || item.headerText || '';
+      const ht = item.headerText || headerText || '';
       const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
       const lt = (lineText || `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`).trim();
       let currentRow = 3;
@@ -2642,7 +2642,7 @@ export default function MonitoringAccrualPage() {
     );
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   const handleOpenCostCenterModal = async (accrual: Accrual, periode: AccrualPeriode) => {
     setCostCenterModalAccrual(accrual);
@@ -2830,7 +2830,7 @@ export default function MonitoringAccrualPage() {
     );
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   const handleCostCenterFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2969,9 +2969,9 @@ export default function MonitoringAccrualPage() {
       const updated = result.updatedCount ?? 0;
       let message = `Import Excel selesai!\n\nBaris diproses: ${result.results.length}`;
       if (created > 0 || updated > 0) {
-        message += `\n• Dibuat baru: ${created}\n• Di-update: ${updated}`;
+        message += `\n� Dibuat baru: ${created}\n� Di-update: ${updated}`;
       }
-      message += `\n\n(Jika ada baris yang match kode akun + klasifikasi / no PO + vendor, data di-update bukan dibuat baru — total baris di tabel = jumlah accrual unik.)`;
+      message += `\n\n(Jika ada baris yang match kode akun + klasifikasi / no PO + vendor, data di-update bukan dibuat baru � total baris di tabel = jumlah accrual unik.)`;
       
       if (result.errors && result.errors.length > 0) {
         message += `\n\nError (${result.errors.length}):\n${result.errors.slice(0, 5).map((e: any) => `${e.kdAkr || 'N/A'}: ${e.error}`).join('\n')}`;
@@ -3146,7 +3146,7 @@ export default function MonitoringAccrualPage() {
                     />
                   </div>
 
-                  {/* Period filter — month + year */}
+                  {/* Period filter � month + year */}
                   <select
                     value={filterMonth}
                     onChange={(e) => setFilterMonth(e.target.value)}
@@ -3173,7 +3173,7 @@ export default function MonitoringAccrualPage() {
                     <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
                     <div className="leading-tight">
                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">
-                        Outstanding Saldo{(filterMonth || filterYear) ? ` · ${filterMonth || ''}${filterMonth && filterYear ? ' ' : ''}${filterYear || ''}` : ''}
+                        Outstanding Saldo{(filterMonth || filterYear) ? ` � ${filterMonth || ''}${filterMonth && filterYear ? ' ' : ''}${filterYear || ''}` : ''}
                       </p>
                       <p className="text-xs font-bold text-slate-800 font-mono">{formatCurrency(Math.abs(displaySaldo))}</p>
                     </div>
@@ -3281,7 +3281,7 @@ export default function MonitoringAccrualPage() {
                       </th>
                     )}
                     {[
-                      { label: '▼',               align: 'center' },
+                      { label: '?',               align: 'center' },
                       { label: 'Company Code',     align: 'left' },
                       { label: 'No PO',            align: 'left' },
                       { label: 'Assignment/Order', align: 'left' },
@@ -4219,7 +4219,7 @@ export default function MonitoringAccrualPage() {
                         className="text-xs px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors"
                         title={selectedRealisasiIds.size === realisasiData.length ? 'Batal Pilih Semua' : 'Pilih Semua'}
                       >
-                        {selectedRealisasiIds.size === realisasiData.length ? '✓ Semua' : 'Pilih Semua'}
+                        {selectedRealisasiIds.size === realisasiData.length ? '? Semua' : 'Pilih Semua'}
                       </button>
                       {selectedRealisasiIds.size > 0 && (
                         <>
@@ -4299,7 +4299,7 @@ export default function MonitoringAccrualPage() {
                                   </div>
                                   {hasMultiple && (
                                     <div className="text-xs text-blue-600 mt-1">
-                                      {items.length} Cost Center berbeda • Total: {formatCurrency(totalAmount)}
+                                      {items.length} Cost Center berbeda � Total: {formatCurrency(totalAmount)}
                                     </div>
                                   )}
                                 </div>
@@ -4484,7 +4484,7 @@ export default function MonitoringAccrualPage() {
                 <p className="text-sm text-amber-100 mt-1">
                   {costCenterModalPeriode.bulan} - Periode {costCenterModalPeriode.periodeKe}
                   {costCenterModalAccrual && (
-                    <span className="ml-2">· {costCenterModalAccrual.vendor}</span>
+                    <span className="ml-2">� {costCenterModalAccrual.vendor}</span>
                   )}
                 </p>
               </div>
@@ -4541,7 +4541,7 @@ export default function MonitoringAccrualPage() {
                       })}
                       className="text-xs px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors font-medium"
                     >
-                      ↓ Isi form dari data accrual ini
+                      ? Isi form dari data accrual ini
                     </button>
                   )}
                 </div>
@@ -4583,10 +4583,10 @@ export default function MonitoringAccrualPage() {
                   </label>
                 </div>
                 <p className="text-xs text-gray-400 mt-2">
-                  Excel: Kolom A = Amount · B = Cost Center · C = Kode Akun Biaya · D = Keterangan
+                  Excel: Kolom A = Amount � B = Cost Center � C = Kode Akun Biaya � D = Keterangan
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  XML SAP: kolom J (Amount) · K (Cost Center) · I (Kode Akun Biaya)
+                  XML SAP: kolom J (Amount) � K (Cost Center) � I (Kode Akun Biaya)
                 </p>
               </div>
 
@@ -4696,7 +4696,7 @@ export default function MonitoringAccrualPage() {
                         className="text-xs px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded transition-colors"
                         title={selectedCostCenterIds.size === costCenterData.length ? 'Batal Pilih Semua' : 'Pilih Semua'}
                       >
-                        {selectedCostCenterIds.size === costCenterData.length ? '✓ Semua' : 'Pilih Semua'}
+                        {selectedCostCenterIds.size === costCenterData.length ? '? Semua' : 'Pilih Semua'}
                       </button>
                     )}
                     {selectedCostCenterIds.size > 0 && (
@@ -4728,7 +4728,7 @@ export default function MonitoringAccrualPage() {
                     <p className="text-sm text-gray-500 mb-3">Belum ada rincian untuk periode ini</p>
                     {costCenterModalPeriode && Math.abs(costCenterModalPeriode.amountAccrual) > 0 && (
                       <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-700 text-left">
-                        <p className="font-semibold mb-1">💡 Form di atas sudah diisi otomatis dari data accrual periode ini ({formatCurrency(Math.abs(costCenterModalPeriode.amountAccrual))}).</p>
+                        <p className="font-semibold mb-1">?? Form di atas sudah diisi otomatis dari data accrual periode ini ({formatCurrency(Math.abs(costCenterModalPeriode.amountAccrual))}).</p>
                         <p>Scroll ke atas lalu klik <strong>Simpan Rincian</strong> untuk menambahkannya, atau ubah sesuai kebutuhan.</p>
                       </div>
                     )}
@@ -4780,7 +4780,7 @@ export default function MonitoringAccrualPage() {
                                   </div>
                                   {hasMultiple && (
                                     <div className="text-xs text-amber-600 mt-1">
-                                      {items.length} Cost Center berbeda · Total: {formatCurrency(totalGroupAmount)}
+                                      {items.length} Cost Center berbeda � Total: {formatCurrency(totalGroupAmount)}
                                     </div>
                                   )}
                                 </div>
@@ -5242,7 +5242,7 @@ export default function MonitoringAccrualPage() {
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Header Text <span className="text-gray-400 font-normal">(bktxt – kolom 8)</span>
+                  Header Text <span className="text-gray-400 font-normal">(bktxt � kolom 8)</span>
                 </label>
                 <input
                   type="text"
@@ -5290,7 +5290,7 @@ export default function MonitoringAccrualPage() {
         </div>
       )}
 
-      {/* ── Custom Confirm Dialog ── */}
+      {/* -- Custom Confirm Dialog -- */}
       {confirmDialog && (
         <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60]"
