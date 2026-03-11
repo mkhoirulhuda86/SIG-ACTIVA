@@ -25,7 +25,14 @@ export async function GET(request: NextRequest) {
         select: {
           pembagianType: true,
           periodes: {
-            select: { id: true, periodeKe: true, bulan: true, tahun: true, amountPrepaid: true, isAmortized: true, amortizedDate: true },
+            select: {
+              id: true, periodeKe: true, bulan: true, tahun: true,
+              amountPrepaid: true, isAmortized: true, amortizedDate: true,
+              costcenters: {
+                select: { id: true, costCenter: true, kdAkunBiaya: true, amount: true },
+                orderBy: { id: 'asc' },
+              },
+            },
             orderBy: { periodeKe: 'asc' },
           },
         },

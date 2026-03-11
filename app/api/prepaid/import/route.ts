@@ -171,76 +171,66 @@ export async function POST(request: NextRequest) {
 
     const dataRows = rawRows.slice(headerRowIdx + 1);
 
-    let createdCount = 0;
-    let skippedCount = 0;
+    // ── Parse semua baris dulu ──────────────────────────────────────────────
+    type ParsedRow = {
+      kdAkr: string;
+      companyCode: string;
+      deskripsi: string;
+      noPo: string;
+      alokasi: string;
+      namaAkun: string;
+      costCenter: string;
+      totalAmount: number;
+      numPeriod: number;
+      startDate: Date;
+      hasPeriodValues: boolean;
+      periodeAmounts: number[];
+      rowIdx: number;
+    };
+
+    const parsedRows: ParsedRow[] = [];
     const warnings: string[] = [];
 
     for (let ri = 0; ri < dataRows.length; ri++) {
       const row = dataRows[ri];
-
-      // Skip ONLY truly empty rows
       const kdAkr = String(row[colAccount] ?? '').trim();
-      if (!kdAkr) { skippedCount++; continue; }
-      // Skip subtotal rows
-      if (kdAkr.toLowerCase().includes('subtotal') || kdAkr.toLowerCase().includes('total')) {
-        skippedCount++; continue;
-      }
-      // Skip rows where account is not a number (header remnants, category labels)
-      if (!/\d/.test(kdAkr)) { skippedCount++; continue; }
+      if (!kdAkr) continue;
+      if (kdAkr.toLowerCase().includes('subtotal') || kdAkr.toLowerCase().includes('total')) continue;
+      if (!/\d/.test(kdAkr)) continue;
 
-      // Amount: try Opening Balance → Prepaid Amo → Balance (in that priority)
       const openBalanceRaw  = colOpenBalance >= 0 ? parseNum(row[colOpenBalance]) : 0;
       const prepaidAmoRaw   = colPrepaidAmo  >= 0 ? parseNum(row[colPrepaidAmo])  : 0;
       const balanceRaw      = colBalance     >= 0 ? parseNum(row[colBalance])     : 0;
-      let totalAmount = Math.abs(openBalanceRaw !== 0 ? openBalanceRaw : prepaidAmoRaw !== 0 ? prepaidAmoRaw : balanceRaw);
-      
-      // Jika amount = 0, tetap import dengan nilai 0 (user bisa update nanti)
-      if (totalAmount === 0) {
-        warnings.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): amount=0 - data tetap diimport`);
-      }
+      const totalAmount = Math.abs(openBalanceRaw !== 0 ? openBalanceRaw : prepaidAmoRaw !== 0 ? prepaidAmoRaw : balanceRaw);
 
-      // Parse fields
       const companyCode = colCompany    >= 0 ? String(row[colCompany]   ?? '').trim() : '';
       const deskripsi   = colItem       >= 0 ? String(row[colItem]      ?? '').trim() : '';
-
-      // Kolom ID: jika diawali "66" → No PO; selain itu → Assignment/Order; jika kosong → keduanya kosong
-      const idRaw = colId >= 0 ? String(row[colId] ?? '').trim() : '';
-      const noPo    = idRaw.startsWith('66') ? idRaw : '';
-      const alokasi = (idRaw && !idRaw.startsWith('66')) ? idRaw : '';
-
-      // Kode akun biaya diambil dari kolom GL Account; jika kosong tetap kosong
-      const namaAkun = colGLAccount >= 0 ? String(row[colGLAccount] ?? '').trim() : '';
-
-      // Cost Center diambil dari kolom Cost Center; jika kosong tetap kosong
-      const costCenter = colCostCenter >= 0 ? String(row[colCostCenter] ?? '').trim() : '';
+      const idRaw       = colId         >= 0 ? String(row[colId]        ?? '').trim() : '';
+      const noPo        = idRaw.startsWith('66') ? idRaw : '';
+      const alokasi     = (idRaw && !idRaw.startsWith('66')) ? idRaw : '';
+      const namaAkun    = colGLAccount  >= 0 ? String(row[colGLAccount] ?? '').trim() : '';
+      const costCenter  = colCostCenter >= 0 ? String(row[colCostCenter]?? '').trim() : '';
 
       let numPeriod = colNumPeriod >= 0 ? Math.round(Math.abs(parseNum(row[colNumPeriod]))) : 0;
-      
-      // Jika # of Period = 0, set default 12 bulan (user bisa update nanti)
       if (numPeriod <= 0) {
         numPeriod = 12;
         warnings.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): # of Period = 0, diset ke default 12 bulan`);
       }
 
-      // Dates
       const startDateRaw = colDateStart >= 0 ? row[colDateStart] : null;
       const endDateRaw   = colDateEnd   >= 0 ? row[colDateEnd]   : null;
       let startDate = parseExcelDate(startDateRaw);
       const endDate = parseExcelDate(endDateRaw);
-
       if (!startDate && endDate) {
         startDate = new Date(endDate);
         startDate.setMonth(startDate.getMonth() - numPeriod + 1);
       }
-      
-      // Jika tanggal tidak valid, set ke bulan ini (user bisa update nanti)
       if (!startDate) {
         startDate = new Date();
-        startDate.setDate(1); // Set ke tanggal 1 bulan ini
+        startDate.setDate(1);
         warnings.push(`Baris ${ri + headerRowIdx + 2} (${kdAkr}): tanggal tidak valid, diset ke bulan ini`);
       }
 
-      // Build periode amounts from period columns
       const periodeAmounts: number[] = [];
       let hasPeriodValues = false;
       for (let pi = 0; pi < numPeriod; pi++) {
@@ -254,44 +244,80 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // If no period columns found, fall back to even split
-      const pembagianType = hasPeriodValues ? 'manual' : 'otomatis';
+      parsedRows.push({ kdAkr, companyCode, deskripsi, noPo, alokasi, namaAkun, costCenter,
+        totalAmount, numPeriod, startDate: startDate!, hasPeriodValues, periodeAmounts, rowIdx: ri });
+    }
 
-      // Build periodes array
+    // ── Grouping: rows dengan kdAkr + startDate(bulan/tahun) + numPeriod sama → 1 Prepaid ──
+    type GroupKey = string;
+    const groups = new Map<GroupKey, ParsedRow[]>();
+    for (const pr of parsedRows) {
+      const key = `${pr.kdAkr}|${pr.startDate.getFullYear()}-${pr.startDate.getMonth()}|${pr.numPeriod}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(pr);
+    }
+
+    let createdCount = 0;
+    let skippedCount = 0;
+
+    for (const [, rows] of groups) {
+      const first = rows[0];
+      const multiCC = rows.length > 1;
+
+      // totalAmount = sum semua rows (beda cost center punya amount sendiri)
+      const totalAmount = rows.reduce((s, r) => s + r.totalAmount, 0);
+      const pembagianType = rows.some(r => r.hasPeriodValues) ? 'manual' : 'otomatis';
+
+      // Build periodes: amountPrepaid = sum amount semua cost center di periode ke-n
       const periodes: any[] = [];
-      for (let pi = 0; pi < numPeriod; pi++) {
-        const pd = new Date(startDate);
+      for (let pi = 0; pi < first.numPeriod; pi++) {
+        const pd = new Date(first.startDate);
         pd.setMonth(pd.getMonth() + pi);
         const bulanNama = `${BULAN_ID[pd.getMonth()]} ${pd.getFullYear()}`;
-        const amtPrepaid = hasPeriodValues
-          ? (periodeAmounts[pi] ?? 0)
-          : totalAmount / numPeriod;
+
+        // Sum amount periode ke-pi dari semua rows
+        const amtPrepaid = pembagianType === 'manual'
+          ? rows.reduce((s, r) => s + (r.periodeAmounts[pi] ?? 0), 0)
+          : totalAmount / first.numPeriod;
+
+        // Cost center entries untuk periode ini
+        const costcenters = multiCC ? rows.map(r => ({
+          costCenter: r.costCenter || undefined,
+          kdAkunBiaya: r.namaAkun || undefined,
+          amount: pembagianType === 'manual' ? (r.periodeAmounts[pi] ?? 0) : r.totalAmount / first.numPeriod,
+        })) : [];
+
         periodes.push({
           periodeKe: pi + 1,
           bulan: bulanNama,
           tahun: pd.getFullYear(),
           amountPrepaid: amtPrepaid,
           isAmortized: false,
+          ...(costcenters.length > 0 ? { costcenters: { create: costcenters } } : {}),
         });
+      }
+
+      if (totalAmount === 0) {
+        warnings.push(`Akun ${first.kdAkr}: amount=0 - data tetap diimport`);
       }
 
       try {
         await prisma.prepaid.create({
           data: {
-            companyCode: companyCode || undefined,
-            noPo: noPo || undefined,
-            kdAkr,
-            alokasi: alokasi,
-            namaAkun,
+            companyCode: first.companyCode || undefined,
+            noPo: first.noPo || undefined,
+            kdAkr: first.kdAkr,
+            alokasi: first.alokasi,
+            namaAkun: first.namaAkun,
             vendor: '',
-            deskripsi,
+            deskripsi: first.deskripsi,
             headerText: undefined,
             klasifikasi: undefined,
             totalAmount,
             remaining: totalAmount,
-            costCenter: costCenter || undefined,
-            startDate,
-            period: numPeriod,
+            costCenter: multiCC ? undefined : (first.costCenter || undefined),
+            startDate: first.startDate,
+            period: first.numPeriod,
             periodUnit: 'bulan',
             type: 'Linear',
             pembagianType,
@@ -300,7 +326,7 @@ export async function POST(request: NextRequest) {
         });
         createdCount++;
       } catch (err: any) {
-        warnings.push(`ERROR Baris ${ri + headerRowIdx + 2} (${kdAkr}): ${err.message}`);
+        warnings.push(`ERROR Akun ${first.kdAkr}: ${err.message}`);
         skippedCount++;
       }
     }

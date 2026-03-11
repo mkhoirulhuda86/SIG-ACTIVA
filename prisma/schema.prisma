@@ -194,16 +194,18 @@ model Prepaid {
 }
 
 model PrepaidPeriode {
-  id             Int                  @id @default(autoincrement())
+  id             Int                         @id @default(autoincrement())
   prepaidId      Int
-  prepaid        Prepaid              @relation(fields: [prepaidId], references: [id], onDelete: Cascade)
+  prepaid        Prepaid                     @relation(fields: [prepaidId], references: [id], onDelete: Cascade)
   
-  periodeKe      Int                  // 1, 2, 3, dst
-  bulan          String               // "Jan 2026", "Feb 2026"
-  tahun          Int                  // 2026
-  amountPrepaid  Float                // Nilai prepaid periode ini
-  isAmortized    Boolean              @default(false) // Sudah diamortisasi atau belum
-  amortizedDate  DateTime?            // Tanggal amortisasi
+  periodeKe      Int                         // 1, 2, 3, dst
+  bulan          String                      // "Jan 2026", "Feb 2026"
+  tahun          Int                         // 2026
+  amountPrepaid  Float                       // Nilai prepaid periode ini (sum dari costcenters jika ada)
+  isAmortized    Boolean                     @default(false) // Sudah diamortisasi atau belum
+  amortizedDate  DateTime?                   // Tanggal amortisasi
+
+  costcenters    PrepaidPeriodeCostCenter[]  // Rincian per cost center
   
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
@@ -211,6 +213,22 @@ model PrepaidPeriode {
   @@map("prepaid_periodes")
   @@index([prepaidId])
   @@index([bulan, tahun])
+}
+
+model PrepaidPeriodeCostCenter {
+  id                 Int            @id @default(autoincrement())
+  prepaidPeriodeId   Int
+  prepaidPeriode     PrepaidPeriode @relation(fields: [prepaidPeriodeId], references: [id], onDelete: Cascade)
+
+  costCenter         String?
+  kdAkunBiaya        String?
+  amount             Float
+
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@map("prepaid_periode_costcenters")
+  @@index([prepaidPeriodeId])
 }
 
 model FluktuasiImport {

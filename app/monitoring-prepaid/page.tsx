@@ -32,6 +32,13 @@ const BULAN_MAP: Record<string, number> = {
 const formatCurrency = (amount: number) =>
   `Rp ${Math.round(amount).toLocaleString('id-ID')}`;
 
+interface PrepaidPeriodeCostCenter {
+  id: number;
+  costCenter?: string;
+  kdAkunBiaya?: string;
+  amount: number;
+}
+
 interface PrepaidPeriode {
   id: number;
   periodeKe: number;
@@ -40,6 +47,7 @@ interface PrepaidPeriode {
   amountPrepaid: number;
   isAmortized: boolean;
   amortizedDate?: Date;
+  costcenters?: PrepaidPeriodeCostCenter[];
 }
 
 interface Prepaid {
@@ -1014,9 +1022,10 @@ export default function MonitoringPrepaidPage() {
                                           const isEditing = editingPeriode?.periodeId === p.id;
 
                                           return (
-                                            <tr key={p.id}
+                                            <React.Fragment key={p.id}>
+                                            <tr
                                               className={`transition-colors duration-100 ${!isPast && item.pembagianType === 'otomatis' ? 'bg-slate-50/60 text-slate-400' : 'bg-white hover:bg-red-50/30 text-slate-700'}`}
-                                              style={{ borderBottom: '1px solid #fee2e2' }}>
+                                              style={{ borderBottom: p.costcenters && p.costcenters.length > 0 ? 'none' : '1px solid #fee2e2' }}>
                                               <td className="px-3 py-2 text-center text-xs">{p.periodeKe}</td>
                                               <td className="px-3 py-2 text-center whitespace-nowrap text-xs font-medium">{p.bulan}</td>
                                               <td className="px-3 py-2 text-right font-semibold text-xs font-mono">
@@ -1087,6 +1096,20 @@ export default function MonitoringPrepaidPage() {
                                                 </td>
                                               )}
                                             </tr>
+                                            {/* Sub-rows: cost center rincian */}
+                                            {p.costcenters && p.costcenters.length > 0 && p.costcenters.map((cc, cci) => (
+                                              <tr key={`cc-${cc.id}`}
+                                                style={{ backgroundColor: '#f8faff', borderBottom: cci === p.costcenters!.length - 1 ? '1px solid #fee2e2' : '1px solid #eef2ff' }}>
+                                                <td className="px-3 py-1 text-center text-[10px] text-slate-300">↳</td>
+                                                <td className="px-3 py-1 text-center text-[10px] text-slate-400 italic">{cc.costCenter || '—'}</td>
+                                                <td className="px-3 py-1 text-right text-[10px] font-mono text-slate-600">{formatCurrency(cc.amount)}</td>
+                                                <td className="px-3 py-1 text-center">
+                                                  <span className="text-[9px] text-slate-400 font-mono">{cc.kdAkunBiaya || '—'}</span>
+                                                </td>
+                                                <td colSpan={item.pembagianType === 'manual' && canEdit ? 2 : 1} />
+                                              </tr>
+                                            ))}
+                                            </React.Fragment>
                                           );
                                         })}
                                       </tbody>
