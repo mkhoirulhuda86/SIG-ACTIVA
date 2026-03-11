@@ -1011,7 +1011,7 @@ export default function MonitoringAccrualPage() {
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
               const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
               const ht = headerText || item.headerText || '';
-              const lt = `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`.trim();
+              const lt = (lineText || `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`).trim();
               
               // Kumpulkan rincian dari periode aktif saja
               const allRincian = activePeriode?.costcenters || [];
@@ -1098,7 +1098,7 @@ export default function MonitoringAccrualPage() {
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
               const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
               const ht = headerText || item.headerText || '';
-              const lt = `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`.trim();
+              const lt = (lineText || `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`).trim();
               
               // Kumpulkan rincian dari periode aktif saja
               const allRincian = activePeriodeTxt?.costcenters || [];
@@ -1315,7 +1315,7 @@ export default function MonitoringAccrualPage() {
     const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
     const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
     const ht = headerText || item.headerText || '';
-    const lt = `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`.trim();
+    const lt = (lineText || `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`).trim();
     
     const rows: string[][] = [];
     const rincian = periode.costcenters || [];
@@ -1476,7 +1476,7 @@ export default function MonitoringAccrualPage() {
       const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
       const ht = headerText || item.headerText || '';
       const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
-      const lt = `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`.trim();
+      const lt = (lineText || `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`).trim();
       let currentRow = 3;
       
       const writeRow = (hkont: string, wrbtr: number, kostl: string, bktxt = ht, sgtxt = lt) => {
@@ -5224,8 +5224,8 @@ export default function MonitoringAccrualPage() {
           <div ref={jurnalHeaderModalPanelRef} className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
             <div className="px-6 py-4 bg-gradient-to-r from-green-600 to-green-700 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-white">Header Text Jurnal</h2>
-                <p className="text-green-100 text-xs mt-0.5">Isi Header Text untuk kolom SAP (Line Text otomatis)</p>
+                <h2 className="text-lg font-bold text-white">Header & Line Text Jurnal</h2>
+                <p className="text-green-100 text-xs mt-0.5">Isi Header Text untuk kolom SAP</p>
               </div>
               <button onClick={() => setShowJurnalHeaderModal(false)} className="text-white hover:text-green-100 rounded-full hover:bg-white/10 p-1"><X size={22} /></button>
             </div>
@@ -5243,8 +5243,18 @@ export default function MonitoringAccrualPage() {
                   autoFocus
                 />
               </div>
-              <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-                Line Text otomatis: <span className="font-mono text-gray-700">pcd [No PO] [Deskripsi] [mmyy]</span>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Line Text <span className="text-gray-400 font-normal">(sgtxt – kolom 12)</span>
+                </label>
+                <input
+                  type="text"
+                  value={jurnalLineInput}
+                  onChange={(e) => setJurnalLineInput(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Kosongkan untuk rumus otomatis..."
+                />
+                <p className="text-xs text-gray-400 mt-1">Default: <span className="font-mono">pcd [No PO] [Deskripsi] [mmyy]</span></p>
               </div>
             </div>
             <div className="px-6 pb-6 flex justify-end gap-3">
@@ -5255,7 +5265,7 @@ export default function MonitoringAccrualPage() {
               <button
                 onClick={() => {
                   setShowJurnalHeaderModal(false);
-                  jurnalPendingCallback?.(jurnalHeaderInput, '');
+                  jurnalPendingCallback?.(jurnalHeaderInput, jurnalLineInput);
                 }}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
               >Download</button>
