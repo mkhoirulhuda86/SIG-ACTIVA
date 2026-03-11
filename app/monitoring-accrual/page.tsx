@@ -544,7 +544,8 @@ export default function MonitoringAccrualPage() {
       return item.kdAkr.toLowerCase().includes(searchLower) ||
         item.kdAkunBiaya.toLowerCase().includes(searchLower) ||
         item.vendor.toLowerCase().includes(searchLower) ||
-        item.deskripsi.toLowerCase().includes(searchLower);
+        item.deskripsi.toLowerCase().includes(searchLower) ||
+        (item.noPo ?? '').toLowerCase().includes(searchLower);
     });
   }, [accrualData, debouncedSearchTerm]);
 
