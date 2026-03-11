@@ -1009,7 +1009,8 @@ export default function MonitoringAccrualPage() {
             const periodAmount = activePeriode ? Math.abs(activePeriode.amountAccrual) : 0;
             if (periodAmount > 0) {
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
-              const ht = item.headerText || '';
+              const ht = headerText || item.headerText || '';
+              const ref = item.noPo || '';
               
               // Kumpulkan rincian dari periode aktif saja
               const allRincian = activePeriode?.costcenters || [];
@@ -1025,7 +1026,7 @@ export default function MonitoringAccrualPage() {
                 const total = Array.from(grp.values()).reduce((s, g) => s + g.amount, 0);
                 // KREDIT - Kode Akun Accrual (sum)
                 const rowAkr = worksheet.getRow(currentRow++);
-                rowAkr.getCell(1).value = ''; rowAkr.getCell(2).value = companyCode; rowAkr.getCell(3).value = 'SA';
+                rowAkr.getCell(1).value = ref; rowAkr.getCell(2).value = companyCode; rowAkr.getCell(3).value = 'SA';
                 rowAkr.getCell(4).value = docDate; rowAkr.getCell(5).value = docDate; rowAkr.getCell(6).value = 'IDR';
                 rowAkr.getCell(7).value = ''; rowAkr.getCell(8).value = ht; rowAkr.getCell(9).value = '';
                 rowAkr.getCell(10).value = item.kdAkr; rowAkr.getCell(11).value = -Math.round(total); rowAkr.getCell(11).numFmt = '0';
@@ -1035,7 +1036,7 @@ export default function MonitoringAccrualPage() {
                 // DEBIT - per rincian
                 for (const [, g] of grp) {
                   const rowBiaya = worksheet.getRow(currentRow++);
-                  rowBiaya.getCell(1).value = ''; rowBiaya.getCell(2).value = companyCode; rowBiaya.getCell(3).value = 'SA';
+                  rowBiaya.getCell(1).value = ref; rowBiaya.getCell(2).value = companyCode; rowBiaya.getCell(3).value = 'SA';
                   rowBiaya.getCell(4).value = docDate; rowBiaya.getCell(5).value = docDate; rowBiaya.getCell(6).value = 'IDR';
                   rowBiaya.getCell(7).value = ''; rowBiaya.getCell(8).value = g.headerText; rowBiaya.getCell(9).value = '';
                   rowBiaya.getCell(10).value = g.kdAkunBiaya; rowBiaya.getCell(11).value = Math.round(g.amount); rowBiaya.getCell(11).numFmt = '0';
@@ -1046,7 +1047,7 @@ export default function MonitoringAccrualPage() {
               } else {
                 // Fallback: 1 DEBIT + 1 KREDIT
                 const row1 = worksheet.getRow(currentRow++);
-                row1.getCell(1).value = ''; row1.getCell(2).value = companyCode; row1.getCell(3).value = 'SA';
+                row1.getCell(1).value = ref; row1.getCell(2).value = companyCode; row1.getCell(3).value = 'SA';
                 row1.getCell(4).value = docDate; row1.getCell(5).value = docDate; row1.getCell(6).value = 'IDR';
                 row1.getCell(7).value = ''; row1.getCell(8).value = ht; row1.getCell(9).value = '';
                 row1.getCell(10).value = item.kdAkunBiaya; row1.getCell(11).value = Math.round(periodAmount); row1.getCell(11).numFmt = '0';
@@ -1054,7 +1055,7 @@ export default function MonitoringAccrualPage() {
                 row1.getCell(15).value = ''; row1.getCell(16).value = ''; row1.getCell(17).value = '';
                 row1.getCell(18).value = ''; row1.getCell(19).value = 'G';
                 const row2 = worksheet.getRow(currentRow++);
-                row2.getCell(1).value = ''; row2.getCell(2).value = companyCode; row2.getCell(3).value = 'SA';
+                row2.getCell(1).value = ref; row2.getCell(2).value = companyCode; row2.getCell(3).value = 'SA';
                 row2.getCell(4).value = docDate; row2.getCell(5).value = docDate; row2.getCell(6).value = 'IDR';
                 row2.getCell(7).value = ''; row2.getCell(8).value = ht; row2.getCell(9).value = '';
                 row2.getCell(10).value = item.kdAkr; row2.getCell(11).value = -Math.round(periodAmount); row2.getCell(11).numFmt = '0';
@@ -1094,7 +1095,8 @@ export default function MonitoringAccrualPage() {
             const periodAmountTxt = activePeriodeTxt ? Math.abs(activePeriodeTxt.amountAccrual) : 0;
             if (periodAmountTxt > 0) {
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
-              const ht = item.headerText || '';
+              const ht = headerText || item.headerText || '';
+              const ref = item.noPo || '';
               
               // Kumpulkan rincian dari periode aktif saja
               const allRincian = activePeriodeTxt?.costcenters || [];
@@ -1109,19 +1111,19 @@ export default function MonitoringAccrualPage() {
                 }
                 const total = Array.from(grp.values()).reduce((s, g) => s + g.amount, 0);
                 // KREDIT - Kode Akun Accrual (sum)
-                rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+                rows.push([ref, companyCode, 'SA', docDate, docDate, 'IDR', '',
                   ht, '', item.kdAkr, (-Math.round(total)).toString(), ht, '', '', '', '', '', '', 'G']);
                 // DEBIT - per rincian
                 for (const [, g] of grp) {
-                  rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+                  rows.push([ref, companyCode, 'SA', docDate, docDate, 'IDR', '',
                     g.headerText, '', g.kdAkunBiaya, Math.round(g.amount).toString(), g.lineText, '', g.costCenter, '', '', '', '', 'G']);
                 }
               } else {
                 // Fallback: 1 DEBIT + 1 KREDIT
-                rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+                rows.push([ref, companyCode, 'SA', docDate, docDate, 'IDR', '',
                   ht, '', item.kdAkunBiaya, Math.round(periodAmountTxt).toString(),
                   ht, '', item.costCenter || '', '', '', '', '', 'G']);
-                rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+                rows.push([ref, companyCode, 'SA', docDate, docDate, 'IDR', '',
                   ht, '', item.kdAkr, (-Math.round(periodAmountTxt)).toString(),
                   ht, '', '', '', '', '', '', 'G']);
               }
@@ -1309,7 +1311,9 @@ export default function MonitoringAccrualPage() {
     // Gunakan tanggal hari ini sebagai doc date dan posting date jurnal accrual
     const todayAcc = new Date();
     const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
-    const ht = item.headerText || '';
+    const ht = headerText || item.headerText || '';
+    const lt = lineText || ht;
+    const ref = item.noPo || '';
     
     const rows: string[][] = [];
     const rincian = periode.costcenters || [];
@@ -1318,22 +1322,22 @@ export default function MonitoringAccrualPage() {
       // Punya rincian: N baris debit (per rincian) + 1 baris kredit (sum kdAkr)
       const total = rincian.reduce((s, r) => s + Math.abs(r.amount), 0);
       // 1 baris KREDIT - Kode Akun Accrual (sum, negatif)
-      rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
-        ht, '', item.kdAkr, (-Math.round(total)).toString(), ht, '', '', '', '', '', '', 'G']);
+      rows.push([ref, companyCode, 'SA', docDate, docDate, 'IDR', '',
+        ht, '', item.kdAkr, (-Math.round(total)).toString(), lt, '', '', '', '', '', '', 'G']);
       // N baris DEBIT - per rincian
       for (const r of rincian) {
-        rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+        rows.push([ref, companyCode, 'SA', docDate, docDate, 'IDR', '',
           r.headerText || ht, '', r.kdAkunBiaya || item.kdAkunBiaya, Math.round(Math.abs(r.amount)).toString(),
-          r.lineText || ht, '', r.costCenter || '', '', '', '', '', 'G']);
+          r.lineText || lt, '', r.costCenter || '', '', '', '', '', 'G']);
       }
     } else {
       // Fallback: 1 baris DEBIT + 1 baris KREDIT
-      rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+      rows.push([ref, companyCode, 'SA', docDate, docDate, 'IDR', '',
         ht, '', item.kdAkunBiaya, Math.round(Math.abs(periode.amountAccrual)).toString(),
-        ht, '', item.costCenter || '', '', '', '', '', 'G']);
-      rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
+        lt, '', item.costCenter || '', '', '', '', '', 'G']);
+      rows.push([ref, companyCode, 'SA', docDate, docDate, 'IDR', '',
         ht, '', item.kdAkr, (-Math.round(Math.abs(periode.amountAccrual))).toString(),
-        ht, '', '', '', '', '', '', 'G']);
+        lt, '', '', '', '', '', '', 'G']);
     }
     
     const txtContent = rows.map(row => row.join('\t')).join('\n');
@@ -1468,13 +1472,15 @@ export default function MonitoringAccrualPage() {
       
       const todayAcc = new Date();
       const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
-      const ht = item.headerText || '';
+      const ht = headerText || item.headerText || '';
+      const lt = lineText || ht;
+      const ref = item.noPo || '';
       let currentRow = 3;
       
-      const writeRow = (hkont: string, wrbtr: number, kostl: string, bktxt = ht, sgtxt = ht) => {
+      const writeRow = (hkont: string, wrbtr: number, kostl: string, bktxt = ht, sgtxt = lt) => {
         const row = worksheet.getRow(currentRow++);
         row.height = 15;
-        row.getCell(1).value = ''; row.getCell(2).value = companyCode; row.getCell(3).value = 'SA';
+        row.getCell(1).value = ref; row.getCell(2).value = companyCode; row.getCell(3).value = 'SA';
         row.getCell(4).value = docDate; row.getCell(5).value = docDate; row.getCell(6).value = 'IDR';
         row.getCell(7).value = ''; row.getCell(8).value = bktxt; row.getCell(9).value = '';
         row.getCell(10).value = hkont;
