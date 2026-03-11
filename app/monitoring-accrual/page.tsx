@@ -636,16 +636,14 @@ export default function MonitoringAccrualPage() {
         const realisasiUpTo = upToPeriodes.reduce((s, p) => s + (p.totalRealisasi ?? 0), 0);
         return sum + (saldoAwal + accrualUpTo - realisasiUpTo);
       }
-      const cached = itemTotalsCache.get(item.id);
-      if (cached) {
-        return sum + (cached.saldoAwal + cached.accrual - cached.realisasi);
-      }
+      // No filter: simple sum over all periods (consistent with filter path)
       const saldoAwal = getSaldoAwal(item);
-      const accrual = calculateItemAccrual(item);
-      const realisasi = calculateItemRealisasi(item);
-      return sum + (saldoAwal + accrual - realisasi);
+      const allPeriodes = item.periodes ?? [];
+      const accrualAll = allPeriodes.reduce((s, p) => s + Math.abs(p.amountAccrual), 0);
+      const realisasiAll = allPeriodes.reduce((s, p) => s + (p.totalRealisasi ?? 0), 0);
+      return sum + (saldoAwal + accrualAll - realisasiAll);
     }, 0);
-  }, [filteredData, itemTotalsCache, filterMonth, filterYear]);
+  }, [filteredData, filterMonth, filterYear]);
 
   // -- Animated metric counters (placed here after useMemo) -------------
   useEffect(() => {
