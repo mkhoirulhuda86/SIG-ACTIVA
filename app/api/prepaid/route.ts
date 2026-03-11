@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
               id: true, periodeKe: true, bulan: true, tahun: true,
               amountPrepaid: true, isAmortized: true, amortizedDate: true,
               costcenters: {
-                select: { id: true, costCenter: true, kdAkunBiaya: true, amount: true },
+                select: { id: true, costCenter: true, kdAkunBiaya: true, amount: true, headerText: true, lineText: true },
                 orderBy: { id: 'asc' },
               },
             },

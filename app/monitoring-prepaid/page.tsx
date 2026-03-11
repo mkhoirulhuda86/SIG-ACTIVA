@@ -37,6 +37,8 @@ interface PrepaidPeriodeCostCenter {
   costCenter?: string;
   kdAkunBiaya?: string;
   amount: number;
+  headerText?: string;
+  lineText?: string;
 }
 
 interface PrepaidPeriode {
@@ -94,6 +96,16 @@ export default function MonitoringPrepaidPage() {
   const importFileRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deletingSelected, setDeletingSelected] = useState(false);
+
+  // Cost center modal state
+  const [showCcModal, setShowCcModal] = useState(false);
+  const [ccModalPrepaid, setCcModalPrepaid] = useState<Prepaid | null>(null);
+  const [ccModalPeriode, setCcModalPeriode] = useState<PrepaidPeriode | null>(null);
+  const [ccData, setCcData] = useState<PrepaidPeriodeCostCenter[]>([]);
+  const [loadingCcData, setLoadingCcData] = useState(false);
+  const [ccForm, setCcForm] = useState({ amount: '', costCenter: '', kdAkunBiaya: '', headerText: '', lineText: '' });
+  const [editingCcId, setEditingCcId] = useState<number | null>(null);
+  const [submittingCc, setSubmittingCc] = useState(false);
 
   // Custom confirm dialog
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -522,6 +534,104 @@ export default function MonitoringPrepaidPage() {
       console.error('Error generating Jurnal SAP per periodo:', error);
       toast.error('Gagal membuat jurnal SAP. Silakan coba lagi.');
     }
+  };
+
+  const handleOpenCcModal = async (prepaid: Prepaid, periode: PrepaidPeriode) => {
+    setCcModalPrepaid(prepaid);
+    setCcModalPeriode(periode);
+    setShowCcModal(true);
+    setLoadingCcData(true);
+    setCcData([]);
+    setEditingCcId(null);
+    setCcForm({ amount: '', costCenter: prepaid.costCenter || '', kdAkunBiaya: prepaid.namaAkun || '', headerText: prepaid.headerText || '', lineText: '' });
+    try {
+      const res = await fetch(`/api/prepaid/periode-costcenter?periodeId=${periode.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCcData(data);
+        if (data.length === 0) {
+          setCcForm({ amount: periode.amountPrepaid > 0 ? periode.amountPrepaid.toString() : '', costCenter: prepaid.costCenter || '', kdAkunBiaya: prepaid.namaAkun || '', headerText: prepaid.headerText || '', lineText: '' });
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingCcData(false);
+    }
+  };
+
+  const handleCcInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setCcForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleCcSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ccModalPeriode) return;
+    setSubmittingCc(true);
+    try {
+      const isEditing = editingCcId !== null;
+      const url = isEditing ? `/api/prepaid/periode-costcenter?id=${editingCcId}` : '/api/prepaid/periode-costcenter';
+      const method = isEditing ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prepaidPeriodeId: ccModalPeriode.id,
+          costCenter: ccForm.costCenter || null,
+          kdAkunBiaya: ccForm.kdAkunBiaya || null,
+          amount: parseFloat(ccForm.amount),
+          headerText: ccForm.headerText || null,
+          lineText: ccForm.lineText || null,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to save');
+      toast.success(isEditing ? 'Rincian diupdate!' : 'Rincian ditambahkan!');
+      setCcForm({ amount: '', costCenter: ccModalPrepaid?.costCenter || '', kdAkunBiaya: ccModalPrepaid?.namaAkun || '', headerText: ccModalPrepaid?.headerText || '', lineText: '' });
+      setEditingCcId(null);
+      // Refresh entries + update cached periode amount
+      const [listRes] = await Promise.all([
+        fetch(`/api/prepaid/periode-costcenter?periodeId=${ccModalPeriode.id}`),
+      ]);
+      if (listRes.ok) {
+        const data = await listRes.json();
+        setCcData(data);
+        const newAmount = data.reduce((s: number, c: PrepaidPeriodeCostCenter) => s + c.amount, 0);
+        setCcModalPeriode(prev => prev ? { ...prev, amountPrepaid: newAmount } : prev);
+        setPeriodesCache(prev => {
+          if (!ccModalPrepaid) return prev;
+          const periodes = prev[ccModalPrepaid.id];
+          if (!periodes) return prev;
+          return { ...prev, [ccModalPrepaid.id]: periodes.map(p => p.id === ccModalPeriode.id ? { ...p, amountPrepaid: newAmount, costcenters: data } : p) };
+        });
+      }
+    } catch (err) {
+      toast.error('Gagal menyimpan rincian');
+    } finally {
+      setSubmittingCc(false);
+    }
+  };
+
+  const handleDeleteCc = (id: number) => {
+    showConfirm('Hapus rincian ini?', 'Entri rincian cost center ini akan dihapus permanen.', async () => {
+      try {
+        const res = await fetch(`/api/prepaid/periode-costcenter?id=${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed');
+        const newData = ccData.filter(c => c.id !== id);
+        setCcData(newData);
+        const newAmount = newData.reduce((s, c) => s + c.amount, 0);
+        setCcModalPeriode(prev => prev ? { ...prev, amountPrepaid: newAmount } : prev);
+        setPeriodesCache(prev => {
+          if (!ccModalPrepaid) return prev;
+          const periodes = prev[ccModalPrepaid.id];
+          if (!periodes) return prev;
+          return { ...prev, [ccModalPrepaid.id]: periodes.map(p => p.id === ccModalPeriode?.id ? { ...p, amountPrepaid: newAmount, costcenters: newData } : p) };
+        });
+        toast.success('Rincian dihapus!');
+      } catch {
+        toast.error('Gagal menghapus');
+      }
+    });
   };
 
   const handleDownloadJurnalSAPTxtPeriode = (item: Prepaid, periode: PrepaidPeriode, amount: number) => {
@@ -1002,7 +1112,7 @@ export default function MonitoringPrepaidPage() {
                                       <thead>
                                         <tr style={{ background: 'linear-gradient(90deg,#450a0a,#991b1b)' }}>
                                           {[
-                                            'Periode', 'Bulan', 'Amortisasi', 'Status', 'Jurnal SAP',
+                                            'Periode', 'Bulan', 'Amortisasi', 'Status', 'Jurnal SAP', 'Rincian CC',
                                             ...(item.pembagianType === 'manual' && canEdit ? ['Aksi'] : [])
                                           ].map(h => (
                                             <th key={h} className="px-3 py-2 whitespace-nowrap"
@@ -1077,6 +1187,14 @@ export default function MonitoringPrepaidPage() {
                                                   </div>
                                                 ) : <span className="text-slate-300 text-xs">—</span>}
                                               </td>
+                                              <td className="px-3 py-2 text-center">
+                                                <button
+                                                  onClick={() => handleOpenCcModal(item, p)}
+                                                  className="inline-flex items-center gap-1 text-[9px] font-semibold px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded transition-colors"
+                                                >
+                                                  Rincian
+                                                </button>
+                                              </td>
                                               {item.pembagianType === 'manual' && canEdit && (
                                                 <td className="px-3 py-2 text-center">
                                                   {isEditing ? (
@@ -1113,7 +1231,7 @@ export default function MonitoringPrepaidPage() {
                                                 <td className="px-3 py-1 text-center">
                                                   <span className="text-[9px] text-slate-400 font-mono">{cc.kdAkunBiaya || '—'}</span>
                                                 </td>
-                                                <td colSpan={item.pembagianType === 'manual' && canEdit ? 2 : 1} />
+                                                <td colSpan={item.pembagianType === 'manual' && canEdit ? 3 : 2} />
                                               </tr>
                                             ))}
                                             </React.Fragment>
@@ -1149,6 +1267,141 @@ export default function MonitoringPrepaidPage() {
             </div>
           </div>
         )}
+        {/* Modal Rincian Prepaid per Cost Center */}
+        {showCcModal && ccModalPeriode && ccModalPrepaid && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-4 flex items-center justify-between flex-shrink-0">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Rincian Prepaid per Cost Center</h2>
+                  <p className="text-sm text-amber-100 mt-0.5">{ccModalPeriode.bulan} — Periode {ccModalPeriode.periodeKe} — {ccModalPrepaid.deskripsi}</p>
+                </div>
+                <button onClick={() => { setShowCcModal(false); setCcData([]); setEditingCcId(null); }} className="text-white hover:bg-white/20 rounded-full p-1 transition-colors">
+                  <span className="text-xl font-bold">×</span>
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="overflow-y-auto p-5 bg-gray-50 flex-1">
+                {/* Summary */}
+                <div className="bg-white rounded-lg border border-gray-200 p-4 mb-5 grid grid-cols-2 gap-4 text-center">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Total Amount Periode Ini</p>
+                    <p className="text-lg font-bold text-amber-700">{formatCurrency(ccModalPeriode.amountPrepaid)}</p>
+                    <p className="text-xs text-gray-400">otomatis dari sum rincian</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Jumlah Rincian</p>
+                    <p className="text-lg font-bold text-gray-800">{ccData.length} entri</p>
+                  </div>
+                </div>
+
+                {/* Form */}
+                <form onSubmit={handleCcSubmit} className="bg-white rounded-lg border border-gray-200 p-5 mb-5">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4">{editingCcId ? 'Edit Rincian' : 'Tambah Rincian'}</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Amount <span className="text-red-500">*</span></label>
+                      <input type="number" name="amount" value={ccForm.amount} onChange={handleCcInputChange} required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        placeholder="Masukkan amount" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Cost Center</label>
+                      <input type="text" name="costCenter" value={ccForm.costCenter} onChange={handleCcInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        placeholder="Masukkan cost center" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Kode Akun Biaya</label>
+                      <input type="text" name="kdAkunBiaya" value={ccForm.kdAkunBiaya} onChange={handleCcInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        placeholder="Masukkan kode akun biaya" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Header Text (bktxt)</label>
+                      <input type="text" name="headerText" value={ccForm.headerText} onChange={handleCcInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        placeholder="Document header text" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Line Text (sgtxt)</label>
+                      <input type="text" name="lineText" value={ccForm.lineText} onChange={handleCcInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        placeholder="Line text" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <button type="submit" disabled={submittingCc}
+                      className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50">
+                      {submittingCc ? 'Menyimpan...' : 'Simpan Rincian'}
+                    </button>
+                    {editingCcId && (
+                      <button type="button" onClick={() => { setEditingCcId(null); setCcForm({ amount: '', costCenter: ccModalPrepaid.costCenter || '', kdAkunBiaya: ccModalPrepaid.namaAkun || '', headerText: ccModalPrepaid.headerText || '', lineText: '' }); }}
+                        className="px-5 py-2 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors">Batal</button>
+                    )}
+                  </div>
+                </form>
+
+                {/* Daftar Rincian */}
+                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                  <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-700">Daftar Rincian {ccData.length > 0 && <span className="text-xs text-gray-400 font-normal ml-1">({ccData.length} data)</span>}</h3>
+                  </div>
+                  {loadingCcData ? (
+                    <div className="p-6 text-center text-xs text-gray-400">Memuat rincian...</div>
+                  ) : ccData.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-gray-400">Belum ada rincian untuk periode ini</div>
+                  ) : (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-amber-50 border-b border-amber-100">
+                          <th className="px-4 py-2 text-right text-amber-700 font-semibold">Amount</th>
+                          <th className="px-4 py-2 text-center text-amber-700 font-semibold">Cost Center</th>
+                          <th className="px-4 py-2 text-center text-amber-700 font-semibold">Kd. Akun Biaya</th>
+                          <th className="px-4 py-2 text-center text-amber-700 font-semibold">Header Text</th>
+                          <th className="px-4 py-2 text-center text-amber-700 font-semibold">Line Text</th>
+                          <th className="px-4 py-2 text-center text-amber-700 font-semibold">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ccData.map((entry) => (
+                          <tr key={entry.id} className="border-b border-gray-100 hover:bg-amber-50/30">
+                            <td className="px-4 py-2 text-right font-mono font-semibold text-amber-900">{formatCurrency(entry.amount)}</td>
+                            <td className="px-4 py-2 text-center">{entry.costCenter || '—'}</td>
+                            <td className="px-4 py-2 text-center font-mono">{entry.kdAkunBiaya || '—'}</td>
+                            <td className="px-4 py-2 text-center">{entry.headerText || '—'}</td>
+                            <td className="px-4 py-2 text-center">{entry.lineText || '—'}</td>
+                            <td className="px-4 py-2 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <button onClick={() => { setEditingCcId(entry.id); setCcForm({ amount: entry.amount.toString(), costCenter: entry.costCenter || '', kdAkunBiaya: entry.kdAkunBiaya || '', headerText: entry.headerText || '', lineText: entry.lineText || '' }); }}
+                                  className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded transition-colors">
+                                  <Edit size={14} />
+                                </button>
+                                <button onClick={() => handleDeleteCc(entry.id)}
+                                  className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors">
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="bg-white px-6 py-4 border-t border-gray-200 flex justify-end flex-shrink-0">
+                <button onClick={() => { setShowCcModal(false); setCcData([]); setEditingCcId(null); }}
+                  className="px-5 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors">Tutup</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Prepaid Form */}
         <PrepaidForm
           isOpen={isFormOpen}

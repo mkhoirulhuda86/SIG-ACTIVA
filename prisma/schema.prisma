@@ -223,6 +223,8 @@ model PrepaidPeriodeCostCenter {
   costCenter         String?
   kdAkunBiaya        String?
   amount             Float
+  headerText         String?
+  lineText           String?
 
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
