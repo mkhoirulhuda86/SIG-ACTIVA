@@ -308,8 +308,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const created = await prisma.$transaction(
-        tasks.map(t => prisma.prepaid.create({ data: t.data })),
-        { timeout: 30000 }
+        tasks.map(t => prisma.prepaid.create({ data: t.data }))
       );
       createdCount = created.length;
     } catch (err: any) {
