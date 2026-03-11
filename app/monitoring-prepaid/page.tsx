@@ -125,8 +125,11 @@ export default function MonitoringPrepaidPage() {
       setPeriodesLoading(prev => { const n = new Set(prev); n.add(id); return n; });
       try {
         const res = await fetch(`/api/prepaid?id=${id}&periodes=1`);
+        if (!res.ok) throw new Error('Failed');
         const data: PrepaidPeriode[] = await res.json();
         setPeriodesCache(prev => ({ ...prev, [id]: data }));
+      } catch {
+        toast.error('Gagal memuat data periode');
       } finally {
         setPeriodesLoading(prev => { const n = new Set(prev); n.delete(id); return n; });
       }
@@ -144,8 +147,10 @@ export default function MonitoringPrepaidPage() {
       if (res.ok) {
         // Refresh only this item's periodes (targeted update, no full refetch)
         const res2 = await fetch(`/api/prepaid?id=${prepaidId}&periodes=1`);
-        const periodes: PrepaidPeriode[] = await res2.json();
-        setPeriodesCache(prev => ({ ...prev, [prepaidId]: periodes }));
+        if (res2.ok) {
+          const periodes: PrepaidPeriode[] = await res2.json();
+          setPeriodesCache(prev => ({ ...prev, [prepaidId]: periodes }));
+        }
         // Lightweight full-list refresh to update Saldo / metrics
         fetchPrepaidData();
         setEditingPeriode(null);
