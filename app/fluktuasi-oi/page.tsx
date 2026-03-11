@@ -3221,7 +3221,7 @@ export default function FluktuasiOIPage() {
                       <thead>
                         <tr>
                           <th className="px-2 py-2 text-center font-semibold text-white whitespace-nowrap"
-                            style={{ backgroundColor: '#4472C4', border: '1px solid #3a62a8', minWidth: 36 }}>No.</th>
+                            style={{ backgroundColor: '#4472C4', border: '1px solid #3a62a8', minWidth: 36, position: 'sticky', left: 0, zIndex: 2 }}>No.</th>
                           {activeSheet.headers.map((h, idx) => (
                             <th key={h} className="px-3 py-2 text-left font-semibold text-white whitespace-nowrap"
                               style={{ backgroundColor: '#4472C4', border: '1px solid #3a62a8' }}>
@@ -3242,7 +3242,7 @@ export default function FluktuasiOIPage() {
                           return (
                           <tr key={ri} style={{ backgroundColor: rowBg }}>
                             <td className="px-2 py-1.5 text-center text-gray-400 whitespace-nowrap select-none"
-                              style={{ border: '1px solid #e5e7eb' }}>{globalRi + 1}</td>
+                              style={{ border: '1px solid #e5e7eb', position: 'sticky', left: 0, zIndex: 1, backgroundColor: rowBg }}>{globalRi + 1}</td>
                             {activeSheet.headers.map((h) => {
                               const val = row[h];
                               const isDateCol = /date|tanggal|tgl/i.test(h);
