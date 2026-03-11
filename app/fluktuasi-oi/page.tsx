@@ -3220,6 +3220,8 @@ export default function FluktuasiOIPage() {
                     <table className="min-w-full text-[11px] border-collapse">
                       <thead>
                         <tr>
+                          <th className="px-2 py-2 text-center font-semibold text-white whitespace-nowrap"
+                            style={{ backgroundColor: '#4472C4', border: '1px solid #3a62a8', minWidth: 36 }}>No.</th>
                           {activeSheet.headers.map((h, idx) => (
                             <th key={h} className="px-3 py-2 text-left font-semibold text-white whitespace-nowrap"
                               style={{ backgroundColor: '#4472C4', border: '1px solid #3a62a8' }}>
@@ -3239,6 +3241,8 @@ export default function FluktuasiOIPage() {
                           const addBg = globalRi % 2 === 0 ? '#fff5f5' : '#fff0f0';
                           return (
                           <tr key={ri} style={{ backgroundColor: rowBg }}>
+                            <td className="px-2 py-1.5 text-center text-gray-400 whitespace-nowrap select-none"
+                              style={{ border: '1px solid #e5e7eb' }}>{globalRi + 1}</td>
                             {activeSheet.headers.map((h) => {
                               const val = row[h];
                               const isDateCol = /date|tanggal|tgl/i.test(h);
