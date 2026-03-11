@@ -288,6 +288,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
+    const action = searchParams.get('action');
     const body = await request.json();
 
     if (!id) {
@@ -295,6 +296,15 @@ export async function PATCH(request: NextRequest) {
         { error: 'Missing accrual ID' },
         { status: 400 }
       );
+    }
+
+    // Lightweight headerText-only update
+    if (action === 'updateHeaderText') {
+      await prisma.accrual.update({
+        where: { id: parseInt(id) },
+        data: { headerText: body.headerText || null },
+      });
+      return NextResponse.json({ ok: true });
     }
 
     const { 

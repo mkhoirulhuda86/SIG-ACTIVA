@@ -265,6 +265,7 @@ export default function MonitoringAccrualPage() {
   const [jurnalHeaderInput, setJurnalHeaderInput] = useState('');
   const [jurnalLineInput, setJurnalLineInput] = useState('');
   const [jurnalPendingCallback, setJurnalPendingCallback] = useState<((h: string, l: string) => void) | null>(null);
+  const [jurnalPendingItems, setJurnalPendingItems] = useState<Accrual[]>([]);
 
   // Custom confirm dialog
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -940,8 +941,17 @@ export default function MonitoringAccrualPage() {
   };
 
   // Tampilkan dialog header/line text sebelum download jurnal realisasi
-  const promptJurnalTexts = (callback: (headerText: string, lineText: string) => void) => {
+  const promptJurnalTexts = (callback: (headerText: string, lineText: string) => void, items?: Accrual | Accrual[]) => {
+    const itemArr = items ? (Array.isArray(items) ? items : [items]) : [];
+    // If every item already has headerText saved in DB → skip modal entirely
+    if (itemArr.length > 0 && itemArr.every(i => i.headerText)) {
+      callback('', '');
+      return;
+    }
+    setJurnalPendingItems(itemArr);
     setJurnalPendingCallback(() => callback);
+    // Pre-fill with the first existing headerText found
+    setJurnalHeaderInput(itemArr.find(i => i.headerText)?.headerText || '');
     setShowJurnalHeaderModal(true);
   };
 
@@ -5167,8 +5177,8 @@ export default function MonitoringAccrualPage() {
                 <div className="grid grid-cols-2 gap-1">
                   {(['2000','7000'] as const).map(doc => (
                     <React.Fragment key={doc}>
-                      <button onClick={() => { promptJurnalTexts((ht,lt) => handleDownloadJurnalSAPPerKodeAkun(openKodeAkunDropdown.key, openKodeAkunDropdown.items,'excel',doc,'accrual',ht,lt)); setOpenKodeAkunDropdown(null); }} className="text-[10px] bg-blue-500 hover:bg-blue-600 text-white px-2 py-1.5 rounded transition-colors">Excel {doc}</button>
-                      <button onClick={() => { promptJurnalTexts((ht,lt) => handleDownloadJurnalSAPPerKodeAkun(openKodeAkunDropdown.key, openKodeAkunDropdown.items,'txt',doc,'accrual',ht,lt)); setOpenKodeAkunDropdown(null); }} className="text-[10px] bg-gray-500 hover:bg-gray-600 text-white px-2 py-1.5 rounded transition-colors">TXT {doc}</button>
+                      <button onClick={() => { promptJurnalTexts((ht,lt) => handleDownloadJurnalSAPPerKodeAkun(openKodeAkunDropdown.key, openKodeAkunDropdown.items,'excel',doc,'accrual',ht,lt), openKodeAkunDropdown.items); setOpenKodeAkunDropdown(null); }} className="text-[10px] bg-blue-500 hover:bg-blue-600 text-white px-2 py-1.5 rounded transition-colors">Excel {doc}</button>
+                      <button onClick={() => { promptJurnalTexts((ht,lt) => handleDownloadJurnalSAPPerKodeAkun(openKodeAkunDropdown.key, openKodeAkunDropdown.items,'txt',doc,'accrual',ht,lt), openKodeAkunDropdown.items); setOpenKodeAkunDropdown(null); }} className="text-[10px] bg-gray-500 hover:bg-gray-600 text-white px-2 py-1.5 rounded transition-colors">TXT {doc}</button>
                     </React.Fragment>
                   ))}
                 </div>
@@ -5178,8 +5188,8 @@ export default function MonitoringAccrualPage() {
                 <div className="grid grid-cols-2 gap-1">
                   {(['2000','7000'] as const).map(doc => (
                     <React.Fragment key={doc}>
-                      <button onClick={() => { promptJurnalTexts((ht,lt) => handleDownloadJurnalSAPPerKodeAkun(openKodeAkunDropdown.key, openKodeAkunDropdown.items,'excel',doc,'realisasi',ht,lt)); setOpenKodeAkunDropdown(null); }} className="text-[10px] bg-green-500 hover:bg-green-600 text-white px-2 py-1.5 rounded transition-colors">Excel {doc}</button>
-                      <button onClick={() => { promptJurnalTexts((ht,lt) => handleDownloadJurnalSAPPerKodeAkun(openKodeAkunDropdown.key, openKodeAkunDropdown.items,'txt',doc,'realisasi',ht,lt)); setOpenKodeAkunDropdown(null); }} className="text-[10px] bg-gray-500 hover:bg-gray-600 text-white px-2 py-1.5 rounded transition-colors">TXT {doc}</button>
+                      <button onClick={() => { promptJurnalTexts((ht,lt) => handleDownloadJurnalSAPPerKodeAkun(openKodeAkunDropdown.key, openKodeAkunDropdown.items,'excel',doc,'realisasi',ht,lt), openKodeAkunDropdown.items); setOpenKodeAkunDropdown(null); }} className="text-[10px] bg-green-500 hover:bg-green-600 text-white px-2 py-1.5 rounded transition-colors">Excel {doc}</button>
+                      <button onClick={() => { promptJurnalTexts((ht,lt) => handleDownloadJurnalSAPPerKodeAkun(openKodeAkunDropdown.key, openKodeAkunDropdown.items,'txt',doc,'realisasi',ht,lt), openKodeAkunDropdown.items); setOpenKodeAkunDropdown(null); }} className="text-[10px] bg-gray-500 hover:bg-gray-600 text-white px-2 py-1.5 rounded transition-colors">TXT {doc}</button>
                     </React.Fragment>
                   ))}
                 </div>
@@ -5197,7 +5207,7 @@ export default function MonitoringAccrualPage() {
           >
             <button
               onClick={() => {
-                promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerCostElementGroup(openGroupDropdown.items, openGroupDropdown.accrualItem, openGroupDropdown.key, ht, lt));
+                promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerCostElementGroup(openGroupDropdown.items, openGroupDropdown.accrualItem, openGroupDropdown.key, ht, lt), openGroupDropdown.accrualItem);
                 setOpenGroupDropdown(null);
               }}
               className="block w-full text-left px-3 py-2.5 text-xs text-gray-700 hover:bg-green-50 transition-colors rounded-t-lg border-b border-gray-100"
@@ -5207,7 +5217,7 @@ export default function MonitoringAccrualPage() {
             </button>
             <button
               onClick={() => {
-                promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerCostElementGroupTxt(openGroupDropdown.items, openGroupDropdown.accrualItem, openGroupDropdown.key, ht, lt));
+                promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerCostElementGroupTxt(openGroupDropdown.items, openGroupDropdown.accrualItem, openGroupDropdown.key, ht, lt), openGroupDropdown.accrualItem);
                 setOpenGroupDropdown(null);
               }}
               className="block w-full text-left px-3 py-2.5 text-xs text-gray-700 hover:bg-green-50 transition-colors rounded-b-lg"
@@ -5255,6 +5265,22 @@ export default function MonitoringAccrualPage() {
               <button
                 onClick={() => {
                   setShowJurnalHeaderModal(false);
+                  // Save headerText to DB for items that don't have it yet
+                  if (jurnalHeaderInput && jurnalPendingItems.length > 0) {
+                    const toSave = jurnalPendingItems.filter(i => !i.headerText);
+                    toSave.forEach(item => {
+                      fetch(`/api/accrual?id=${item.id}&action=updateHeaderText`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ headerText: jurnalHeaderInput }),
+                      });
+                    });
+                    if (toSave.length > 0) {
+                      setAccrualData(prev => prev.map(a =>
+                        toSave.some(s => s.id === a.id) ? { ...a, headerText: jurnalHeaderInput } : a
+                      ));
+                    }
+                  }
                   jurnalPendingCallback?.(jurnalHeaderInput, '');
                 }}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
