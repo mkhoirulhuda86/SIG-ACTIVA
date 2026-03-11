@@ -65,6 +65,7 @@ interface Prepaid {
   periodUnit: string;
   remaining: number;
   totalAmortisasi: number;
+  amortisasiBulanIni: number;
   pembagianType: string;
   vendor: string;
   type: string;
@@ -245,10 +246,11 @@ export default function MonitoringPrepaidPage() {
   }, [searchTerm]);
 
   // --- Memoized derived data ----------------------------------------------
-  const { totalPrepaidValue, totalRemaining, activeItems } = useMemo(() => ({
-    totalPrepaidValue: prepaidData.reduce((s, i) => s + i.totalAmount, 0),
-    totalRemaining:    prepaidData.reduce((s, i) => s + i.remaining, 0),
-    activeItems:       prepaidData.length,
+  const { totalPrepaidValue, totalRemaining, totalSaldo, amortisasiBulanIni } = useMemo(() => ({
+    totalPrepaidValue:   prepaidData.reduce((s, i) => s + i.totalAmount, 0),
+    totalRemaining:      prepaidData.reduce((s, i) => s + i.remaining, 0),
+    totalSaldo:          prepaidData.reduce((s, i) => s + i.remaining, 0),
+    amortisasiBulanIni:  prepaidData.reduce((s, i) => s + i.amortisasiBulanIni, 0),
   }), [prepaidData]);
 
   const filteredData = useMemo(() =>
@@ -742,9 +744,9 @@ export default function MonitoringPrepaidPage() {
             {/* ── Metric Cards ─────────────────────────────────────── */}
             <div ref={metricRef} className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
               {[
-                { label: 'Total Prepaid Value', value: formatCurrency(totalPrepaidValue), dot: 'bg-red-500', sub: 'Seluruh nilai prepaid aktif' },
-                { label: 'Remaining Amount',    value: formatCurrency(totalRemaining),    dot: 'bg-amber-500', sub: 'Saldo belum diamortisasi' },
-                { label: 'Active Items',         value: String(activeItems),               dot: 'bg-green-500', sub: 'Entri prepaid aktif' },
+                { label: 'Total Prepaid Value',      value: formatCurrency(totalPrepaidValue),  dot: 'bg-red-500',    sub: 'Seluruh nilai prepaid aktif' },
+                { label: 'Amortisasi Bulan Ini',     value: formatCurrency(amortisasiBulanIni), dot: 'bg-amber-500',  sub: `Harus diamortisasi ${new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}` },
+                { label: 'Total Saldo',              value: formatCurrency(totalSaldo),         dot: 'bg-green-500',  sub: 'Saldo belum diamortisasi' },
               ].map((m, i) => (
                 <div key={i} data-metric
                   className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-all duration-200 group cursor-default"

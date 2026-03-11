@@ -94,12 +94,22 @@ export async function GET(request: NextRequest) {
         amortizedAmount = prepaid.periodes.reduce((sum: number, p: any) => sum + p.amountPrepaid, 0);
       }
 
+      // Amortisasi bulan ini: jumlahkan periode yang cocok dengan bulan & tahun saat ini
+      const amortisasiBulanIni = prepaid.periodes.reduce((sum: number, p: any) => {
+        const parts       = p.bulan.split(' ');
+        const periodeMonth = BULAN_MAP[parts[0]] ?? 0;
+        const periodeYear  = parseInt(parts[1]);
+        const periodeDate  = new Date(periodeYear, periodeMonth, 1);
+        return periodeDate.getTime() === todayFirst.getTime() ? sum + p.amountPrepaid : sum;
+      }, 0);
+
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { periodes: _periodes, ...rest } = prepaid; // strip periodes from response
       return {
         ...rest,
         totalAmortisasi: amortizedAmount,
         remaining: prepaid.totalAmount - amortizedAmount,
+        amortisasiBulanIni,
       };
     });
 
