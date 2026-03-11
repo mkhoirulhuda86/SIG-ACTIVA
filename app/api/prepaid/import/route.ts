@@ -151,6 +151,7 @@ export async function POST(request: NextRequest) {
     const colDateStart   = findCol(headers, ['date: reclass', 'date:reclass', 'reclass', 'start date']);
     const colDateEnd     = findCol(headers, ['date: end', 'date:end', 'end date', 'finish']);
     const colNumPeriod   = findCol(headers, ['# of period', '#of period', 'of period', 'num period']);
+    const colId          = findCol(headers, ['id']);
 
     // Period month columns (headers "1","2",...,"12")
     const periodColIndices: number[] = [];
@@ -200,10 +201,18 @@ export async function POST(request: NextRequest) {
 
       // Parse fields
       const companyCode = colCompany    >= 0 ? String(row[colCompany]   ?? '').trim() : '';
-      const noPo        = colGLAccount  >= 0 ? String(row[colGLAccount] ?? '').trim() : '';
-      const alokasi     = colCostCenter >= 0 ? String(row[colCostCenter]?? '').trim() : '';
       const deskripsi   = colItem       >= 0 ? String(row[colItem]      ?? '').trim() : '';
-      const namaAkun    = deskripsi || kdAkr;
+
+      // Kolom ID: jika diawali "66" → No PO; selain itu → Assignment/Order; jika kosong → keduanya kosong
+      const idRaw = colId >= 0 ? String(row[colId] ?? '').trim() : '';
+      const noPo    = idRaw.startsWith('66') ? idRaw : '';
+      const alokasi = (idRaw && !idRaw.startsWith('66')) ? idRaw : '';
+
+      // Kode akun biaya diambil dari kolom GL Account; jika kosong tetap kosong
+      const namaAkun = colGLAccount >= 0 ? String(row[colGLAccount] ?? '').trim() : '';
+
+      // Cost Center diambil dari kolom Cost Center; jika kosong tetap kosong
+      const costCenter = colCostCenter >= 0 ? String(row[colCostCenter] ?? '').trim() : '';
 
       let numPeriod = colNumPeriod >= 0 ? Math.round(Math.abs(parseNum(row[colNumPeriod]))) : 0;
       
@@ -269,18 +278,18 @@ export async function POST(request: NextRequest) {
       try {
         await prisma.prepaid.create({
           data: {
-            companyCode: companyCode || null,
-            noPo: noPo || null,
+            companyCode: companyCode || undefined,
+            noPo: noPo || undefined,
             kdAkr,
-            alokasi: alokasi || '-',
+            alokasi: alokasi,
             namaAkun,
-            vendor: companyCode || '-',
+            vendor: '',
             deskripsi,
-            headerText: deskripsi,
-            klasifikasi: null,
+            headerText: undefined,
+            klasifikasi: undefined,
             totalAmount,
             remaining: totalAmount,
-            costCenter: alokasi || null,
+            costCenter: costCenter || undefined,
             startDate,
             period: numPeriod,
             periodUnit: 'bulan',

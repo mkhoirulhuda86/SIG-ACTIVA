@@ -864,7 +864,7 @@ export default function MonitoringPrepaidPage() {
                         />
                       </th>
                       {[
-                        'Company', 'No PO', 'Assignment/Order',
+                        'Company', 'No PO', 'Assignment/Order', 'Cost Center',
                         'Kd Akun Prepaid', 'Kd Akun Biaya', 'Deskripsi', 'Header Text', 'Klasifikasi',
                         'Amount', 'Start', 'Finish', 'Periode',
                         'Total Prepaid', 'Total Amortisasi', 'Saldo', 'Aksi'
@@ -911,6 +911,7 @@ export default function MonitoringPrepaidPage() {
                             <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap text-xs">{item.companyCode || '-'}</td>
                             <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap text-xs">{item.noPo || '-'}</td>
                             <td className="px-3 py-2.5 text-slate-700 text-xs max-w-[140px] truncate" title={item.alokasi}>{item.alokasi}</td>
+                            <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap text-xs">{item.costCenter || ''}</td>
                             <td className="px-3 py-2.5 whitespace-nowrap text-xs">
                               <span className="font-mono font-semibold text-red-700 bg-red-50 px-1.5 py-0.5 rounded">{item.kdAkr}</span>
                             </td>
