@@ -595,15 +595,22 @@ export default function MonitoringAccrualPage() {
   const totalSaldo = useMemo(() => {
     return filteredData.reduce((sum, item) => {
       if (filterMonth || filterYear) {
-        // Per-period mode: sum accrual - realisasi for matching periods
-        const matchingPeriodes = item.periodes?.filter(p => {
+        // Cumulative mode: saldo_awal + accrual(s.d. bulan filter) - realisasi(s.d. bulan filter)
+        const saldoAwal = getSaldoAwal(item);
+        const upToPeriodes = item.periodes?.filter(p => {
           const [mon, yr] = p.bulan.split(' ');
-          if (filterMonth && filterYear) return mon === filterMonth && yr === filterYear;
-          if (filterMonth) return mon === filterMonth;
-          return yr === filterYear;
+          if (filterMonth && filterYear) {
+            const pDate = new Date(parseInt(yr), BULAN_NAMES.indexOf(mon), 1);
+            const targetDate = new Date(parseInt(filterYear), BULAN_NAMES.indexOf(filterMonth), 1);
+            return pDate <= targetDate;
+          }
+          if (filterYear) return yr === filterYear;
+          // filterMonth saja: semua tahun, up to index bulan tsb
+          return BULAN_NAMES.indexOf(mon) <= BULAN_NAMES.indexOf(filterMonth);
         }) ?? [];
-        if (matchingPeriodes.length === 0) return sum;
-        return sum + matchingPeriodes.reduce((s, p) => s + (Math.abs(p.amountAccrual) - (p.totalRealisasi ?? 0)), 0);
+        const accrualUpTo = upToPeriodes.reduce((s, p) => s + Math.abs(p.amountAccrual), 0);
+        const realisasiUpTo = upToPeriodes.reduce((s, p) => s + (p.totalRealisasi ?? 0), 0);
+        return sum + (saldoAwal + accrualUpTo - realisasiUpTo);
       }
       const cached = itemTotalsCache.get(item.id);
       if (cached) {
