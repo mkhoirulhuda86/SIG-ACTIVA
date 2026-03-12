@@ -1162,6 +1162,7 @@ export default function MonitoringPrepaidPage() {
                               style={{ color: sign === -1 ? '#dc2626' : undefined }}>
                               {formatCurrency(Math.abs(item.totalAmount) * sign)}
                             </td>
+                            <td className="px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{startDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                             <td className="px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{finishDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                             <td className="px-3 py-2.5 text-center text-xs text-slate-700">{item.period} {item.periodUnit}</td>
                             <td className="px-3 py-2.5 text-right font-semibold text-xs whitespace-nowrap font-mono"
