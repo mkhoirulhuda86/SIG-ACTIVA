@@ -3665,7 +3665,7 @@ export default function MonitoringAccrualPage() {
                                           {formatCurrency(periode.saldo ?? 0)}
                                         </td>
                                         <td className="px-4 py-3 text-center bg-white">
-                                          <div className="flex items-center justify-center gap-1">
+                                          <div className="flex items-center justify-center gap-1 flex-wrap">
                                             <button
                                               onClick={() => handleOpenCostCenterModal(item, periode)}
                                               className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded transition-colors"
@@ -3679,6 +3679,20 @@ export default function MonitoringAccrualPage() {
                                               title="Input realisasi baru"
                                             >
                                               Input Realisasi
+                                            </button>
+                                            <button
+                                              onClick={() => promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriode(item, periode, ht, lt), item)}
+                                              className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded transition-colors"
+                                              title="Download jurnal accrual periode ini (Excel)"
+                                            >
+                                              ↓ Excel
+                                            </button>
+                                            <button
+                                              onClick={() => promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriodeTxt(item, periode, ht, lt), item)}
+                                              className="text-xs bg-slate-500 hover:bg-slate-600 text-white px-3 py-1 rounded transition-colors"
+                                              title="Download jurnal accrual periode ini (TXT)"
+                                            >
+                                              ↓ TXT
                                             </button>
                                           </div>
                                         </td>
