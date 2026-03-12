@@ -1,7 +1,7 @@
 import Pusher, { Channel } from 'pusher-js';
 import { useEffect, useRef } from 'react';
 
-type Handler = (event: string) => void;
+type Handler = (event: string, data?: Record<string, unknown>) => void;
 
 // ─── Singleton Pusher instance shared across all hook usages per tab ──────────
 let _pusherClient: Pusher | null = null;
@@ -43,10 +43,10 @@ export function useRealtimeUpdates(events: string[], onUpdate: Handler) {
   useEffect(() => {
     const channel = getSharedChannel();
     // unique handler per hook instance so unbind works correctly
-    const handlers: Record<string, () => void> = {};
+    const handlers: Record<string, (data?: Record<string, unknown>) => void> = {};
 
     for (const name of events) {
-      const handler = () => onUpdateRef.current(name);
+      const handler = (data?: Record<string, unknown>) => onUpdateRef.current(name, data);
       handlers[name] = handler;
       channel.bind(name, handler);
     }

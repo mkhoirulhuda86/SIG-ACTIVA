@@ -446,8 +446,36 @@ export default function MonitoringAccrualPage() {
     }
   };
 
-  // Realtime: refresh list when another user mutates accrual/realisasi data
-  useRealtimeUpdates(['accrual'], () => { fetchAccrualData(); });
+  // Realtime: targeted update when another user mutates accrual data
+  useRealtimeUpdates(['accrual'], async (_evt, data) => {
+    const { id, ids, action } = (data ?? {}) as { id?: number; ids?: number[]; action?: string };
+    if (action === 'delete') {
+      if (ids?.length) {
+        setAccrualData(prev => prev.filter(a => !ids.includes(a.id)));
+      } else if (id) {
+        setAccrualData(prev => prev.filter(a => a.id !== id));
+      }
+      return;
+    }
+    if (id) {
+      // Targeted: hanya fetch item yang berubah, merge ke state tanpa re-render semua
+      try {
+        const res = await fetch(`/api/accrual?id=${id}`);
+        if (!res.ok) return;
+        const records = await res.json();
+        const updated = records[0];
+        if (!updated) return;
+        setAccrualData(prev => {
+          const idx = prev.findIndex(a => a.id === updated.id);
+          if (idx >= 0) { const next = [...prev]; next[idx] = updated; return next; }
+          return [updated, ...prev]; // item baru
+        });
+      } catch { /* silently ignore */ }
+      return;
+    }
+    // Fallback (import bulk / no id): full refresh
+    fetchAccrualData();
+  });
 
   // -- Skeleton entrance animation (runs when loading === true) ----------
   useEffect(() => {

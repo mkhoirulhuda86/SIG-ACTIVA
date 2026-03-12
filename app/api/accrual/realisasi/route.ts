@@ -29,7 +29,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    broadcast('accrual');
+    const periodeRef = await prisma.accrualPeriode.findUnique({
+      where: { id: parseInt(accrualPeriodeId) },
+      select: { accrualId: true },
+    });
+    broadcast('accrual', { id: periodeRef?.accrualId });
     sendPushToAll({ title: 'Realisasi Ditambahkan', body: 'Realisasi accrual baru berhasil disimpan', url: '/monitoring-accrual', priority: 'medium' }).catch(() => {});
     return NextResponse.json(realisasi, { status: 201 });
   } catch (error) {
@@ -114,13 +118,17 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    const realisasiRef = await prisma.accrualRealisasi.findUnique({
+      where: { id: parseInt(id) },
+      select: { accrualPeriode: { select: { accrualId: true } } },
+    });
     await prisma.accrualRealisasi.delete({
       where: {
         id: parseInt(id),
       },
     });
 
-    broadcast('accrual');
+    broadcast('accrual', { id: realisasiRef?.accrualPeriode?.accrualId });
     sendPushToAll({ title: 'Realisasi Dihapus', body: 'Satu realisasi berhasil dihapus', url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
     return NextResponse.json({ message: 'Realisasi deleted successfully' });
   } catch (error) {
@@ -155,6 +163,10 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    const realisasiRef = await prisma.accrualRealisasi.findUnique({
+      where: { id: parseInt(id) },
+      select: { accrualPeriode: { select: { accrualId: true } } },
+    });
     const realisasi = await prisma.accrualRealisasi.update({
       where: {
         id: parseInt(id),
@@ -170,7 +182,7 @@ export async function PUT(request: NextRequest) {
       },
     });
 
-    broadcast('accrual');
+    broadcast('accrual', { id: realisasiRef?.accrualPeriode?.accrualId });
     sendPushToAll({ title: 'Realisasi Diperbarui', body: 'Data realisasi accrual berhasil diperbarui', url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
     return NextResponse.json(realisasi);
   } catch (error) {

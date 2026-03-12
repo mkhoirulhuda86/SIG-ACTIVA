@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
 
     const where: {
+      id?: number;
       OR?: { 
         kdAkr?: { contains: string; mode: 'insensitive' }; 
         kdAkunBiaya?: { contains: string; mode: 'insensitive' }; 
@@ -19,6 +20,12 @@ export async function GET(request: NextRequest) {
         noPo?: { contains: string; mode: 'insensitive' };
       }[];
     } = {};
+
+    // Filter by single ID (targeted realtime update)
+    const idParam = searchParams.get('id');
+    if (idParam) {
+      where.id = parseInt(idParam);
+    }
 
     // Filter by search term
     if (search) {
@@ -220,7 +227,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    broadcast('accrual');
+    broadcast('accrual', { id: accrual.id });
     sendPushToAll({ title: 'Accrual Baru Ditambahkan', body: `Data accrual baru berhasil disimpan`, url: '/monitoring-accrual', priority: 'medium' }).catch(() => {});
     return NextResponse.json(accrual, { status: 201 });
   } catch (error) {
@@ -254,7 +261,7 @@ export async function DELETE(request: NextRequest) {
       const result = await prisma.accrual.deleteMany({
         where: { id: { in: ids } },
       });
-      broadcast('accrual');
+      broadcast('accrual', { ids, action: 'delete' });
       sendPushToAll({ title: 'Accrual Dihapus', body: `${result.count} accrual berhasil dihapus`, url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
       return NextResponse.json({
         message: `${result.count} accrual berhasil dihapus`,
@@ -275,7 +282,7 @@ export async function DELETE(request: NextRequest) {
       },
     });
 
-    broadcast('accrual');
+    broadcast('accrual', { id: parseInt(id), action: 'delete' });
     sendPushToAll({ title: 'Accrual Dihapus', body: 'Satu entri accrual berhasil dihapus', url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
     return NextResponse.json({ message: 'Accrual deleted successfully' });
   } catch (error) {
@@ -439,7 +446,7 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
-    broadcast('accrual');
+    broadcast('accrual', { id: parseInt(id) });
     sendPushToAll({ title: 'Accrual Diperbarui', body: 'Data accrual berhasil diperbarui', url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
     return NextResponse.json(accrual);
   } catch (error) {
