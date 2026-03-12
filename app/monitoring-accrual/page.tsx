@@ -1046,7 +1046,9 @@ export default function MonitoringAccrualPage() {
               return new Date(parseInt(ts), bulanMapAcr[bn], 1) <= todayAcc;
             }).slice(-1)[0];
             const periodAmount = activePeriode ? Math.abs(activePeriode.amountAccrual) : 0;
-            if (periodAmount > 0) {
+            // Fallback ke saldoAwal untuk item import (amountAccrual = 0 tapi saldoAwal terisi)
+            const effectiveAmount = periodAmount > 0 ? periodAmount : getSaldoAwal(item);
+            if (effectiveAmount > 0) {
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
               const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
               const ht = item.headerText || headerText || '';
@@ -1090,7 +1092,7 @@ export default function MonitoringAccrualPage() {
                 row1.getCell(1).value = ''; row1.getCell(2).value = companyCode; row1.getCell(3).value = 'SA';
                 row1.getCell(4).value = docDate; row1.getCell(5).value = docDate; row1.getCell(6).value = 'IDR';
                 row1.getCell(7).value = ''; row1.getCell(8).value = ht; row1.getCell(9).value = '';
-                row1.getCell(10).value = item.kdAkunBiaya; row1.getCell(11).value = Math.round(periodAmount); row1.getCell(11).numFmt = '0';
+                row1.getCell(10).value = item.kdAkunBiaya; row1.getCell(11).value = Math.round(effectiveAmount); row1.getCell(11).numFmt = '0';
                 row1.getCell(12).value = lt; row1.getCell(13).value = ''; row1.getCell(14).value = item.costCenter || '';
                 row1.getCell(15).value = ''; row1.getCell(16).value = ''; row1.getCell(17).value = '';
                 row1.getCell(18).value = ''; row1.getCell(19).value = 'G';
@@ -1098,7 +1100,7 @@ export default function MonitoringAccrualPage() {
                 row2.getCell(1).value = ''; row2.getCell(2).value = companyCode; row2.getCell(3).value = 'SA';
                 row2.getCell(4).value = docDate; row2.getCell(5).value = docDate; row2.getCell(6).value = 'IDR';
                 row2.getCell(7).value = ''; row2.getCell(8).value = ht; row2.getCell(9).value = '';
-                row2.getCell(10).value = item.kdAkr; row2.getCell(11).value = -Math.round(periodAmount); row2.getCell(11).numFmt = '0';
+                row2.getCell(10).value = item.kdAkr; row2.getCell(11).value = -Math.round(effectiveAmount); row2.getCell(11).numFmt = '0';
                 row2.getCell(12).value = lt; row2.getCell(13).value = ''; row2.getCell(14).value = '';
                 row2.getCell(15).value = ''; row2.getCell(16).value = ''; row2.getCell(17).value = '';
                 row2.getCell(18).value = ''; row2.getCell(19).value = 'G';
@@ -1133,7 +1135,9 @@ export default function MonitoringAccrualPage() {
               return new Date(parseInt(ts), bulanMapAcrTxt[bn], 1) <= todayAcc;
             }).slice(-1)[0];
             const periodAmountTxt = activePeriodeTxt ? Math.abs(activePeriodeTxt.amountAccrual) : 0;
-            if (periodAmountTxt > 0) {
+            // Fallback ke saldoAwal untuk item import (amountAccrual = 0 tapi saldoAwal terisi)
+            const effectiveAmountTxt = periodAmountTxt > 0 ? periodAmountTxt : getSaldoAwal(item);
+            if (effectiveAmountTxt > 0) {
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
               const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
               const ht = item.headerText || headerText || '';
@@ -1162,10 +1166,10 @@ export default function MonitoringAccrualPage() {
               } else {
                 // Fallback: 1 DEBIT + 1 KREDIT
                 rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
-                  ht, '', item.kdAkunBiaya, Math.round(periodAmountTxt).toString(),
+                  ht, '', item.kdAkunBiaya, Math.round(effectiveAmountTxt).toString(),
                   lt, '', item.costCenter || '', '', '', '', '', 'G']);
                 rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '',
-                  ht, '', item.kdAkr, (-Math.round(periodAmountTxt)).toString(),
+                  ht, '', item.kdAkr, (-Math.round(effectiveAmountTxt)).toString(),
                   lt, '', '', '', '', '', '', 'G']);
               }
             }
