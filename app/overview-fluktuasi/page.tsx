@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback, useEffect, useRef, useTransition } from 'react';
+import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import dynamic from 'next/dynamic';
 import { RotateCcw, TrendingUp, TrendingDown, Minus, Activity, BarChart2, PieChart, Filter, List } from 'lucide-react';
 import { gsap } from 'gsap';
@@ -591,7 +592,7 @@ export default function OverviewFluktuasiPage() {
   const [, startTransition] = useTransition();
 
   // ── Load data ──────────────────────────────────────────────────────────────
-  useEffect(() => {
+  const loadData = useCallback(() => {
     // ?slim=1 → server selects only the 4 needed columns (no remark/uploadedBy/etc.)
     fetch('/api/fluktuasi/akun-periodes?slim=1')
       .then(r => r.json())
@@ -612,6 +613,9 @@ export default function OverviewFluktuasiPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+  useRealtimeUpdates(['fluktuasi'], loadData);;
 
   // ── Derived data — SINGLE PASS over records ───────────────────────────────
   // Replaces the previous 4 separate loops (years, allKlasifikasi, allAccounts, byYear)

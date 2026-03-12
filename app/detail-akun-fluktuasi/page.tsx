@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from 'react';
+import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import dynamic from 'next/dynamic';
 import { RotateCcw, Search, TrendingUp, Layers, Filter, List, BarChart3 } from 'lucide-react';
 import { gsap } from 'gsap';
@@ -371,7 +372,7 @@ export default function DetailAkunFluktuasiPage() {
   const subAkunListRef = useRef<HTMLDivElement>(null);
   const tableBodyRef   = useRef<HTMLTableSectionElement>(null);
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
     // slim=1: skip remark/uploadedBy/fileName/createdAt/updatedAt — smaller payload
     fetch('/api/fluktuasi/akun-periodes?slim=1')
       .then(r => r.json())
@@ -389,6 +390,9 @@ export default function DetailAkunFluktuasiPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+  useRealtimeUpdates(['fluktuasi'], loadData);;
 
   // ── GSAP page-entry after data loads ────────────────────────────────────
   useEffect(() => {
