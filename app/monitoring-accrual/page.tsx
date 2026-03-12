@@ -304,7 +304,7 @@ export default function MonitoringAccrualPage() {
   const [openKodeAkunDropdown, setOpenKodeAkunDropdown] = useState<{
     key: string;
     items: Accrual[];
-    rect: { top: number; right: number };
+    rect: { top: number; right: number; flipUp?: boolean; buttonTop?: number };
   } | null>(null);
   // Portal dropdown untuk jurnal group cost element (agar tidak terclip overflow-hidden)
   const [openGroupDropdown, setOpenGroupDropdown] = useState<{
@@ -3417,7 +3417,9 @@ export default function MonitoringAccrualPage() {
                                     if (openKodeAkunDropdown?.key === kodeAkun) {
                                       setOpenKodeAkunDropdown(null);
                                     } else {
-                                      setOpenKodeAkunDropdown({ key: kodeAkun, items, rect: { top: rect.bottom, right: window.innerWidth - rect.right } });
+                                      const DROPDOWN_H = 180;
+                                      const flipUp = rect.bottom + DROPDOWN_H + 8 > window.innerHeight;
+                                      setOpenKodeAkunDropdown({ key: kodeAkun, items, rect: { top: rect.bottom, right: window.innerWidth - rect.right, flipUp, buttonTop: rect.top } });
                                     }
                                   }}
                                   className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded transition-colors flex items-center gap-1"
@@ -5196,7 +5198,9 @@ export default function MonitoringAccrualPage() {
           <div className="fixed inset-0 z-[9998]" onClick={() => setOpenKodeAkunDropdown(null)} />
           <div
             className="fixed z-[9999] w-52 bg-white border border-gray-200 rounded-xl shadow-2xl"
-            style={{ top: openKodeAkunDropdown.rect.top + 4, right: openKodeAkunDropdown.rect.right }}
+            style={openKodeAkunDropdown.rect.flipUp
+              ? { bottom: window.innerHeight - (openKodeAkunDropdown.rect.buttonTop ?? openKodeAkunDropdown.rect.top) + 4, right: openKodeAkunDropdown.rect.right }
+              : { top: openKodeAkunDropdown.rect.top + 4, right: openKodeAkunDropdown.rect.right }}
           >
             <div className="px-3 py-2 border-b border-gray-100">
               <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Pilih Jenis Jurnal</p>
