@@ -1126,6 +1126,8 @@ export default function MonitoringPrepaidPage() {
                       const isPeriodeLoading = periodesLoading.has(item.id);
                       const today = new Date();
                       const todayFirst = new Date(today.getFullYear(), today.getMonth(), 1);
+                      // Kode akun 1812xxxx adalah sisi kredit — tampilkan sebagai negatif
+                      const sign = item.kdAkr?.startsWith('1812') ? -1 : 1;
 
                       return (
                         <React.Fragment key={item.id}>
@@ -1156,15 +1158,20 @@ export default function MonitoringPrepaidPage() {
                                 ? <Badge variant="outline" className="text-[8px] px-1.5 py-0 h-4 text-slate-500 border-slate-200">{item.klasifikasi}</Badge>
                                 : <span className="text-slate-300 text-xs">—</span>}
                             </td>
-                            <td className="px-3 py-2.5 text-right font-semibold text-xs text-slate-800 whitespace-nowrap font-mono">{formatCurrency(item.totalAmount)}</td>
-                            <td className="px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{startDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                            <td className="px-3 py-2.5 text-right font-semibold text-xs text-slate-800 whitespace-nowrap font-mono"
+                              style={{ color: sign === -1 ? '#dc2626' : undefined }}>
+                              {formatCurrency(Math.abs(item.totalAmount) * sign)}
+                            </td>
                             <td className="px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{finishDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                             <td className="px-3 py-2.5 text-center text-xs text-slate-700">{item.period} {item.periodUnit}</td>
-                            <td className="px-3 py-2.5 text-right font-semibold text-xs text-slate-800 whitespace-nowrap font-mono">{formatCurrency(item.totalAmount)}</td>
-                            <td className="px-3 py-2.5 text-right font-semibold text-xs text-slate-800 whitespace-nowrap font-mono">{formatCurrency(totalAmortisasi)}</td>
                             <td className="px-3 py-2.5 text-right font-semibold text-xs whitespace-nowrap font-mono"
-                              style={{ color: saldo > 0 ? '#16a34a' : saldo < 0 ? '#dc2626' : '#64748b' }}>
-                              {formatCurrency(saldo)}
+                              style={{ color: sign === -1 ? '#dc2626' : undefined }}>
+                              {formatCurrency(Math.abs(item.totalAmount) * sign)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-semibold text-xs text-slate-800 whitespace-nowrap font-mono">{formatCurrency(totalAmortisasi * sign)}</td>
+                            <td className="px-3 py-2.5 text-right font-semibold text-xs whitespace-nowrap font-mono"
+                              style={{ color: saldo * sign > 0 ? '#16a34a' : saldo * sign < 0 ? '#dc2626' : '#64748b' }}>
+                              {formatCurrency(saldo * sign)}
                             </td>
                             <td className="px-3 py-2.5 text-center">
                               <div className="flex items-center justify-center gap-0.5">
