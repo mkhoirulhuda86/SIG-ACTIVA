@@ -1373,7 +1373,7 @@ export default function MonitoringAccrualPage() {
   };
 
   // Download Jurnal SAP Excel untuk semua Realisasi dalam satu Periode
-  const handleDownloadJurnalSAPRealisasiPerPeriode = async (item: Accrual, periode: AccrualPeriode) => {
+  const handleDownloadJurnalSAPRealisasiPerPeriode = async (item: Accrual, periode: AccrualPeriode, headerText = '', lineText = '') => {
     const realisasiList = periode.realisasis ?? [];
     if (realisasiList.length === 0) { toast.info('Tidak ada realisasi untuk periode ini.'); return; }
     try {
@@ -1395,45 +1395,35 @@ export default function MonitoringAccrualPage() {
         { width: 30 }, { width: 12 }, { width: 12 }, { width: 15 }, { width: 30 }, { width: 12 }, { width: 12 },
         { width: 3 }, { width: 10 }, { width: 12 }, { width: 12 }, { width: 5 }
       ];
+      const ht = headerText || item.headerText || '';
+      const mmyy = (() => { const t = new Date(); return `${String(t.getMonth()+1).padStart(2,'0')}${String(t.getFullYear()).slice(-2)}`; })();
+      const lt = (lineText || `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`).trim();
       let currentRow = 3;
-      const writeRow = (hkont: string, wrbtr: number, kostl: string, bktxt: string, sgtxt: string) => {
-        const row = worksheet.getRow(currentRow++);
-        row.height = 15;
-        row.getCell(1).value = ''; row.getCell(2).value = companyCode; row.getCell(3).value = 'SA';
-        row.getCell(10).value = hkont;
-        row.getCell(11).value = Math.round(wrbtr); row.getCell(11).numFmt = '0';
-        row.getCell(12).value = sgtxt; row.getCell(14).value = kostl; row.getCell(19).value = 'G';
-        row.getCell(8).value = bktxt;
-        for (const [ci, v] of [[4, ''], [5, ''], [6, 'IDR'], [7, ''], [9, ''], [13, ''], [15, ''], [16, ''], [17, ''], [18, '']] as [number, string][]) {
-          row.getCell(ci).value = v;
-        }
-        // set docDate on cells 4 and 5 via bktxt placeholder — fill actual date per-realisasi below
-      };
       for (const r of realisasiList) {
         const d = new Date(r.tanggalRealisasi);
         const docDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-        const label = r.keterangan || `Realisasi ${r.tanggalRealisasi}`;
+        const bktxt = ht || r.keterangan || `Realisasi ${r.tanggalRealisasi}`;
+        const sgtxt = lt || r.keterangan || `Realisasi ${r.tanggalRealisasi}`;
         // DEBIT: kdAkunBiaya, negative
         const rD = worksheet.getRow(currentRow++); rD.height = 15;
         rD.getCell(1).value=''; rD.getCell(2).value=companyCode; rD.getCell(3).value='SA';
         rD.getCell(4).value=docDate; rD.getCell(5).value=docDate; rD.getCell(6).value='IDR';
-        rD.getCell(7).value=''; rD.getCell(8).value=label; rD.getCell(9).value='';
+        rD.getCell(7).value=''; rD.getCell(8).value=bktxt; rD.getCell(9).value='';
         rD.getCell(10).value=r.kdAkunBiaya||item.kdAkunBiaya;
         rD.getCell(11).value=-Math.round(Math.abs(r.amount)); rD.getCell(11).numFmt='0';
-        rD.getCell(12).value=label; rD.getCell(13).value='';
+        rD.getCell(12).value=sgtxt; rD.getCell(13).value='';
         rD.getCell(14).value=r.costCenter||item.costCenter||'';
         rD.getCell(15).value=''; rD.getCell(16).value=''; rD.getCell(17).value=''; rD.getCell(18).value=''; rD.getCell(19).value='G';
         // CREDIT: kdAkr, positive
         const rC = worksheet.getRow(currentRow++); rC.height = 15;
         rC.getCell(1).value=''; rC.getCell(2).value=companyCode; rC.getCell(3).value='SA';
         rC.getCell(4).value=docDate; rC.getCell(5).value=docDate; rC.getCell(6).value='IDR';
-        rC.getCell(7).value=''; rC.getCell(8).value=label; rC.getCell(9).value='';
+        rC.getCell(7).value=''; rC.getCell(8).value=bktxt; rC.getCell(9).value='';
         rC.getCell(10).value=item.kdAkr;
         rC.getCell(11).value=Math.round(Math.abs(r.amount)); rC.getCell(11).numFmt='0';
-        rC.getCell(12).value=label; rC.getCell(13).value=''; rC.getCell(14).value='';
+        rC.getCell(12).value=sgtxt; rC.getCell(13).value=''; rC.getCell(14).value='';
         rC.getCell(15).value=''; rC.getCell(16).value=''; rC.getCell(17).value=''; rC.getCell(18).value=''; rC.getCell(19).value='G';
       }
-      void writeRow; // suppress unused warning
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = URL.createObjectURL(blob);
@@ -1448,19 +1438,23 @@ export default function MonitoringAccrualPage() {
   };
 
   // Download Jurnal SAP TXT untuk semua Realisasi dalam satu Periode
-  const handleDownloadJurnalSAPRealisasiPerPeriodeTxt = (item: Accrual, periode: AccrualPeriode) => {
+  const handleDownloadJurnalSAPRealisasiPerPeriodeTxt = (item: Accrual, periode: AccrualPeriode, headerText = '', lineText = '') => {
     const realisasiList = periode.realisasis ?? [];
     if (realisasiList.length === 0) { toast.info('Tidak ada realisasi untuk periode ini.'); return; }
     const companyCode = item.companyCode || '2000';
+    const ht = headerText || item.headerText || '';
+    const mmyy = (() => { const t = new Date(); return `${String(t.getMonth()+1).padStart(2,'0')}${String(t.getFullYear()).slice(-2)}`; })();
+    const lt = (lineText || `pcd ${item.noPo || ''} ${item.deskripsi || ''} ${mmyy}`).trim();
     const rows: string[][] = [];
     for (const r of realisasiList) {
       const d = new Date(r.tanggalRealisasi);
       const docDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-      const label = r.keterangan || `Realisasi ${r.tanggalRealisasi}`;
+      const bktxt = ht || r.keterangan || `Realisasi ${r.tanggalRealisasi}`;
+      const sgtxt = lt || r.keterangan || `Realisasi ${r.tanggalRealisasi}`;
       // DEBIT: kdAkunBiaya, negative
-      rows.push(['',companyCode,'SA',docDate,docDate,'IDR','',label,'',r.kdAkunBiaya||item.kdAkunBiaya,(-Math.round(Math.abs(r.amount))).toString(),label,'',r.costCenter||item.costCenter||'','','','','','G']);
+      rows.push(['',companyCode,'SA',docDate,docDate,'IDR','',bktxt,'',r.kdAkunBiaya||item.kdAkunBiaya,(-Math.round(Math.abs(r.amount))).toString(),sgtxt,'',r.costCenter||item.costCenter||'','','','','','G']);
       // CREDIT: kdAkr, positive
-      rows.push(['',companyCode,'SA',docDate,docDate,'IDR','',label,'',item.kdAkr,Math.round(Math.abs(r.amount)).toString(),label,'','','','','','','G']);
+      rows.push(['',companyCode,'SA',docDate,docDate,'IDR','',bktxt,'',item.kdAkr,Math.round(Math.abs(r.amount)).toString(),sgtxt,'','','','','','','G']);
     }
     const txtContent = rows.map(row => row.join('\t')).join('\n');
     const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
@@ -3794,14 +3788,14 @@ export default function MonitoringAccrualPage() {
                                               ↓ Accrual TXT
                                             </button>
                                             <button
-                                              onClick={() => handleDownloadJurnalSAPRealisasiPerPeriode(item, periode)}
+                                              onClick={() => promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPRealisasiPerPeriode(item, periode, ht, lt), item)}
                                               className="text-xs bg-violet-600 hover:bg-violet-700 text-white px-3 py-1 rounded transition-colors"
                                               title="Download jurnal realisasi periode ini (Excel)"
                                             >
                                               ↓ Realisasi Excel
                                             </button>
                                             <button
-                                              onClick={() => handleDownloadJurnalSAPRealisasiPerPeriodeTxt(item, periode)}
+                                              onClick={() => promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPRealisasiPerPeriodeTxt(item, periode, ht, lt), item)}
                                               className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded transition-colors"
                                               title="Download jurnal realisasi periode ini (TXT)"
                                             >
