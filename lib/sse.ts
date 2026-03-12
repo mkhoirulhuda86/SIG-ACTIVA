@@ -1,47 +1,33 @@
-/**
- * Server-Sent Events broadcaster.
- * Uses globalThis so the clients Map survives Next.js hot-reloads in development.
- */
-
-type Controller = ReadableStreamDefaultController<Uint8Array>;
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __sseClients: Map<string, Controller> | undefined;
-}
-
-if (!globalThis.__sseClients) {
-  globalThis.__sseClients = new Map();
-}
-
-const clients = globalThis.__sseClients!;
-
-export function addClient(id: string, controller: Controller) {
-  clients.set(id, controller);
-}
-
-export function removeClient(id: string) {
-  clients.delete(id);
-}
+import Pusher from 'pusher';
 
 /**
- * Push an event to every connected SSE client.
- * Dead connections are automatically pruned.
+ * Pusher Channels broadcaster.
+ * Replaces SSE to avoid persistent Vercel Fluid connections.
+ * Channel: 'sig-activa', events: 'accrual' | 'prepaid' | 'material' | 'fluktuasi' | 'users'
  */
-export function broadcast(event: string, data?: Record<string, unknown>) {
-  const payload = new TextEncoder().encode(
-    `event: ${event}\ndata: ${JSON.stringify(data ?? {})}\n\n`
-  );
 
-  const dead: string[] = [];
+let _pusher: Pusher | null = null;
 
-  for (const [id, controller] of clients) {
-    try {
-      controller.enqueue(payload);
-    } catch {
-      dead.push(id);
-    }
+function getPusher(): Pusher {
+  if (!_pusher) {
+    _pusher = new Pusher({
+      appId:   process.env.PUSHER_APP_ID!,
+      key:     process.env.PUSHER_KEY!,
+      secret:  process.env.PUSHER_SECRET!,
+      cluster: process.env.PUSHER_CLUSTER!,
+      useTLS:  true,
+    });
   }
-
-  for (const id of dead) clients.delete(id);
+  return _pusher;
 }
+
+/** Fire-and-forget broadcast to all subscribed clients. */
+export function broadcast(event: string, data?: Record<string, unknown>) {
+  getPusher().trigger('sig-activa', event, data ?? {}).catch((err: unknown) => {
+    console.error('[Pusher] broadcast error:', err);
+  });
+}
+
+/** Legacy no-ops kept so SSE route import doesn't break during transition. */
+export function addClient() {}
+export function removeClient() {}

@@ -1,32 +1,9 @@
-import { NextRequest } from 'next/server';
-import { randomUUID } from 'crypto';
-import { addClient, removeClient } from '@/lib/sse';
+import { NextResponse } from 'next/server';
 
-// Must run on Node.js runtime to keep persistent streaming connections
-export const runtime = 'nodejs';
+// SSE endpoint disabled — real-time updates now use client-side polling
+// (useRealtimeUpdates hook) to avoid persistent Vercel Fluid connections.
 export const dynamic = 'force-dynamic';
 
-export async function GET(_request: NextRequest) {
-  const clientId = randomUUID();
-  const encoder = new TextEncoder();
-
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      addClient(clientId, controller);
-      // Initial ping so browser confirms connection is alive
-      controller.enqueue(encoder.encode(':connected\n\n'));
-    },
-    cancel() {
-      removeClient(clientId);
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no', // disable Nginx/Vercel buffering
-    },
-  });
+export async function GET() {
+  return NextResponse.json({ disabled: true }, { status: 410 });
 }

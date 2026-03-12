@@ -1,45 +1,37 @@
+import Pusher from 'pusher-js';
 import { useEffect, useRef } from 'react';
 
 type Handler = (event: string) => void;
 
 /**
- * Subscribe to Server-Sent Events from /api/events.
+ * Subscribe to real-time events via Pusher Channels.
  * Calls `onUpdate(eventName)` immediately whenever a matching event is received.
- * Auto-reconnects after 3 s if the connection drops.
+ * No persistent server connections — uses Pusher's WebSocket infrastructure.
  *
- * @param events   SSE event names to listen to, e.g. ['accrual', 'prepaid']
+ * @param events   Pusher event names to listen to, e.g. ['accrual', 'prepaid']
  * @param onUpdate callback invoked with the event name on each incoming event
  */
 export function useRealtimeUpdates(events: string[], onUpdate: Handler) {
-  // Keep a stable ref so the effect never needs to re-run when onUpdate changes
   const onUpdateRef = useRef<Handler>(onUpdate);
   onUpdateRef.current = onUpdate;
 
   useEffect(() => {
-    let es: EventSource | null = null;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
+      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+    });
 
-    const connect = () => {
-      es = new EventSource('/api/events');
+    const channel = pusher.subscribe('sig-activa');
 
-      for (const name of events) {
-        es.addEventListener(name, () => {
-          onUpdateRef.current(name);
-        });
-      }
-
-      es.onerror = () => {
-        es?.close();
-        // retry after 3 seconds
-        retryTimer = setTimeout(connect, 3000);
-      };
-    };
-
-    connect();
+    for (const name of events) {
+      channel.bind(name, () => {
+        onUpdateRef.current(name);
+      });
+    }
 
     return () => {
-      if (retryTimer) clearTimeout(retryTimer);
-      es?.close();
+      channel.unbind_all();
+      pusher.unsubscribe('sig-activa');
+      pusher.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
