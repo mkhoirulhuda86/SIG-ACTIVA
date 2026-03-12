@@ -282,12 +282,15 @@ export default function MonitoringPrepaidPage() {
   }, [searchTerm]);
 
   // --- Memoized derived data ----------------------------------------------
-  const { totalPrepaidValue, totalRemaining, totalSaldo, amortisasiBulanIni } = useMemo(() => ({
-    totalPrepaidValue:   prepaidData.reduce((s, i) => s + i.totalAmount, 0),
-    totalRemaining:      prepaidData.reduce((s, i) => s + i.remaining, 0),
-    totalSaldo:          prepaidData.reduce((s, i) => s + i.remaining, 0),
-    amortisasiBulanIni:  prepaidData.reduce((s, i) => s + i.amortisasiBulanIni, 0),
-  }), [prepaidData]);
+  const { totalPrepaidValue, totalRemaining, totalSaldo, amortisasiBulanIni } = useMemo(() => {
+    const sign = (i: Prepaid) => i.kdAkr?.startsWith('1812') ? -1 : 1;
+    return {
+      totalPrepaidValue:   prepaidData.reduce((s, i) => s + i.totalAmount * sign(i), 0),
+      totalRemaining:      prepaidData.reduce((s, i) => s + i.remaining * sign(i), 0),
+      totalSaldo:          prepaidData.reduce((s, i) => s + i.remaining * sign(i), 0),
+      amortisasiBulanIni:  prepaidData.reduce((s, i) => s + i.amortisasiBulanIni * sign(i), 0),
+    };
+  }, [prepaidData]);
 
   const filteredData = useMemo(() =>
     prepaidData.filter(item =>
