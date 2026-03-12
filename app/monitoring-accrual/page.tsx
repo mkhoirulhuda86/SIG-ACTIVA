@@ -2324,18 +2324,23 @@ export default function MonitoringAccrualPage() {
         return { ...prev, [name]: value, periodeAmounts: newPeriodeAmounts };
       });
     } else if (name === 'pembagianType') {
-      // Initialize periodeAmounts for manual mode
-      if (value === 'manual') {
-        const count = parseInt(formData.jumlahPeriode) || 12;
-        const newPeriodeAmounts = Array(count).fill('');
-        setFormData(prev => ({ ...prev, [name]: value, periodeAmounts: newPeriodeAmounts }));
+      if (editingId !== null) {
+        // Edit mode: preserve existing periodeAmounts — just change the type
+        setFormData(prev => ({ ...prev, [name]: value }));
       } else {
-        setFormData(prev => ({ ...prev, [name]: value, periodeAmounts: [] }));
+        // Add mode: initialize slots for manual, clear for otomatis
+        if (value === 'manual') {
+          const count = parseInt(formData.jumlahPeriode) || 12;
+          const newPeriodeAmounts = Array(count).fill('');
+          setFormData(prev => ({ ...prev, [name]: value, periodeAmounts: newPeriodeAmounts }));
+        } else {
+          setFormData(prev => ({ ...prev, [name]: value, periodeAmounts: [] }));
+        }
       }
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
-  }, [formData.jumlahPeriode]);
+  }, [formData.jumlahPeriode, editingId]);
 
   const handlePeriodeAmountChange = (index: number, value: string) => {
     setFormData(prev => {
@@ -2349,8 +2354,8 @@ export default function MonitoringAccrualPage() {
   const handleEdit = useCallback((item: Accrual) => {
     setEditingId(item.id);
     
-    // Get periodeAmounts if manual type (amountAccrual di DB negatif, tampilkan positif)
-    const periodeAmounts = item.pembagianType === 'manual' && item.periodes 
+    // Always load periodeAmounts from existing periods (supports type switching without data loss)
+    const periodeAmounts = item.periodes
       ? item.periodes.map(p => Math.abs(p.amountAccrual).toString())
       : [];
     

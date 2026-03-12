@@ -349,6 +349,15 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
+    // Detect whether amount-affecting fields actually changed (to avoid wiping data on type switch)
+    const currentAccrual = await prisma.accrual.findUnique({
+      where: { id: parseInt(id) },
+      select: { totalAmount: true, jumlahPeriode: true },
+    });
+    const newTotalAmount = Math.abs(parseFloat(totalAmount));
+    const totalAmountChanged = !currentAccrual || Math.round((currentAccrual.totalAmount ?? 0) * 100) !== Math.round(newTotalAmount * 100);
+    const jumlahPeriodeChanged = !currentAccrual || (currentAccrual.jumlahPeriode ?? 0) !== parseInt(jumlahPeriode);
+
     // Generate new periodes data
     const start = new Date(startDate);
     const newJumlahPeriode = parseInt(jumlahPeriode);
@@ -388,9 +397,25 @@ export async function PATCH(request: NextRequest) {
       
       let amountAccrual;
       if (pembagianType === 'otomatis') {
-        amountAccrual = Math.abs(parseFloat(totalAmount) / newJumlahPeriode);
+        if (totalAmountChanged || jumlahPeriodeChanged) {
+          // Recalculate only when totalAmount or period count actually changed
+          amountAccrual = newTotalAmount / newJumlahPeriode;
+        } else {
+          // Keep existing amount (switch from manual → otomatis without changing values)
+          amountAccrual = i < existingCount
+            ? Math.abs(existingPeriodes[i].amountAccrual)
+            : newTotalAmount / newJumlahPeriode;
+        }
       } else {
-        amountAccrual = periodeAmounts && periodeAmounts[i] ? Math.abs(parseFloat(periodeAmounts[i])) : 0;
+        // manual: use submitted value if non-empty, else keep existing (switch from otomatis → manual)
+        const submitted = periodeAmounts?.[i];
+        if (submitted !== undefined && submitted !== null && String(submitted) !== '') {
+          amountAccrual = Math.abs(parseFloat(submitted) || 0);
+        } else if (i < existingCount) {
+          amountAccrual = Math.abs(existingPeriodes[i].amountAccrual);
+        } else {
+          amountAccrual = 0;
+        }
       }
 
       // If periode already exists, update it (preserve realisasi data)
