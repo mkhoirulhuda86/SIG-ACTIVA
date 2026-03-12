@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { parseExcelFile, ExcelAccrualData } from '@/app/utils/excelParser';
 import { broadcast } from '@/lib/sse';
 import { sendPushToAll } from '@/lib/webpush';
+import { checkAccrualAlerts } from '@/lib/notificationChecker';
 
 // Vercel function timeout: 300 detik (5 menit) untuk Pro plan, atau sesuai kebutuhan
 export const maxDuration = 300;
@@ -190,6 +191,7 @@ export async function POST(request: NextRequest) {
 
     broadcast('accrual');
     sendPushToAll({ title: 'Import Accrual Selesai', body: `${results.length} data accrual berhasil diproses`, url: '/monitoring-accrual', priority: 'medium' }).catch(() => {});
+    checkAccrualAlerts().catch(() => {});
     return NextResponse.json({
       message: `Successfully processed ${results.length} baris`,
       results,

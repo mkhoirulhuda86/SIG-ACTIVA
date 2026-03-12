@@ -167,16 +167,24 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
   };
 
   const registerPushNotifications = async () => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+      console.warn('[Beams] serviceWorker not supported');
+      return;
+    }
+    console.log('[Beams] instanceId:', process.env.NEXT_PUBLIC_BEAMS_INSTANCE_ID);
     try {
       const PusherPushNotifications = await import('@pusher/push-notifications-web');
       const beamsClient = new PusherPushNotifications.Client({
         instanceId: process.env.NEXT_PUBLIC_BEAMS_INSTANCE_ID!,
       });
+      console.log('[Beams] starting client...');
       await beamsClient.start();
+      console.log('[Beams] client started, adding interests...');
       await beamsClient.addDeviceInterest('all-users');
       await beamsClient.addDeviceInterest('hello');
-    } catch (err) { console.error('[Beams]', err); }
+      const interests = await beamsClient.getDeviceInterests();
+      console.log('[Beams] registered OK, interests:', interests);
+    } catch (err) { console.error('[Beams] ERROR:', err); }
   };
 
   useEffect(() => {

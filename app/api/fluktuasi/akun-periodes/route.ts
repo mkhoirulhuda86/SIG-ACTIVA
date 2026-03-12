@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
 import { sendPushToAll } from '@/lib/webpush';
+import { checkFluktuasiAlerts } from '@/lib/notificationChecker';
 
 // ─── GET: Ambil semua account-period records ─────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -91,6 +92,7 @@ export async function POST(req: NextRequest) {
 
     broadcast('fluktuasi');
     sendPushToAll({ title: 'Data Fluktuasi Diperbarui', body: `${success} record fluktuasi berhasil disimpan`, url: '/fluktuasi-oi', priority: 'medium' }).catch(() => {});
+    checkFluktuasiAlerts().catch(() => {});
     return NextResponse.json({
       success: true,
       message: `${success} record berhasil disimpan${failed ? `, ${failed} gagal` : ''}`,

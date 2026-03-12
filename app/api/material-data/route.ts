@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
 import { sendPushToAll } from '@/lib/webpush';
+import { checkMaterialAlerts } from '@/lib/notificationChecker';
 
 // Helper to transform raw/prisma rows into MaterialData API shape
 function transformRows(data: any[]) {
@@ -213,6 +214,7 @@ export async function POST(request: NextRequest) {
 
     broadcast('material');
     sendPushToAll({ title: 'Import Material Selesai', body: `${records.length} data material berhasil diimport`, url: '/laporan-material', priority: 'medium' }).catch(() => {});
+    checkMaterialAlerts().catch(() => {});
     return NextResponse.json({ 
       success: true, 
       count: records.length,
