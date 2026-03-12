@@ -12,7 +12,7 @@ import { Progress } from '@/app/components/ui/progress';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { Badge } from '@/app/components/ui/badge';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 type SheetData = {
   sheetName: string;
   headers: string[];
@@ -57,13 +57,13 @@ type RekapSheetData = {
   momPrevIdx: number;   // index in amountCols for MoM previous
   yoyCurrIdx: number;   // index in amountCols for YoY current
   yoyPrevIdx: number;   // index in amountCols for YoY previous (same month last year)
-  ytdCurrColIdxs: number[]; // amountCols indices for current-year YtD range (Jan→currMo)
-  ytdPrevColIdxs: number[]; // amountCols indices for prev-year YtD range (Jan→currMo)
+  ytdCurrColIdxs: number[]; // amountCols indices for current-year YtD range (Jan?currMo)
+  ytdPrevColIdxs: number[]; // amountCols indices for prev-year YtD range (Jan?currMo)
   ytdLabel: string;         // e.g. "Jan-Mar '26 vs Jan-Mar '25"
   rows: RekapSheetRow[];
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 let XLSX: any = null;
 const loadXLSX = async () => {
   if (!XLSX) XLSX = await import('xlsx');
@@ -114,7 +114,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
   const text = input.toLowerCase();
   const original = input;
 
-  // ── Extract sourceColumn: "by kolom X" / "cek di kolom X" / "check column X"
+  // -- Extract sourceColumn: "by kolom X" / "cek di kolom X" / "check column X"
   // Distinct from col: mode — this just overrides which column the keyword text is matched against
   let sourceColumn = '';
   const srcColM = original.match(
@@ -124,7 +124,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     sourceColumn = srcColM[1].trim();
   }
 
-  // ── Extract accountCodes: "di akun '12345'" / "di akun 12345,67890" / "berlaku akun 62301 62302"
+  // -- Extract accountCodes: "di akun '12345'" / "di akun 12345,67890" / "berlaku akun 62301 62302"
   let accountCodes = '';
   const acctM = original.match(
     /(?:hanya\s+)?(?:berlaku\s+)?(?:di\s+)?akun\s+["']?([\d][\d,\s]*)["\'$]/i
@@ -140,21 +140,21 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
       .join(',');
   }
 
-  // ── Extract result/output (text in quotes after "berisi", "maka berisi", etc.)
+  // -- Extract result/output (text in quotes after "berisi", "maka berisi", etc.)
   let resultMatch = original.match(/(?:berisi|is|result|output|hasil)\s*["']([^"']+)["']/i);
   if (!resultMatch) resultMatch = original.match(/(?:berisi|is)\s+["']?([\w\s]+?)["']?$/i);
 
-  // ── Detect output type (klasifikasi vs remark)
+  // -- Detect output type (klasifikasi vs remark)
   let type = 'klasifikasi';
   if (text.includes('remark') || text.includes('kolom ae')) type = 'remark';
   else if (text.includes('klasifikasi') || text.includes('kolom ad')) type = 'klasifikasi';
 
-  // ── Extract priority if mentioned
+  // -- Extract priority if mentioned
   let priority = 5;
   const prioM = text.match(/priority\s*(\d+)/i);
   if (prioM) priority = parseInt(prioM[1]);
 
-  // ── NOT mode: "jika tidak ada/terdapat kata 'K3' atau 'SLA' maka berisi 'Denda'"
+  // -- NOT mode: "jika tidak ada/terdapat kata 'K3' atau 'SLA' maka berisi 'Denda'"
   // Trigger: "tidak ada", "tidak terdapat", "tidak mengandung", "tanpa kata", "kecuali"
   const isNotMode = /(?:jika\s+)?(?:tidak\s+(?:ada|terdapat|mengandung)|tanpa\s+kata|kecuali)/i.test(text);
   if (isNotMode && resultMatch) {
@@ -173,7 +173,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     }
   }
 
-  // ── Regex extract mode: "diambil dari kata 'X' dan nomor/angka/kode aset"
+  // -- Regex extract mode: "diambil dari kata 'X' dan nomor/angka/kode aset"
   // Trigger: "diambil dari", "ambil dari", "ekstrak", "extract"
   // Result is dynamic ({match}), so result left empty
   const isExtractMode = /(?:diambil\s+dari|ambil\s+dari|ekstrak\s+dari?|extract)/i.test(text);
@@ -192,7 +192,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     }
   }
 
-  // ── Regex mode: "jika teks cocok pola 'RoU \d+' maka berisi 'RoU Aset'"
+  // -- Regex mode: "jika teks cocok pola 'RoU \d+' maka berisi 'RoU Aset'"
   // Trigger: "cocok pola", "cocok dengan pola", "match pola", "regex", "pola regex"
   const isRegexMode = /(?:cocok\s+(?:dengan\s+)?pola|match\s+pola|pola\s+regex|regex\s*:?\s*['"\\])/i.test(text);
   if (isRegexMode) {
@@ -205,7 +205,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     }
   }
 
-  // ── DocNo mode: "jika nomor dokumen / no dok / belegnummer diawali/= X maka berisi Y"
+  // -- DocNo mode: "jika nomor dokumen / no dok / belegnummer diawali/= X maka berisi Y"
   const docnoM = original.match(
     /(?:nomor\s+dokumen|no\.?\s*dok(?:umen)?|doc(?:ument)?\s*no\.?|belegnummer)\s+(?:diawali|=|starts?\s*with|adalah|berisi|sama\s+dengan)\s+["']?([\w\d\*]+)["']?/i
   );
@@ -214,7 +214,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     return { keyword: `docno:${val}`, type, result: resultMatch[1].trim(), priority, accountCodes, sourceColumn };
   }
 
-  // ── Col mode: "jika kolom X diawali/mengandung/= Y maka berisi Z"
+  // -- Col mode: "jika kolom X diawali/mengandung/= Y maka berisi Z"
   // Support: "By kolom 'Document No.', jika nilainya diawali 18 maka klasifikasi berisi ..."
   const colM = original.match(
     /(?:jika\s+)?(?:di\s+)?kolom\s+["']?(.+?)["']?\s+(?:(?:jika\s+)?nilainya?\s+)?(?:diawali|mengandung|berisi[^\s]|sama\s*dengan|=|startswith|contains|\*)\s+["']?([\w\d\*\-\.\/ ]+?)["']?(?:\s|$|maka)/i
@@ -233,7 +233,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     }
   }
 
-  // ── Normal text mode: "jika ada text 'X' maka berisi 'Y'"
+  // -- Normal text mode: "jika ada text 'X' maka berisi 'Y'"
   let keywordMatch = original.match(/(?:jika ada text|text|keyword)\s*["']([^"']+)["']/i);
   if (!keywordMatch) keywordMatch = original.match(/(?:jika ada text|text)\s+([\w\s]+?)\s+(?:maka|then)/i);
 
@@ -266,7 +266,7 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
   const positiveKeywords = relevantKeywords.filter(kw => !kw.keyword.toLowerCase().startsWith('not:'));
   const notKeywords = relevantKeywords.filter(kw => kw.keyword.toLowerCase().startsWith('not:'));
 
-  // ── Helper: resolve effective text for a keyword (sourceColumn overrides default text)
+  // -- Helper: resolve effective text for a keyword (sourceColumn overrides default text)
   const getEffText = (kw: Keyword): { str: string; lower: string } => {
     const sc = (kw.sourceColumn ?? '').trim();
     if (sc && rowData) {
@@ -288,11 +288,11 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
     return !collectAll;
   };
 
-  // ── Pass 1: positive / regex / docno / col keywords (checked in priority order)
+  // -- Pass 1: positive / regex / docno / col keywords (checked in priority order)
   for (const kw of positiveKeywords) {
     const kwLower = kw.keyword.toLowerCase();
 
-    // ── Col mode: match against any column by header name
+    // -- Col mode: match against any column by header name
     if (kwLower.startsWith('col:')) {
       if (!rowData) continue;
       const withoutPrefix = kw.keyword.slice(4);
@@ -324,7 +324,7 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
       continue;
     }
 
-    // ── DocNo mode
+    // -- DocNo mode
     if (kwLower.startsWith('docno:')) {
       if (!docnoStr) continue;
       const pattern = kw.keyword.slice(6).trim();
@@ -339,7 +339,7 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
       continue;
     }
 
-    // ── Regex / Pattern mode
+    // -- Regex / Pattern mode
     if (kwLower.startsWith('regex:')) {
       const { str: effStr } = getEffText(kw);
       try {
@@ -359,7 +359,7 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
       continue;
     }
 
-    // ── Normal text includes matching
+    // -- Normal text includes matching
     const { lower: effLower } = getEffText(kw);
     if (effLower.includes(kw.keyword.toLowerCase())) {
       if (addResult(kw.result)) return [...collected].join('; ');
@@ -368,7 +368,7 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
 
   if (collected.size > 0) return [...collected].join('; ');
 
-  // ── Pass 2: NOT keywords (only if no positive match)
+  // -- Pass 2: NOT keywords (only if no positive match)
   for (const kw of notKeywords) {
     const { lower: effLower } = getEffText(kw);
     const exclusions = kw.keyword.slice(4).trim().split(/[,|]/).map(s => s.trim().toLowerCase()).filter(Boolean);
@@ -474,8 +474,8 @@ const buildYtdColIdxs = (
     ? `Jan '${currYearStr.slice(2)} vs Jan '${prevYearStr.slice(2)}`
     : `Jan-${endMoLabel} '${currYearStr.slice(2)} vs Jan-${endMoLabel} '${prevYearStr.slice(2)}`;
 
-  // ── Option A: use existing cumulative ("Up to" / "Total Up to") columns directly ──
-  // These already represent the Jan→currMo sum; use the LAST one per year (most recent).
+  // -- Option A: use existing cumulative ("Up to" / "Total Up to") columns directly --
+  // These already represent the Jan?currMo sum; use the LAST one per year (most recent).
   let cumulCurrIdx = -1;
   let cumulPrevIdx = -1;
   for (let i = 0; i < amountCols.length; i++) {
@@ -489,7 +489,7 @@ const buildYtdColIdxs = (
     return { currIdxs: [cumulCurrIdx], prevIdxs: [cumulPrevIdx], label };
   }
 
-  // ── Option B: sum point-in-time monthly columns Jan → currMo ─────────────
+  // -- Option B: sum point-in-time monthly columns Jan ? currMo -------------
   const currIdxs: number[] = [];
   const prevIdxs: number[] = [];
   for (let i = 0; i < amountCols.length; i++) {
@@ -748,7 +748,7 @@ const classifyRow = (values: any[], accountColIdx: number): RekapSheetRow['type'
   // If row has a proper numeric account code (5+ digits), classify by account pattern only
   // This prevents keyword false-positives from SAP-generated totals in other columns
   if (/^\d{5,}$/.test(acct)) {
-    // Account ends in 4+ zeros → subtotal (e.g. 71510000, 71500000)
+    // Account ends in 4+ zeros ? subtotal (e.g. 71510000, 71500000)
     if (/0{4,}$/.test(acct)) return 'subtotal';
     // Otherwise it's a detail account regardless of other columns
     return 'detail';
@@ -801,7 +801,7 @@ const normalizeHeaderCell = (val: any): string => {
     const n = parseInt(s);
     if (n > 40000 && n < 70000) return excelSerialToDateStr(n);
   }
-  // Normalize string dates: DD/MM/YYYY or DD-MM-YYYY → DD-Mon-YY
+  // Normalize string dates: DD/MM/YYYY or DD-MM-YYYY ? DD-Mon-YY
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
   if (m) {
@@ -876,7 +876,7 @@ type Keyword = {
   sourceColumn: string;  // column header name to match against; empty = default description col
 };
 
-// ─── AI Chatbot ─────────────────────────────────────────────────────────────
+// --- AI Chatbot -------------------------------------------------------------
 type ChatMsg  = { role: 'user' | 'assistant'; content: string };
 type ChatPanel = {
   open: boolean;
@@ -908,7 +908,7 @@ const OPENROUTER_MODELS = [
   { id: 'mistralai/mistral-small-3.1-24b-instruct',          label: 'Mistral Small 3.1 24B',      keyIdx: 11 },
 ];
 
-// ─── Sheet cache: L1 in-memory + L2 IndexedDB ──────────────────────────────
+// --- Sheet cache: L1 in-memory + L2 IndexedDB ------------------------------
 // L1: module-level variable — survives in-tab navigation / component remount
 // L2: IndexedDB — survives full page refresh, no size limit
 type SheetCacheEntry = { sheets: SheetData[]; rekap: RekapSheetData | null; fileName: string };
@@ -936,7 +936,7 @@ async function idbClearSheets() {
   try { const db = await _idbOpen(); await new Promise<void>((res, rej) => { const tx = db.transaction(IDB_STORE,'readwrite'); const r = tx.objectStore(IDB_STORE).delete(IDB_KEY); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); }); db.close(); } catch(e) { console.warn('idbClear failed',e); }
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// --- Component ----------------------------------------------------------------
 export default function FluktuasiOIPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -946,7 +946,7 @@ export default function FluktuasiOIPage() {
   const [activeSheetIdx, setActiveSheetIdx] = useState(0);
   const [kaPage,    setKaPage]    = useState(0);
   const [rekapPage, setRekapPage] = useState(0);
-  // ── AI Reason State ────────────────────────────────────────────────────────
+  // -- AI Reason State --------------------------------------------------------
   const [aiReasons,  setAiReasons]  = useState<Record<number, { mom?: string; yoy?: string; ytd?: string }>>({}); 
   const [aiLoading,  setAiLoading]  = useState<Record<string, boolean>>({});
   const [aiErrors,   setAiErrors]   = useState<Record<string, string>>({});
@@ -960,7 +960,7 @@ export default function FluktuasiOIPage() {
   // Period selection for MoM / YoY / YtD — null = use auto-detected default
   const [momSel, setMomSel] = useState<{ curr: number; prev: number } | null>(null);
   const [yoySel, setYoySel] = useState<{ curr: number; prev: number } | null>(null);
-  // YtD: single amountCols index per year; if isCumulative → use directly, else sum Jan→mo
+  // YtD: single amountCols index per year; if isCumulative ? use directly, else sum Jan?mo
   const [ytdSel, setYtdSel] = useState<{ curr: number; prev: number } | null>(null);
   // Column visibility — null = all visible; Set = only those amountCol indices
   const [visibleAmtColIdxs, setVisibleAmtColIdxs] = useState<Set<number> | null>(null);
@@ -968,7 +968,7 @@ export default function FluktuasiOIPage() {
   // Reset period selection when a new file is loaded
   useEffect(() => { setMomSel(null); setYoySel(null); setYtdSel(null); setVisibleAmtColIdxs(null); setShowColPicker(false); }, [rekapSheetData]);
   
-  // ── Keyword Management States ──────────────────────────────────────────────
+  // -- Keyword Management States ----------------------------------------------
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [showKeywordModal, setShowKeywordModal] = useState(false);
   const [editingKeyword, setEditingKeyword] = useState<Keyword | null>(null);
@@ -994,13 +994,13 @@ export default function FluktuasiOIPage() {
   const [colPattern, setColPattern] = useState('');
   const [isReapplying, setIsReapplying] = useState(false);
 
-  // ── DB Akun Periode States ─────────────────────────────────────────────────
+  // -- DB Akun Periode States -------------------------------------------------
   const [dbAkunPeriodes,  setDbAkunPeriodes]  = useState<AkunPeriodeRecord[]>([]);
   const [loadingDbRekap,  setLoadingDbRekap]  = useState(false);
   const [dbPeriodeStats,  setDbPeriodeStats]  = useState<{ periodes: string[]; accounts: number } | null>(null);
   const [selectedPeriodes, setSelectedPeriodes] = useState<Set<string>>(new Set());
 
-  // ── Animation refs ────────────────────────────────────────────────────────
+  // -- Animation refs --------------------------------------------------------
   const pageContentRef   = useRef<HTMLDivElement>(null);
   const keywordBodyRef   = useRef<HTMLTableSectionElement>(null);
   const rekapBodyRef     = useRef<HTMLTableSectionElement>(null);
@@ -1012,7 +1012,7 @@ export default function FluktuasiOIPage() {
   const chatModalRef     = useRef<HTMLDivElement>(null);
   const kaTableRef       = useRef<HTMLDivElement>(null);
 
-  // ── Per-account row hydration (lazy DB fetch) ──────────────────────────────
+  // -- Per-account row hydration (lazy DB fetch) ------------------------------
   const fetchingAccountsRef = useRef<Set<string>>(new Set());
   const hydrateSheetRows = useCallback(async (idx: number, accountCode: string) => {
     if (fetchingAccountsRef.current.has(accountCode)) return;
@@ -1039,7 +1039,7 @@ export default function FluktuasiOIPage() {
     }
   }, []);
 
-  // ── Load data from database on mount ──────────────────────────────────────
+  // -- Load data from database on mount --------------------------------------
   useEffect(() => {
     const loadData = async () => {
       // L1: in-memory (same session, instant)
@@ -1086,18 +1086,7 @@ export default function FluktuasiOIPage() {
     loadKeywords();
     loadDbStats();
   }, []);
-
-  // Realtime: debounce refresh so rapid batch imports don’t hammer the API
-  const _fluktuasiDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useRealtimeUpdates(['fluktuasi'], useCallback(() => {
-    if (_fluktuasiDebounce.current) clearTimeout(_fluktuasiDebounce.current);
-    _fluktuasiDebounce.current = setTimeout(() => {
-      loadKeywords();
-      loadDbStats();
-    }, 400);
-  }, [loadKeywords, loadDbStats]));
-
-  // ── Load keywords ──────────────────────────────────────────────────────────
+  // -- Load keywords ----------------------------------------------------------
   const loadKeywords = useCallback(async () => {
     try {
       const res = await fetch('/api/fluktuasi/keywords');
@@ -1112,7 +1101,7 @@ export default function FluktuasiOIPage() {
     }
   }, []);
 
-  // ── Load example keywords ──────────────────────────────────────────────────
+  // -- Load example keywords --------------------------------------------------
   const handleLoadExamples = async () => {
     if (!confirm('Load contoh keywords? (Data existing tidak akan terhapus)')) return;
     try {
@@ -1132,7 +1121,7 @@ export default function FluktuasiOIPage() {
     }
   };
 
-  // ── Check Duplicate Keyword ────────────────────────────────────────────────
+  // -- Check Duplicate Keyword ------------------------------------------------
   const checkDuplicateKeyword = useCallback((keyword: string, type: string, accountCodes: string, excludeId?: number): boolean => {
     const keywordLower = keyword.toLowerCase().trim();
     const acctNorm = (accountCodes ?? '').trim().toLowerCase();
@@ -1144,7 +1133,7 @@ export default function FluktuasiOIPage() {
     );
   }, [keywords]);
 
-  // ── Save/Update Keyword ────────────────────────────────────────────────────
+  // -- Save/Update Keyword ----------------------------------------------------
   const handleSaveKeyword = async (formOverride?: any) => {
     try {
       const formToUse = formOverride || keywordForm;
@@ -1194,7 +1183,7 @@ export default function FluktuasiOIPage() {
     }
   };
 
-  // ── Delete Keyword ─────────────────────────────────────────────────────────
+  // -- Delete Keyword ---------------------------------------------------------
   const handleDeleteKeyword = async (id: number) => {
     if (!confirm('Yakin hapus keyword ini?')) return;
     try {
@@ -1245,7 +1234,7 @@ export default function FluktuasiOIPage() {
     }
   };
 
-  // ── DB Akun Periode helpers ────────────────────────────────────────────────
+  // -- DB Akun Periode helpers ------------------------------------------------
   const PERIODE_MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
   const formatPeriodeLabel = (p: string) => {
     const [yr, mo] = p.split('.');
@@ -1309,6 +1298,16 @@ export default function FluktuasiOIPage() {
     }
   }, []);
 
+  // Realtime: debounce refresh so rapid batch imports don't hammer the API
+  const _fluktuasiDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useRealtimeUpdates(['fluktuasi'], useCallback(() => {
+    if (_fluktuasiDebounce.current) clearTimeout(_fluktuasiDebounce.current);
+    _fluktuasiDebounce.current = setTimeout(() => {
+      loadKeywords();
+      loadDbStats();
+    }, 400);
+  }, [loadKeywords, loadDbStats]));
+
   const loadAndBuildRekapFromDB = async () => {
     setLoadingDbRekap(true);
     try {
@@ -1363,7 +1362,7 @@ export default function FluktuasiOIPage() {
     }
   };
 
-  // ── Open Edit Modal ────────────────────────────────────────────────────────
+  // -- Open Edit Modal --------------------------------------------------------
   const handleEditKeyword = (kw: Keyword) => {
     setEditingKeyword(kw);
     setKeywordForm({ keyword: kw.keyword, type: kw.type, result: kw.result, priority: kw.priority, accountCodes: kw.accountCodes ?? '', sourceColumn: kw.sourceColumn ?? '' });
@@ -1387,7 +1386,7 @@ export default function FluktuasiOIPage() {
     setShowKeywordModal(true);
   };
 
-  // ── Save to database ──────────────────────────────────────────────────
+  // -- Save to database --------------------------------------------------
   const saveToDatabase = async (fname: string, sheets: SheetData[], rekap: RekapSheetData | null) => {
     try {
       // Strip row data before saving — full rows can exceed Vercel's 4.5 MB body limit.
@@ -1412,7 +1411,7 @@ export default function FluktuasiOIPage() {
     }
   };
 
-  // ── Process file ─────────────────────────────────────────────────────────────
+  // -- Process file -------------------------------------------------------------
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1444,7 +1443,7 @@ export default function FluktuasiOIPage() {
         return;
       }
 
-      // ── Process kode akun sheets ──────────────────────────────────────────
+      // -- Process kode akun sheets ------------------------------------------
       const result: SheetData[] = [];
       for (const sheetName of kodeAkunSheets) {
         const ws = workbook.Sheets[sheetName];
@@ -1480,7 +1479,7 @@ export default function FluktuasiOIPage() {
           else { seen[key] = 0; headers.push(key); }
         });
 
-        // ── Column detection: keyword first, then auto-detect from data ──────
+        // -- Column detection: keyword first, then auto-detect from data ------
         let dateColIdx = findColIdx(headers, [
           'Posting Date','Pstng Date','Posting date','Pstng.Date',
           'Document Date','Doc. Date','Doc.Date','DocDate',
@@ -1609,7 +1608,7 @@ export default function FluktuasiOIPage() {
         setTimeout(() => tableResultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
       }
 
-      // ── Aggregate amounts per account per period + save to DB ─────────────
+      // -- Aggregate amounts per account per period + save to DB -------------
       const akunPeriodesFlat: AkunPeriodeRecord[] = [];
       for (const sd of result) {
         const periodeAmtMap    = new Map<string, number>();
@@ -1647,7 +1646,7 @@ export default function FluktuasiOIPage() {
           .then((r) => r.json())
           .then(() => loadDbStats())
           .then(async () => {
-            // ── If no rekap sheet was found in the uploaded file, rebuild the full
+            // -- If no rekap sheet was found in the uploaded file, rebuild the full
             // rekap table from ALL periods stored in DB (current + previous uploads).
             // The initial rekap shown above only covered the current file; this
             // replaces it with the complete multi-period view once the DB save is done.
@@ -1671,7 +1670,7 @@ export default function FluktuasiOIPage() {
           .catch((e) => console.error('Gagal menyimpan akun periodes:', e));
       }
 
-      // ── Build lookup map: accountCode → { klasifikasi[], remark[] } ─────────
+      // -- Build lookup map: accountCode ? { klasifikasi[], remark[] } ---------
       const acctReasonMap: Record<string, { klasifikasi: Set<string>; remark: Set<string> }> = {};
       for (const sd of result) {
         const code = sd.sheetName.trim();
@@ -1686,7 +1685,7 @@ export default function FluktuasiOIPage() {
         acctReasonMap[code] = { klasifikasi: kSet, remark: rSet };
       }
 
-      // ── Process rekap sheet ───────────────────────────────────────────────
+      // -- Process rekap sheet -----------------------------------------------
       let rekapData: RekapSheetData | null = null;
       if (rekapSheetName) {
         const wsR = workbook.Sheets[rekapSheetName];
@@ -1861,21 +1860,21 @@ export default function FluktuasiOIPage() {
         }
       }
 
-      // ── Auto-build rekap from kode akun sheets (when no rekap sheet found) ─
+      // -- Auto-build rekap from kode akun sheets (when no rekap sheet found) -
       if (!rekapSheetName && akunPeriodesFlat.length > 0) {
         const autoRekap = buildRekapFromAkunPeriodes(akunPeriodesFlat);
         rekapData = autoRekap;
         setRekapSheetData(autoRekap);
       }
 
-      // ── Save to database ───────────────────────────────────────────────────
+      // -- Save to database ---------------------------------------------------
       await saveToDatabase(file.name, result, rekapData);
 
-      // ── Save to L1 + L2 cache ───────────────────────────────────────────────────
+      // -- Save to L1 + L2 cache ---------------------------------------------------
       _sheetCache = { sheets: result, rekap: rekapData, fileName: file.name };
       idbSaveSheets(_sheetCache); // fire-and-forget
 
-      // ── Save rows per-account to DB (so other users can view without re-uploading) ─
+      // -- Save rows per-account to DB (so other users can view without re-uploading) -
       for (const sd of result) {
         fetch('/api/fluktuasi/sheet-rows', {
           method: 'POST',
@@ -1901,10 +1900,10 @@ export default function FluktuasiOIPage() {
     }
   };
 
-  // ── Download (via API → ExcelJS with full formatting) ────────────────────────
+  // -- Download (via API ? ExcelJS with full formatting) ------------------------
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // ── Generate AI reason for a rekap row (with auto-retry on 429) ──────────
+  // -- Generate AI reason for a rekap row (with auto-retry on 429) ----------
   const generateReason = async (
     rowIdx: number,
     type: 'mom' | 'yoy' | 'ytd' | 'both',
@@ -1926,7 +1925,7 @@ export default function FluktuasiOIPage() {
         label: ac.dateLabel || ac.label,
         value: row.values[ac.colIdx],
       }));
-      // Extract sub-breakdown (klasifikasi → totalAmount) from matching kode-akun sheet
+      // Extract sub-breakdown (klasifikasi ? totalAmount) from matching kode-akun sheet
       const acctCode = String(row.values[rekapSheetData.accountColIdx] ?? '').trim();
       const matchSheet = sheetDataList.find(s => {
         const code = s.sheetName.trim().match(/^(\d{5,})/)?.[1] ?? s.sheetName.trim();
@@ -2025,7 +2024,7 @@ export default function FluktuasiOIPage() {
     setAiBatch(null);
   };
 
-  // ── AI Chatbot ──────────────────────────────────────────────────────────────
+  // -- AI Chatbot --------------------------------------------------------------
   const openChat = (globalRi: number, row: RekapSheetRow, accountName: string) => {
     if (!rekapSheetData) return;
     const acctCode = String(row.values[rekapSheetData.accountColIdx] ?? '').trim();
@@ -2115,7 +2114,7 @@ export default function FluktuasiOIPage() {
     }
   };
 
-  // ── Derived / memoized values ──────────────────────────────────────────────
+  // -- Derived / memoized values ----------------------------------------------
   const activeSheet = useMemo(() => sheetDataList[activeSheetIdx] ?? null, [sheetDataList, activeSheetIdx]);
 
   // Available columns for col: dropdown — real headers if data loaded, else SAP defaults
@@ -2241,7 +2240,7 @@ export default function FluktuasiOIPage() {
     const yoyPI   = yoySel?.prev ?? rekapSheetData.yoyPrevIdx;
 
     return rekapDisplayRows.map(row => {
-      // ── Always recompute GAP/PCT from effective period indices ──
+      // -- Always recompute GAP/PCT from effective period indices --
       // (do not rely on baked-in values from parse time; those may be wrong
       //  if column auto-detection picked the same index for curr and prev)
       const curr    = ac[momCI]  ? parseNum(row.values[ac[momCI].colIdx])  : 0;
@@ -2255,13 +2254,13 @@ export default function FluktuasiOIPage() {
 
       // Recompute YtD — respect ytdSel if set, else fall back to stored column-index sets
       // Helper: get YtD value for a single amountCols index (colIdx of the target "Up to" period).
-      // If the column is cumulative → use its value directly.
-      // If point-in-time → sum all non-cumulative same-year cols from Jan → mo.
+      // If the column is cumulative ? use its value directly.
+      // If point-in-time ? sum all non-cumulative same-year cols from Jan ? mo.
       const getYtdVal = (targetIdx: number): number => {
         const tAC = ac[targetIdx];
         if (!tAC) return 0;
         if (tAC.isCumulative) return parseNum(row.values[tAC.colIdx]);
-        // Point-in-time: sum Jan → target month within same year
+        // Point-in-time: sum Jan ? target month within same year
         const YTDMM: Record<string, number> = {
           jan:1,feb:2,mar:3,apr:4,mei:5,may:5,jun:6,jul:7,aug:8,agu:8,sep:9,oct:10,okt:10,nov:11,dec:12,des:12,
         };
@@ -2297,7 +2296,7 @@ export default function FluktuasiOIPage() {
 
       let updated: RekapSheetRow = { ...row, gapMoM, pctMoM, gapYoY, pctYoY, gapYtD, pctYtD, ytdCurrV: ytdCurrV, ytdPrevV: ytdPrevV };
 
-      // ── Overlay klasifikasi/remark from live keywords ──
+      // -- Overlay klasifikasi/remark from live keywords --
       if (sheetDataList.length && row.type === 'detail') {
         const acct  = String(row.values[acctIdx] ?? '').trim();
         const entry = acctReasonMapLive[acct];
@@ -2336,7 +2335,7 @@ export default function FluktuasiOIPage() {
     btn?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
   }, [activeSheetIdx]);
 
-  // ── GSAP sheet-tab switch: slide table content in from the side ────────────
+  // -- GSAP sheet-tab switch: slide table content in from the side ------------
   const prevSheetIdxRef = useRef(-1);
   useEffect(() => {
     if (!kaTableRef.current) return;
@@ -2351,7 +2350,7 @@ export default function FluktuasiOIPage() {
     );
   }, [activeSheetIdx]);
 
-  // ── GSAP chat modal entrance (fires whenever chat opens) ─────────────
+  // -- GSAP chat modal entrance (fires whenever chat opens) -------------
   const chatWasOpenRef = useRef(false);
   useEffect(() => {
     if (!chat?.open) { chatWasOpenRef.current = false; return; }
@@ -2373,7 +2372,7 @@ export default function FluktuasiOIPage() {
     }
   }, [chat?.open]);
 
-  // ── GSAP page entrance animation ─────────────────────────────────────────
+  // -- GSAP page entrance animation -----------------------------------------
   useEffect(() => {
     if (!pageContentRef.current) return;
     const cards = pageContentRef.current.querySelectorAll('[data-animate-card]');
@@ -2389,7 +2388,7 @@ export default function FluktuasiOIPage() {
     });
   }, []);
 
-  // ── GSAP keyword rows stagger (fires whenever page/filter changes) ────────
+  // -- GSAP keyword rows stagger (fires whenever page/filter changes) --------
   useEffect(() => {
     if (!keywordBodyRef.current) return;
     const rows = Array.from(keywordBodyRef.current.querySelectorAll('tr.js-kw-row')) as HTMLElement[];
@@ -2405,7 +2404,7 @@ export default function FluktuasiOIPage() {
     }
   }, [keywordPage, keywordFilter, keywordSearch, keywordAkunSearch]);
 
-  // ── GSAP rekap rows fade (fires on page/data change) ─────────────────────
+  // -- GSAP rekap rows fade (fires on page/data change) ---------------------
   // NOTE: stagger removed — with REKAP_PAGE_SIZE=200 a 0.012s stagger means
   // the last row starts 2.4 s after page turn, making the table feel very slow.
   useEffect(() => {
@@ -2423,7 +2422,7 @@ export default function FluktuasiOIPage() {
     }
   }, [rekapPage]);
 
-  // ── Modal entrance: GSAP backdrop + container, anime.js form fields ────────
+  // -- Modal entrance: GSAP backdrop + container, anime.js form fields --------
   useEffect(() => {
     if (!showKeywordModal) return;
 
@@ -2463,7 +2462,7 @@ export default function FluktuasiOIPage() {
     return () => clearTimeout(timer);
   }, [showKeywordModal]);
 
-  // ── GSAP DB stats badges ──────────────────────────────────────────────────
+  // -- GSAP DB stats badges --------------------------------------------------
   useEffect(() => {
     if (!dbStatsRef.current || !dbPeriodeStats) return;
     const badges = Array.from(dbStatsRef.current.querySelectorAll('.js-periode-badge')) as HTMLElement[];
@@ -2474,7 +2473,7 @@ export default function FluktuasiOIPage() {
     );
   }, [dbPeriodeStats]);
 
-  // ── GSAP upload processing overlay ───────────────────────────────────────
+  // -- GSAP upload processing overlay ---------------------------------------
   useEffect(() => {
     const el = document.getElementById('upload-processing-bar');
     if (!el) return;
@@ -2483,7 +2482,7 @@ export default function FluktuasiOIPage() {
     }
   }, [isProcessing]);
 
-  // ── Filtered & sorted keyword list (shared by table body + pagination) ───
+  // -- Filtered & sorted keyword list (shared by table body + pagination) ---
   const filteredKeywords = useMemo(() =>
     keywords
       .filter(kw => keywordFilter === 'all' || kw.type === keywordFilter)
@@ -2500,13 +2499,13 @@ export default function FluktuasiOIPage() {
       .sort((a, b) => b.id - a.id),
   [keywords, keywordFilter, keywordSearch, keywordAkunSearch]);
 
-  // ── Parse natural language preview (avoid re-running on every unrelated render) ──
+  // -- Parse natural language preview (avoid re-running on every unrelated render) --
   const parsedNaturalInput = useMemo(
     () => parseNaturalKeyword(naturalInput),
     [naturalInput],
   );
 
-  // ── Pre-compute template reasons for rekap rows ───────────────────────────
+  // -- Pre-compute template reasons for rekap rows ---------------------------
   // Keyed by index into rekapDisplayRowsLive so AI state changes (aiReasons/
   // aiLoading) don't trigger expensive buildTemplateReason re-runs.
   const rekapTemplateReasons = useMemo(() => {
@@ -2561,13 +2560,13 @@ export default function FluktuasiOIPage() {
       <div className="flex-1 bg-gray-50 lg:ml-64 overflow-x-hidden">
         <Header
           title="Fluktuasi Other Income / Expenses"
-          subtitle="Upload file Excel multi-sheet → sistem tambah kolom GAP MoM, MoM%, Reason MoM, GAP YoY, YoY%, Reason YoY"
+          subtitle="Upload file Excel multi-sheet ? sistem tambah kolom GAP MoM, MoM%, Reason MoM, GAP YoY, YoY%, Reason YoY"
           onMenuClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
         />
 
         <div ref={pageContentRef} className="p-3 sm:p-4 md:p-6 lg:p-8 space-y-4 sm:space-y-6">
 
-          {/* ── Master Keywords Card ───────────────────────────────────────── */}
+          {/* -- Master Keywords Card ----------------------------------------- */}
           <div data-animate-card className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <button
               onClick={() => setShowKeywordSection(v => !v)}
@@ -2771,7 +2770,7 @@ export default function FluktuasiOIPage() {
                         const without = kw.keyword.slice(4);
                         const ci = without.indexOf(':');
                         if (ci < 0) return without;
-                        return without.slice(0, ci) + ' → ' + without.slice(ci + 1);
+                        return without.slice(0, ci) + ' ? ' + without.slice(ci + 1);
                       })();
                       return (
                         <tr key={kw.id} className={`js-kw-row ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors`}>
@@ -2950,7 +2949,7 @@ export default function FluktuasiOIPage() {
             )}
           </div>
 
-          {/* ── Upload Card ──────────────────────────────────────────────── */}
+          {/* -- Upload Card ------------------------------------------------ */}
           <div data-animate-card className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <button
               onClick={() => setShowUploadSection(v => !v)}
@@ -3026,7 +3025,7 @@ export default function FluktuasiOIPage() {
             )}
           </div>
 
-          {/* ── Data Tersimpan (Multi-Periode) ────────────────────────── */}
+          {/* -- Data Tersimpan (Multi-Periode) -------------------------- */}
           <div data-animate-card className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-5 flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -3143,7 +3142,7 @@ export default function FluktuasiOIPage() {
             )}
           </div>
 
-          {/* ── Legend ───────────────────────────────────────────────────── */}
+          {/* -- Legend ----------------------------------------------------- */}
           {(sheetDataList.length > 0 || rekapSheetData) && (
             <div data-animate-card className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-600">
               <span className="flex items-center gap-1.5">
@@ -3169,7 +3168,7 @@ export default function FluktuasiOIPage() {
             </div>
           )}
 
-          {/* ── Kode Akun Tabs + Table ────────────────────────────────────── */}
+          {/* -- Kode Akun Tabs + Table -------------------------------------- */}
           {!hasSheetRows && dbPeriodeStats && !isProcessing && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
               <span className="font-semibold">Data detail tidak tersedia.</span>{' '}
@@ -3282,7 +3281,7 @@ export default function FluktuasiOIPage() {
             </div>
           )}
 
-          {/* ── Rekap Sheet Table ─────────────────────────────────────────── */}
+          {/* -- Rekap Sheet Table ------------------------------------------- */}
           {rekapSheetData && (() => {
             const { accountColIdx, amountCols, momCurrIdx, momPrevIdx, yoyCurrIdx, yoyPrevIdx } = rekapSheetData;
             // Compute effective YtD column indices + display labels for the dynamic YtD value columns
@@ -3320,7 +3319,7 @@ export default function FluktuasiOIPage() {
             const yoyLabel   = yoyPrev?.dateLabel  || yoyPrev?.label  || '';
             const hasData    = (row: RekapSheetRow) => row.values.some(v => v !== '' && v !== null);
 
-            // ── AI reason cell renderer ──────────────────────────────────────
+            // -- AI reason cell renderer --------------------------------------
             const ReasonCell = ({
               ri, globalRi, row, side, baseReason, isSpecial, s,
               descVal, templateReason,
@@ -3399,7 +3398,7 @@ export default function FluktuasiOIPage() {
                                   })}
                                   title="Hapus teks AI, kembalikan ke data sheet"
                                   className="px-1.5 py-0.5 text-[9px] rounded bg-red-50 text-red-500 hover:bg-red-100 whitespace-nowrap">
-                                  ✕ reset
+                                  ? reset
                                 </button>
                               )}
                             </>
@@ -3466,7 +3465,7 @@ export default function FluktuasiOIPage() {
                   )}
                 </div>
 
-                {/* ── Period selector bar ── */}
+                {/* -- Period selector bar -- */}
                 {amountCols.length >= 2 && (() => {
                   const effMC = momSel?.curr ?? momCurrIdx;
                   const effMP = momSel?.prev ?? momPrevIdx;
@@ -3619,7 +3618,7 @@ export default function FluktuasiOIPage() {
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-[11px] border-collapse">
                     <thead>
-                      {/* ── Row 1: year group labels ── */}
+                      {/* -- Row 1: year group labels -- */}
                       <tr>
                         <th className="px-3 py-1 text-white text-[10px] font-bold"
                           style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}></th>
@@ -3667,7 +3666,7 @@ export default function FluktuasiOIPage() {
                         <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>Reason YtD</th>
                       </tr>
-                      {/* ── Row 2: date labels ── */}
+                      {/* -- Row 2: date labels -- */}
                       <tr>
                         <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)' }}>Account</th>
@@ -3733,9 +3732,9 @@ export default function FluktuasiOIPage() {
                         const acctVal    = String(row.values[accountColIdx] ?? '');
                         const descVal    = descColIdx >= 0 ? String(row.values[descColIdx] ?? '') : '';
                         const isCategory = row.type === 'category';
-                        // Subtotal with an account code (e.g. 71400000) → treated like a detail label, no MoM/YoY
+                        // Subtotal with an account code (e.g. 71400000) ? treated like a detail label, no MoM/YoY
                         const isAccountSubtotal = row.type === 'subtotal' && /^\d{5,}$/.test(acctVal);
-                        // Subtotal without account code → section total, show MoM/YoY but no Reason
+                        // Subtotal without account code ? section total, show MoM/YoY but no Reason
                         const isSectionTotal = row.type === 'subtotal' && !(/^\d{5,}$/.test(acctVal));
                         // Whether to hide MoM/YoY entirely (category rows and account-based subtotals)
                         const hideMomYoy = isCategory || isAccountSubtotal;
@@ -3853,7 +3852,7 @@ export default function FluktuasiOIPage() {
         </div>
       </div>
 
-      {/* ── AI Chat Modal ─────────────────────────────────────────────── */}
+      {/* -- AI Chat Modal ----------------------------------------------- */}
       {chat?.open && (
         <div ref={chatBackdropRef} className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setChat(p => p ? { ...p, open: false } : p); }}>
@@ -3878,7 +3877,7 @@ export default function FluktuasiOIPage() {
                 ))}
               </select>
               <button onClick={() => setChat(p => p ? { ...p, open: false } : p)}
-                className="text-white/70 hover:text-white text-xl leading-none px-1 flex-shrink-0">✕</button>
+                className="text-white/70 hover:text-white text-xl leading-none px-1 flex-shrink-0">?</button>
             </div>
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
@@ -3910,11 +3909,11 @@ export default function FluktuasiOIPage() {
                       <div className="flex gap-1 mt-2 pt-2 border-t border-gray-200 flex-wrap">
                         <button onClick={() => setAiReasons(prev => ({ ...prev, [chat.globalRi]: { ...prev[chat.globalRi], mom: msg.content } }))}
                           className="px-2 py-0.5 text-[9px] rounded bg-purple-100 text-purple-700 hover:bg-purple-200 font-medium">
-                          → Reason MoM
+                          ? Reason MoM
                         </button>
                         <button onClick={() => setAiReasons(prev => ({ ...prev, [chat.globalRi]: { ...prev[chat.globalRi], yoy: msg.content } }))}
                           className="px-2 py-0.5 text-[9px] rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200 font-medium">
-                          → Reason YoY
+                          ? Reason YoY
                         </button>
                         <button onClick={() => navigator.clipboard.writeText(msg.content)}
                           className="px-2 py-0.5 text-[9px] rounded bg-gray-200 text-gray-600 hover:bg-gray-300">
@@ -3934,9 +3933,9 @@ export default function FluktuasiOIPage() {
                     style={{ backgroundColor: '#1F3864', color: '#fff' }}>AI</div>
                   <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-2.5">
                     <div className="flex gap-1 items-center">
-                      <span className="animate-bounce text-gray-400 text-base" style={{ animationDelay: '0ms' }}>●</span>
-                      <span className="animate-bounce text-gray-400 text-base" style={{ animationDelay: '160ms' }}>●</span>
-                      <span className="animate-bounce text-gray-400 text-base" style={{ animationDelay: '320ms' }}>●</span>
+                      <span className="animate-bounce text-gray-400 text-base" style={{ animationDelay: '0ms' }}>?</span>
+                      <span className="animate-bounce text-gray-400 text-base" style={{ animationDelay: '160ms' }}>?</span>
+                      <span className="animate-bounce text-gray-400 text-base" style={{ animationDelay: '320ms' }}>?</span>
                     </div>
                   </div>
                 </div>
@@ -3964,14 +3963,14 @@ export default function FluktuasiOIPage() {
               </div>
               <p className="text-[10px] text-gray-400 mt-1.5">
                 Model: <strong>{OPENROUTER_MODELS.find(m => m.id === chat.model)?.label ?? chat.model}</strong>
-                &ensp;·&ensp;Klik "→ Reason MoM/YoY" pada respons AI untuk menyalin ke tabel
+                &ensp;·&ensp;Klik "? Reason MoM/YoY" pada respons AI untuk menyalin ke tabel
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Keyword Modal ─────────────────────────────────────────────────── */}
+      {/* -- Keyword Modal --------------------------------------------------- */}
       {showKeywordModal && (
         <div ref={modalBackdropRef} className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div ref={modalRef} className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
@@ -4020,7 +4019,7 @@ export default function FluktuasiOIPage() {
                   <textarea
                     value={naturalInput}
                     onChange={(e) => setNaturalInput(e.target.value)}
-                    placeholder={'Contoh teks biasa:\nJika ada text "Sindikasi SLL" maka klasifikasi berisi "Sindikasi SLL"\n\nContoh NOT (negatif):\nJika tidak ada kata "K3" atau "SLA" maka klasifikasi berisi "Denda Keterlambatan"\n\nContoh regex (pola tetap):\nJika teks cocok pola "RoU \\d+" maka klasifikasi berisi "RoU Aset"\n\nContoh regex (ekstrak otomatis):\nBy kolom Text, diambil dari kata "RoU" dan nomor aset\n  → hasil otomatis diambil dari Excel, misal: RoU 380000000077\n\nContoh nomor dokumen:\nJika nomor dokumen diawali 18 maka klasifikasi berisi "Tag. Klaim Asuransi"\n\nContoh kolom bebas:\nJika kolom Cost Center diawali 0001 maka klasifikasi berisi "Biaya"\n\nTambah remark / priority 5 sesuai kebutuhan'}
+                    placeholder={'Contoh teks biasa:\nJika ada text "Sindikasi SLL" maka klasifikasi berisi "Sindikasi SLL"\n\nContoh NOT (negatif):\nJika tidak ada kata "K3" atau "SLA" maka klasifikasi berisi "Denda Keterlambatan"\n\nContoh regex (pola tetap):\nJika teks cocok pola "RoU \\d+" maka klasifikasi berisi "RoU Aset"\n\nContoh regex (ekstrak otomatis):\nBy kolom Text, diambil dari kata "RoU" dan nomor aset\n  ? hasil otomatis diambil dari Excel, misal: RoU 380000000077\n\nContoh nomor dokumen:\nJika nomor dokumen diawali 18 maka klasifikasi berisi "Tag. Klaim Asuransi"\n\nContoh kolom bebas:\nJika kolom Cost Center diawali 0001 maka klasifikasi berisi "Biaya"\n\nTambah remark / priority 5 sesuai kebutuhan'}
                     rows={4}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition font-mono text-sm"
                   />
@@ -4030,7 +4029,7 @@ export default function FluktuasiOIPage() {
                       <li>• Teks: jika ada text &quot;X&quot; maka klasifikasi berisi &quot;Y&quot;</li>
                       <li>• NOT: jika tidak ada kata &quot;K3&quot; atau &quot;SLA&quot; maka berisi &quot;Y&quot;</li>
                       <li>• Regex pola: jika teks cocok pola &quot;RoU \d+&quot; maka berisi &quot;RoU Aset&quot;</li>
-                      <li>• Ekstrak otomatis: diambil dari kata &quot;RoU&quot; dan nomor aset → hasil dari Excel</li>
+                      <li>• Ekstrak otomatis: diambil dari kata &quot;RoU&quot; dan nomor aset ? hasil dari Excel</li>
                       <li>• Nomor dok: jika nomor dokumen diawali 18 maka berisi &quot;Y&quot;</li>
                       <li>• Kolom bebas: jika kolom Account diawali 18 maka berisi &quot;Y&quot;</li>
                       <li>• Tambah: remark / priority 10</li>
@@ -4047,7 +4046,7 @@ export default function FluktuasiOIPage() {
                       if (isDuplicate) {
                         return (
                           <div className="mt-3 p-3 bg-red-50 border border-red-300 rounded-lg">
-                            <p className="text-xs font-semibold text-red-800 mb-2">⚠️ Keyword Sudah Ada:</p>
+                            <p className="text-xs font-semibold text-red-800 mb-2">?? Keyword Sudah Ada:</p>
                             <div className="space-y-1 text-xs text-red-700">
                               <div><span className="font-semibold">Keyword:</span> {parsed.keyword}</div>
                               <div><span className="font-semibold">Type:</span> {parsed.type}</div>
@@ -4102,7 +4101,7 @@ export default function FluktuasiOIPage() {
               {/* Advanced Manual Input */}
               {(inputMode === 'advanced' || editingKeyword) && (
                 <>
-                  {/* ── Mode Selector ─────────────────────────────────────── */}
+                  {/* -- Mode Selector --------------------------------------- */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Mode Matching</label>
                     <div className="flex flex-wrap gap-1.5">
@@ -4144,7 +4143,7 @@ export default function FluktuasiOIPage() {
                     </div>
                   </div>
 
-                  {/* ── Keyword / Column Input ────────────────────────────── */}
+                  {/* -- Keyword / Column Input ------------------------------ */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       {kwMode === 'col'    ? 'Kolom & Nilai'
@@ -4155,7 +4154,7 @@ export default function FluktuasiOIPage() {
                     </label>
 
                     {kwMode === 'col' ? (
-                      // ── Col mode: dropdown + pattern input
+                      // -- Col mode: dropdown + pattern input
                       <div className="space-y-2">
                         <div className="flex gap-2">
                           <div className="flex-1">
@@ -4200,7 +4199,7 @@ export default function FluktuasiOIPage() {
                         </div>
                       </div>
                     ) : (
-                      // ── Other modes: single text input
+                      // -- Other modes: single text input
                       <>
                         <div className="relative">
                           {kwMode !== 'normal' && (
@@ -4244,8 +4243,8 @@ export default function FluktuasiOIPage() {
                             <p className="text-xs text-indigo-700 font-semibold mb-1">Regex — cocok terhadap kolom teks (Header Text)</p>
                             <ul className="text-xs text-indigo-600 space-y-0.5">
                               <li>• <code>\d+</code> = satu atau lebih angka &nbsp;|&nbsp; <code>\d&#123;8&#125;</code> = tepat 8 angka</li>
-                              <li>• <code>(RoU \d+)</code> = capture group → gunakan <code>&#123;1&#125;</code> di Result</li>
-                              <li>• Kosongkan Result → otomatis pakai teks yang cocok</li>
+                              <li>• <code>(RoU \d+)</code> = capture group ? gunakan <code>&#123;1&#125;</code> di Result</li>
+                              <li>• Kosongkan Result ? otomatis pakai teks yang cocok</li>
                             </ul>
                           </div>
                         )}
@@ -4253,7 +4252,7 @@ export default function FluktuasiOIPage() {
                           <div className="mt-2 p-2.5 bg-orange-50 border border-orange-200 rounded-lg">
                             <p className="text-xs text-orange-700 font-semibold mb-1">NOT — aktif jika kolom teks TIDAK mengandung kata berikut</p>
                             <ul className="text-xs text-orange-600 space-y-0.5">
-                              <li>• <code>K3</code> → tidak ada &quot;K3&quot; &nbsp;|&nbsp; <code>K3,SLA</code> → tidak ada &quot;K3&quot; DAN tidak ada &quot;SLA&quot;</li>
+                              <li>• <code>K3</code> ? tidak ada &quot;K3&quot; &nbsp;|&nbsp; <code>K3,SLA</code> ? tidak ada &quot;K3&quot; DAN tidak ada &quot;SLA&quot;</li>
                               <li>• Gunakan koma (,) atau pipe (|) sebagai pemisah</li>
                               <li>• Dicek setelah semua keyword positif tidak cocok</li>
                             </ul>
@@ -4263,8 +4262,8 @@ export default function FluktuasiOIPage() {
                           <div className="mt-2 p-2.5 bg-green-50 border border-green-200 rounded-lg">
                             <p className="text-xs text-green-700 font-semibold mb-1">Nomor Dokumen — cocok terhadap kolom Belegnummer / Doc. No.</p>
                             <ul className="text-xs text-green-600 space-y-0.5">
-                              <li>• <code>18</code> → nomor dokumen <strong>diawali</strong> &quot;18&quot; (misal 1800001234)</li>
-                              <li>• <code>regex:^18\d+</code> → gunakan pola regex terhadap nomor dokumen</li>
+                              <li>• <code>18</code> ? nomor dokumen <strong>diawali</strong> &quot;18&quot; (misal 1800001234)</li>
+                              <li>• <code>regex:^18\d+</code> ? gunakan pola regex terhadap nomor dokumen</li>
                             </ul>
                           </div>
                         )}
@@ -4312,19 +4311,19 @@ export default function FluktuasiOIPage() {
                       onChange={(e) => setKeywordForm({ ...keywordForm, result: e.target.value })}
                       placeholder={
                         keywordForm.keyword.toLowerCase().startsWith('regex:') ? '{match} atau teks tetap'
-                        : keywordForm.keyword.toLowerCase().startsWith('col:') ? 'Teks tetap, atau kosongkan → ambil nilai kolom'
+                        : keywordForm.keyword.toLowerCase().startsWith('col:') ? 'Teks tetap, atau kosongkan ? ambil nilai kolom'
                         : 'Contoh: Sindikasi SLL, Beban Bunga'
                       }
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition font-mono text-sm"
                     />
                     {keywordForm.keyword.toLowerCase().startsWith('regex:') ? (
                       <div className="mt-1.5 text-xs text-gray-500 space-y-0.5">
-                        <p>Kosongkan atau tulis <code className="bg-gray-100 px-1 rounded">{'{match}'}</code> → hasil = teks yang ter-extract dari Excel</p>
+                        <p>Kosongkan atau tulis <code className="bg-gray-100 px-1 rounded">{'{match}'}</code> ? hasil = teks yang ter-extract dari Excel</p>
                         <p>Atau tulis teks tetap, misal: <code className="bg-gray-100 px-1 rounded">RoU Aset</code></p>
-                        <p>Dengan capture group: <code className="bg-gray-100 px-1 rounded">{'RoU {1}'}</code> → gunakan hasil grup pertama</p>
+                        <p>Dengan capture group: <code className="bg-gray-100 px-1 rounded">{'RoU {1}'}</code> ? gunakan hasil grup pertama</p>
                       </div>
                     ) : keywordForm.keyword.toLowerCase().startsWith('col:') ? (
-                      <p className="text-xs text-gray-500 mt-1.5">Kosongkan → hasil otomatis diambil dari nilai kolom tersebut. Atau isi teks tetap misal: <code className="bg-gray-100 px-1 rounded">Tag. Klaim Asuransi</code></p>
+                      <p className="text-xs text-gray-500 mt-1.5">Kosongkan ? hasil otomatis diambil dari nilai kolom tersebut. Atau isi teks tetap misal: <code className="bg-gray-100 px-1 rounded">Tag. Klaim Asuransi</code></p>
                     ) : (
                       <p className="text-xs text-gray-500 mt-1.5">Hasil yang akan ditampilkan jika keyword ditemukan</p>
                     )}
