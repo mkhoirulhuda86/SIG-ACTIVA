@@ -144,6 +144,60 @@ export async function checkAccrualAlerts() {
   } catch { /* silent */ }
 }
 
+// ─── Prepaid perlu diamortisasi check ───────────────────────────────────────
+export async function checkPrepaidAlerts() {
+  try {
+    const today = new Date();
+    const bulanMap: { [k: string]: number } = {
+      Jan: 0, Feb: 1, Mar: 2, Apr: 3, Mei: 4, Jun: 5,
+      Jul: 6, Agu: 7, Sep: 8, Okt: 9, Nov: 10, Des: 11,
+    };
+
+    const prepaids = await prisma.prepaid.findMany({
+      select: {
+        vendor: true,
+        kdAkr: true,
+        periodes: {
+          select: {
+            id: true,
+            bulan: true,
+            amountPrepaid: true,
+            isAmortized: true,
+          },
+          take: 50,
+        },
+      },
+      take: 500,
+    });
+
+    const needAmortize: string[] = [];
+
+    prepaids.forEach((prepaid) => {
+      prepaid.periodes.forEach((periode) => {
+        const [bulanName, tahunStr] = periode.bulan.split(' ');
+        const periodeDate = new Date(parseInt(tahunStr), bulanMap[bulanName] ?? 0, 1);
+        if (today >= periodeDate && !periode.isAmortized) {
+          needAmortize.push(prepaid.vendor ?? '');
+        }
+      });
+    });
+
+    if (needAmortize.length === 0) return;
+
+    const id = `prepaid-unamortized-${new Date().toISOString().slice(0, 10)}`;
+    if (!shouldPush(id)) return;
+
+    await sendPushToAll({
+      title: `${needAmortize.length} Prepaid Perlu Diamortisasi`,
+      body: `Termasuk: ${[...new Set(needAmortize)].slice(0, 2).join(', ')}${needAmortize.length > 2 ? ` dan ${needAmortize.length - 2} lainnya` : ''}`,
+      url: '/monitoring-prepaid',
+      priority: 'high',
+    });
+
+    markPushed(id);
+  } catch { /* silent */ }
+}
+
 // ─── Fluktuasi alerts check ──────────────────────────────────────────────────
 export async function checkFluktuasiAlerts() {
   try {
