@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import * as XLSX from 'xlsx';
 import { broadcast } from '@/lib/sse';
+import { sendPushToAll } from '@/lib/webpush';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -325,6 +326,7 @@ export async function POST(request: NextRequest) {
     }
 
     broadcast('prepaid');
+    sendPushToAll({ title: 'Import Prepaid Selesai', body: `${createdCount} data prepaid berhasil diimport`, url: '/monitoring-prepaid', priority: 'medium' }).catch(() => {});
     return NextResponse.json({
       success: true,
       created: createdCount,

@@ -301,3 +301,15 @@ model FluktuasiKeyword {
   @@index([type])
   @@index([keyword])
 }
+
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userId    Int?
+  createdAt DateTime @default(now())
+
+  @@map("push_subscriptions")
+  @@index([userId])
+}

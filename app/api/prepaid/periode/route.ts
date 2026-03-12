@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
+import { sendPushToAll } from '@/lib/webpush';
 
 // PUT - Tandai periode sebagai telah diamortisasi
 export async function PUT(request: NextRequest) {
@@ -70,6 +71,7 @@ export async function PUT(request: NextRequest) {
     }
 
     broadcast('prepaid');
+    sendPushToAll({ title: 'Prepaid Diamortisasi', body: 'Periode prepaid berhasil ditandai sebagai diamortisasi', url: '/monitoring-prepaid', priority: 'medium' }).catch(() => {});
     return NextResponse.json(periode);
   } catch (error) {
     console.error('Error updating periode:', error);

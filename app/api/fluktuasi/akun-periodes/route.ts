@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
+import { sendPushToAll } from '@/lib/webpush';
 
 // ─── GET: Ambil semua account-period records ─────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -89,6 +90,7 @@ export async function POST(req: NextRequest) {
     const success = results.length - failed;
 
     broadcast('fluktuasi');
+    sendPushToAll({ title: 'Data Fluktuasi Diperbarui', body: `${success} record fluktuasi berhasil disimpan`, url: '/fluktuasi-oi', priority: 'medium' }).catch(() => {});
     return NextResponse.json({
       success: true,
       message: `${success} record berhasil disimpan${failed ? `, ${failed} gagal` : ''}`,
@@ -119,6 +121,7 @@ export async function DELETE(req: NextRequest) {
     });
 
     broadcast('fluktuasi');
+    sendPushToAll({ title: 'Data Fluktuasi Dihapus', body: `${deleted.count} record fluktuasi berhasil dihapus`, url: '/fluktuasi-oi', priority: 'low' }).catch(() => {});
     return NextResponse.json({
       success: true,
       message: `${deleted.count} record berhasil dihapus`,

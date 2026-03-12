@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
+import { sendPushToAll } from '@/lib/webpush';
 
 // GET - Fetch all accrual data with periodes and realisasi
 export async function GET(request: NextRequest) {
@@ -220,6 +221,7 @@ export async function POST(request: NextRequest) {
     });
 
     broadcast('accrual');
+    sendPushToAll({ title: 'Accrual Baru Ditambahkan', body: `Data accrual baru berhasil disimpan`, url: '/monitoring-accrual', priority: 'medium' }).catch(() => {});
     return NextResponse.json(accrual, { status: 201 });
   } catch (error) {
     console.error('Error creating accrual:', error);
@@ -253,6 +255,7 @@ export async function DELETE(request: NextRequest) {
         where: { id: { in: ids } },
       });
       broadcast('accrual');
+      sendPushToAll({ title: 'Accrual Dihapus', body: `${result.count} accrual berhasil dihapus`, url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
       return NextResponse.json({
         message: `${result.count} accrual berhasil dihapus`,
         count: result.count,
@@ -273,6 +276,7 @@ export async function DELETE(request: NextRequest) {
     });
 
     broadcast('accrual');
+    sendPushToAll({ title: 'Accrual Dihapus', body: 'Satu entri accrual berhasil dihapus', url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
     return NextResponse.json({ message: 'Accrual deleted successfully' });
   } catch (error) {
     console.error('Error deleting accrual:', error);
@@ -436,6 +440,7 @@ export async function PATCH(request: NextRequest) {
     });
 
     broadcast('accrual');
+    sendPushToAll({ title: 'Accrual Diperbarui', body: 'Data accrual berhasil diperbarui', url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
     return NextResponse.json(accrual);
   } catch (error) {
     console.error('Error updating accrual:', error);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import * as XLSX from 'xlsx';
 import { broadcast } from '@/lib/sse';
+import { sendPushToAll } from '@/lib/webpush';
 
 // Simple XML parser for SpreadsheetML format
 function parseSpreadsheetML(xmlText: string): any[][] {
@@ -430,6 +431,7 @@ export async function POST(request: NextRequest) {
     }
 
     broadcast('accrual');
+    sendPushToAll({ title: 'Import Realisasi Selesai', body: `${successCount} realisasi accrual berhasil diimport`, url: '/monitoring-accrual', priority: 'medium' }).catch(() => {});
     return NextResponse.json({
       message: `Import selesai: ${successCount} berhasil, ${errorCount} error`,
       successCount,

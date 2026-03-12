@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
+import { sendPushToAll } from '@/lib/webpush';
 
 // Helper to transform raw/prisma rows into MaterialData API shape
 function transformRows(data: any[]) {
@@ -211,6 +212,7 @@ export async function POST(request: NextRequest) {
     console.log('Data saved. Import date:', importDate);
 
     broadcast('material');
+    sendPushToAll({ title: 'Import Material Selesai', body: `${records.length} data material berhasil diimport`, url: '/laporan-material', priority: 'medium' }).catch(() => {});
     return NextResponse.json({ 
       success: true, 
       count: records.length,
@@ -239,11 +241,13 @@ export async function DELETE(request: NextRequest) {
         }
       });
       broadcast('material');
+      sendPushToAll({ title: 'Data Material Dihapus', body: `Data material untuk ${importDate} berhasil dihapus`, url: '/laporan-material', priority: 'low' }).catch(() => {});
       return NextResponse.json({ success: true, message: `Deleted data for ${importDate}` });
     } else {
       // Delete all
       await prisma.materialData.deleteMany({});
       broadcast('material');
+      sendPushToAll({ title: 'Semua Data Material Dihapus', body: 'Seluruh data material berhasil dihapus', url: '/laporan-material', priority: 'medium' }).catch(() => {});
       return NextResponse.json({ success: true, message: 'Deleted all data' });
     }
   } catch (error) {

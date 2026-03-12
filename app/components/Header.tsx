@@ -119,6 +119,10 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
 
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 5 * 60 * 1000);
+
+    // Register service worker and subscribe to push notifications
+    registerPushNotifications();
+
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -160,6 +164,19 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
   const handleLogout = () => {
     ['isAuthenticated','username','userName','userRole','userId'].forEach(k => localStorage.removeItem(k));
     window.location.href = '/login';
+  };
+
+  const registerPushNotifications = async () => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    try {
+      const PusherPushNotifications = await import('@pusher/push-notifications-web');
+      const beamsClient = new PusherPushNotifications.Client({
+        instanceId: process.env.NEXT_PUBLIC_BEAMS_INSTANCE_ID!,
+      });
+      await beamsClient.start();
+      await beamsClient.addDeviceInterest('all-users');
+      await beamsClient.addDeviceInterest('hello');
+    } catch (err) { console.error('[Beams]', err); }
   };
 
   useEffect(() => {

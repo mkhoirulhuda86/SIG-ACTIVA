@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
+import { sendPushToAll } from '@/lib/webpush';
 
 const BULAN_MAP: Record<string, number> = {
   'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
@@ -214,6 +215,7 @@ export async function POST(request: NextRequest) {
     });
 
     broadcast('prepaid');
+    sendPushToAll({ title: 'Prepaid Baru Ditambahkan', body: 'Data prepaid baru berhasil disimpan', url: '/monitoring-prepaid', priority: 'medium' }).catch(() => {});
     return NextResponse.json(prepaid, { status: 201 });
   } catch (error) {
     console.error('Error creating prepaid:', error);
@@ -344,8 +346,7 @@ export async function PUT(request: NextRequest) {
       await prisma.prepaidPeriode.createMany({ data: newPeriodes });
     }
 
-    broadcast('prepaid');
-    return NextResponse.json(prepaid);
+    broadcast('prepaid');    sendPushToAll({ title: 'Prepaid Diperbarui', body: 'Data prepaid berhasil diperbarui', url: '/monitoring-prepaid', priority: 'low' }).catch(() => {});    return NextResponse.json(prepaid);
   } catch (error) {
     console.error('Error updating prepaid:', error);
     return NextResponse.json(
@@ -372,6 +373,7 @@ export async function DELETE(request: NextRequest) {
         where: { id: { in: idList } },
       });
       broadcast('prepaid');
+      sendPushToAll({ title: 'Prepaid Dihapus', body: `${result.count} prepaid berhasil dihapus`, url: '/monitoring-prepaid', priority: 'low' }).catch(() => {});
       return NextResponse.json({ message: `${result.count} prepaid berhasil dihapus`, count: result.count });
     }
 
@@ -388,6 +390,7 @@ export async function DELETE(request: NextRequest) {
     });
 
     broadcast('prepaid');
+    sendPushToAll({ title: 'Prepaid Dihapus', body: 'Satu entri prepaid berhasil dihapus', url: '/monitoring-prepaid', priority: 'low' }).catch(() => {});
     return NextResponse.json({ message: 'Prepaid deleted successfully' });
   } catch (error) {
     console.error('Error deleting prepaid:', error);

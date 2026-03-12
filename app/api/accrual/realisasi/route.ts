@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
+import { sendPushToAll } from '@/lib/webpush';
 
 // POST - Add realisasi to a periode
 export async function POST(request: NextRequest) {
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
     });
 
     broadcast('accrual');
+    sendPushToAll({ title: 'Realisasi Ditambahkan', body: 'Realisasi accrual baru berhasil disimpan', url: '/monitoring-accrual', priority: 'medium' }).catch(() => {});
     return NextResponse.json(realisasi, { status: 201 });
   } catch (error) {
     console.error('Error creating realisasi:', error);
@@ -97,6 +99,7 @@ export async function DELETE(request: NextRequest) {
       });
 
       broadcast('accrual');
+      sendPushToAll({ title: 'Realisasi Dihapus', body: `${result.count} realisasi berhasil dihapus`, url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
       return NextResponse.json({
         message: `${result.count} realisasi berhasil dihapus`,
         count: result.count,
@@ -118,6 +121,7 @@ export async function DELETE(request: NextRequest) {
     });
 
     broadcast('accrual');
+    sendPushToAll({ title: 'Realisasi Dihapus', body: 'Satu realisasi berhasil dihapus', url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
     return NextResponse.json({ message: 'Realisasi deleted successfully' });
   } catch (error) {
     console.error('Error deleting realisasi:', error);
@@ -167,6 +171,7 @@ export async function PUT(request: NextRequest) {
     });
 
     broadcast('accrual');
+    sendPushToAll({ title: 'Realisasi Diperbarui', body: 'Data realisasi accrual berhasil diperbarui', url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
     return NextResponse.json(realisasi);
   } catch (error) {
     console.error('Error updating realisasi:', error);
