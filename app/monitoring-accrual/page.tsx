@@ -3440,7 +3440,7 @@ export default function MonitoringAccrualPage() {
                       </th>
                     )}
                     {[
-                      { label: '?',               align: 'center' },
+                      { label: '',                align: 'center' },
                       { label: 'Company Code',     align: 'left' },
                       { label: 'No PO',            align: 'left' },
                       { label: 'Assignment/Order', align: 'left' },
