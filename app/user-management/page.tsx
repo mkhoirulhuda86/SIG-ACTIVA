@@ -149,11 +149,30 @@ export default function UserManagementPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Realtime: debounce to avoid hammering API on rapid events
-  useRealtimeUpdates(['users'], useCallback(() => {
-    if (sseDebounce.current) clearTimeout(sseDebounce.current);
-    sseDebounce.current = setTimeout(() => fetchUsers(), 400);
-  }, []));
+  // Realtime: targeted update — only re-fetch/splice the changed user
+  useRealtimeUpdates(['users'], async (_evt, data) => {
+    const { id, action } = (data ?? {}) as { id?: number; action?: string };
+    if (action === 'delete' && id) {
+      setUsers(prev => prev.filter(u => u.id !== id));
+      return;
+    }
+    if (id) {
+      try {
+        const res = await fetch(`/api/users?id=${id}`);
+        const result = await res.json();
+        if (result.success && result.users?.length) {
+          const updated = result.users[0];
+          setUsers(prev => {
+            const idx = prev.findIndex(u => u.id === updated.id);
+            if (idx >= 0) { const next = [...prev]; next[idx] = updated; return next; }
+            return [updated, ...prev];
+          });
+        }
+      } catch { fetchUsers(); }
+      return;
+    }
+    fetchUsers(); // fallback
+  });
 
   const fetchUsers = useCallback(async () => {
     // Cancel any in-flight request before starting a new one

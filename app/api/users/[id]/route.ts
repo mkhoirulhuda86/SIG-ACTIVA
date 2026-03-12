@@ -125,7 +125,7 @@ export async function PUT(
       },
     });
 
-    broadcast('users');
+    broadcast('users', { id: userId });
     return NextResponse.json({
       success: true,
       user,
@@ -165,7 +165,7 @@ export async function DELETE(
       where: { id: userId },
     });
 
-    broadcast('users');
+    broadcast('users', { id: userId, action: 'delete' });
     return NextResponse.json({
       success: true,
       message: 'User berhasil dihapus',

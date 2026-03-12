@@ -392,7 +392,11 @@ export default function DetailAkunFluktuasiPage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
-  useRealtimeUpdates(['fluktuasi'], loadData);;
+  const _fluktuasiDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useRealtimeUpdates(['fluktuasi'], useCallback(() => {
+    if (_fluktuasiDebounce.current) clearTimeout(_fluktuasiDebounce.current);
+    _fluktuasiDebounce.current = setTimeout(loadData, 400);
+  }, [loadData]));;
 
   // ── GSAP page-entry after data loads ────────────────────────────────────
   useEffect(() => {

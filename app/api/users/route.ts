@@ -6,7 +6,9 @@ import { broadcast } from '@/lib/sse';
 // GET all users
 export async function GET(request: NextRequest) {
   try {
+    const idParam = request.nextUrl.searchParams.get('id');
     const users = await prisma.user.findMany({
+      where: idParam ? { id: parseInt(idParam) } : undefined,
       select: {
         id: true,
         username: true,
@@ -107,7 +109,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    broadcast('users');
+    broadcast('users', { id: user.id });
     return NextResponse.json({
       success: true,
       user,

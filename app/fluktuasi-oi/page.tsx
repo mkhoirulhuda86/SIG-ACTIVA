@@ -1087,11 +1087,15 @@ export default function FluktuasiOIPage() {
     loadDbStats();
   }, []);
 
-  // Realtime: refresh keywords & rekap DB saat user lain update data fluktuasi
-  useRealtimeUpdates(['fluktuasi'], () => {
-    loadKeywords();
-    loadDbStats();
-  });
+  // Realtime: debounce refresh so rapid batch imports don’t hammer the API
+  const _fluktuasiDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useRealtimeUpdates(['fluktuasi'], useCallback(() => {
+    if (_fluktuasiDebounce.current) clearTimeout(_fluktuasiDebounce.current);
+    _fluktuasiDebounce.current = setTimeout(() => {
+      loadKeywords();
+      loadDbStats();
+    }, 400);
+  }, [loadKeywords, loadDbStats]));
 
   // ── Load keywords ──────────────────────────────────────────────────────────
   const loadKeywords = useCallback(async () => {

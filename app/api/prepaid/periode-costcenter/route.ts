@@ -45,7 +45,11 @@ export async function POST(request: NextRequest) {
 
     await recalcPeriodeAmount(parseInt(prepaidPeriodeId));
 
-    broadcast('prepaid');
+    const periodeRef1 = await prisma.prepaidPeriode.findUnique({
+      where: { id: parseInt(prepaidPeriodeId) },
+      select: { prepaidId: true },
+    });
+    broadcast('prepaid', periodeRef1?.prepaidId ? { id: periodeRef1.prepaidId } : {});
     return NextResponse.json(entry, { status: 201 });
   } catch (error) {
     console.error('Error creating prepaid cost center entry:', error);
@@ -75,7 +79,11 @@ export async function PUT(request: NextRequest) {
 
     await recalcPeriodeAmount(entry.prepaidPeriodeId);
 
-    broadcast('prepaid');
+    const periodeRef2 = await prisma.prepaidPeriode.findUnique({
+      where: { id: entry.prepaidPeriodeId },
+      select: { prepaidId: true },
+    });
+    broadcast('prepaid', periodeRef2?.prepaidId ? { id: periodeRef2.prepaidId } : {});
     return NextResponse.json(entry);
   } catch (error) {
     console.error('Error updating prepaid cost center entry:', error);
@@ -106,9 +114,16 @@ export async function DELETE(request: NextRequest) {
         where: { id: { in: ids } },
       });
 
-      if (first) await recalcPeriodeAmount(first.prepaidPeriodeId);
-
-      broadcast('prepaid');
+      if (first) {
+        await recalcPeriodeAmount(first.prepaidPeriodeId);
+        const periodeRef3 = await prisma.prepaidPeriode.findUnique({
+          where: { id: first.prepaidPeriodeId },
+          select: { prepaidId: true },
+        });
+        broadcast('prepaid', periodeRef3?.prepaidId ? { id: periodeRef3.prepaidId } : {});
+      } else {
+        broadcast('prepaid');
+      }
       return NextResponse.json({ message: `${result.count} entries deleted`, count: result.count });
     }
 
@@ -120,7 +135,11 @@ export async function DELETE(request: NextRequest) {
 
     await recalcPeriodeAmount(entry.prepaidPeriodeId);
 
-    broadcast('prepaid');
+    const periodeRef4 = await prisma.prepaidPeriode.findUnique({
+      where: { id: entry.prepaidPeriodeId },
+      select: { prepaidId: true },
+    });
+    broadcast('prepaid', periodeRef4?.prepaidId ? { id: periodeRef4.prepaidId } : {});
     return NextResponse.json({ message: 'Entry deleted' });
   } catch (error) {
     console.error('Error deleting prepaid cost center entry:', error);

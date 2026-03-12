@@ -615,7 +615,11 @@ export default function OverviewFluktuasiPage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
-  useRealtimeUpdates(['fluktuasi'], loadData);;
+  const _fluktuasiDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useRealtimeUpdates(['fluktuasi'], useCallback(() => {
+    if (_fluktuasiDebounce.current) clearTimeout(_fluktuasiDebounce.current);
+    _fluktuasiDebounce.current = setTimeout(loadData, 400);
+  }, [loadData]));;
 
   // ── Derived data — SINGLE PASS over records ───────────────────────────────
   // Replaces the previous 4 separate loops (years, allKlasifikasi, allAccounts, byYear)

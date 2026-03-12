@@ -47,6 +47,7 @@ export async function GET(request: NextRequest) {
     // ── Main list – periodes fetched server-side for calculation only, NOT sent to client ──
     let whereClause: any = {};
     if (type && type !== 'All') whereClause.type = type;
+    if (singleId) whereClause.id = parseInt(singleId); // targeted single-item fetch
 
     const today      = new Date();
     const todayFirst = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -214,7 +215,7 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    broadcast('prepaid');
+    broadcast('prepaid', { id: prepaid.id });
     sendPushToAll({ title: 'Prepaid Baru Ditambahkan', body: 'Data prepaid baru berhasil disimpan', url: '/monitoring-prepaid', priority: 'medium' }).catch(() => {});
     return NextResponse.json(prepaid, { status: 201 });
   } catch (error) {
@@ -346,7 +347,7 @@ export async function PUT(request: NextRequest) {
       await prisma.prepaidPeriode.createMany({ data: newPeriodes });
     }
 
-    broadcast('prepaid');    sendPushToAll({ title: 'Prepaid Diperbarui', body: 'Data prepaid berhasil diperbarui', url: '/monitoring-prepaid', priority: 'low' }).catch(() => {});    return NextResponse.json(prepaid);
+    broadcast('prepaid', { id: prepaidId });    sendPushToAll({ title: 'Prepaid Diperbarui', body: 'Data prepaid berhasil diperbarui', url: '/monitoring-prepaid', priority: 'low' }).catch(() => {});    return NextResponse.json(prepaid);
   } catch (error) {
     console.error('Error updating prepaid:', error);
     return NextResponse.json(
@@ -372,7 +373,7 @@ export async function DELETE(request: NextRequest) {
       const result = await prisma.prepaid.deleteMany({
         where: { id: { in: idList } },
       });
-      broadcast('prepaid');
+      broadcast('prepaid', { ids: idList, action: 'delete' });
       sendPushToAll({ title: 'Prepaid Dihapus', body: `${result.count} prepaid berhasil dihapus`, url: '/monitoring-prepaid', priority: 'low' }).catch(() => {});
       return NextResponse.json({ message: `${result.count} prepaid berhasil dihapus`, count: result.count });
     }
@@ -389,7 +390,7 @@ export async function DELETE(request: NextRequest) {
       where: { id: parseInt(id) }
     });
 
-    broadcast('prepaid');
+    broadcast('prepaid', { id: parseInt(id), action: 'delete' });
     sendPushToAll({ title: 'Prepaid Dihapus', body: 'Satu entri prepaid berhasil dihapus', url: '/monitoring-prepaid', priority: 'low' }).catch(() => {});
     return NextResponse.json({ message: 'Prepaid deleted successfully' });
   } catch (error) {

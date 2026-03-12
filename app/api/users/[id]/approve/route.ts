@@ -40,7 +40,7 @@ export async function PUT(
       },
     });
 
-    broadcast('users');
+    broadcast('users', { id: userId });
     return NextResponse.json({
       success: true,
       user,

@@ -209,8 +209,31 @@ export default function MonitoringPrepaidPage() {
     }
   }, []);
 
-  // Realtime: refresh when another user adds/updates/deletes prepaid
-  useRealtimeUpdates(['prepaid'], () => { fetchPrepaidData(true); });
+  // Realtime: targeted update — only re-fetch/splice the changed item
+  useRealtimeUpdates(['prepaid'], async (_evt, data) => {
+    const { id, ids, action } = (data ?? {}) as { id?: number; ids?: number[]; action?: string };
+    if (action === 'delete') {
+      if (ids?.length) setPrepaidData(prev => prev.filter(p => !ids.includes(p.id)));
+      else if (id) setPrepaidData(prev => prev.filter(p => p.id !== id));
+      return;
+    }
+    if (id) {
+      try {
+        const res = await fetch(`/api/prepaid?id=${id}`);
+        if (!res.ok) throw new Error('Failed');
+        const records = await res.json();
+        if (!records?.length) return;
+        const updated = records[0];
+        setPrepaidData(prev => {
+          const idx = prev.findIndex(p => p.id === updated.id);
+          if (idx >= 0) { const next = [...prev]; next[idx] = updated; return next; }
+          return [...prev, updated];
+        });
+      } catch { fetchPrepaidData(true); }
+      return;
+    }
+    fetchPrepaidData(true); // fallback for bulk import
+  });
 
   // ─── Page entrance animation (runs once data finishes loading) ──────────────
   useEffect(() => {

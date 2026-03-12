@@ -70,7 +70,7 @@ export async function PUT(request: NextRequest) {
       });
     }
 
-    broadcast('prepaid');
+    broadcast('prepaid', { id: periode.prepaidId });
     sendPushToAll({ title: 'Prepaid Diamortisasi', body: 'Periode prepaid berhasil ditandai sebagai diamortisasi', url: '/monitoring-prepaid', priority: 'medium' }).catch(() => {});
     return NextResponse.json(periode);
   } catch (error) {
