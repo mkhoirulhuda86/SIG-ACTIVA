@@ -1,37 +1,61 @@
-import Pusher from 'pusher-js';
+import Pusher, { Channel } from 'pusher-js';
 import { useEffect, useRef } from 'react';
 
 type Handler = (event: string) => void;
 
+// ─── Singleton Pusher instance shared across all hook usages per tab ──────────
+let _pusherClient: Pusher | null = null;
+let _channel: Channel | null = null;
+let _refCount = 0;
+
+function getSharedChannel(): Channel {
+  if (!_pusherClient) {
+    _pusherClient = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
+      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+    });
+  }
+  if (!_channel) {
+    _channel = _pusherClient.subscribe('sig-activa');
+  }
+  _refCount++;
+  return _channel;
+}
+
+function releaseSharedChannel() {
+  _refCount--;
+  if (_refCount <= 0 && _pusherClient) {
+    _pusherClient.unsubscribe('sig-activa');
+    _pusherClient.disconnect();
+    _pusherClient = null;
+    _channel = null;
+    _refCount = 0;
+  }
+}
+
 /**
  * Subscribe to real-time events via Pusher Channels.
- * Calls `onUpdate(eventName)` immediately whenever a matching event is received.
- * No persistent server connections — uses Pusher's WebSocket infrastructure.
- *
- * @param events   Pusher event names to listen to, e.g. ['accrual', 'prepaid']
- * @param onUpdate callback invoked with the event name on each incoming event
+ * Uses a shared singleton connection — multiple callers share one WebSocket.
  */
 export function useRealtimeUpdates(events: string[], onUpdate: Handler) {
   const onUpdateRef = useRef<Handler>(onUpdate);
   onUpdateRef.current = onUpdate;
 
   useEffect(() => {
-    const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
-      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
-    });
-
-    const channel = pusher.subscribe('sig-activa');
+    const channel = getSharedChannel();
+    // unique handler per hook instance so unbind works correctly
+    const handlers: Record<string, () => void> = {};
 
     for (const name of events) {
-      channel.bind(name, () => {
-        onUpdateRef.current(name);
-      });
+      const handler = () => onUpdateRef.current(name);
+      handlers[name] = handler;
+      channel.bind(name, handler);
     }
 
     return () => {
-      channel.unbind_all();
-      pusher.unsubscribe('sig-activa');
-      pusher.disconnect();
+      for (const [name, handler] of Object.entries(handlers)) {
+        channel.unbind(name, handler);
+      }
+      releaseSharedChannel();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
