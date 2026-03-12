@@ -331,7 +331,6 @@ export default function MonitoringPrepaidPage() {
       'Start Date',
       'Finish Date',
       'Periode',
-      'Total Prepaid',
       'Total Amortisasi',
       'Saldo'
     ];
@@ -366,7 +365,6 @@ export default function MonitoringPrepaidPage() {
       { width: 12 },  // Start Date
       { width: 12 },  // Finish Date
       { width: 10 },  // Periode
-      { width: 15 },  // Total Prepaid
       { width: 15 },  // Total Amortisasi
       { width: 15 }   // Saldo
     ];
@@ -402,15 +400,13 @@ export default function MonitoringPrepaidPage() {
       row.getCell(9).value = startDateStr;
       row.getCell(10).value = finishDateStr;
       row.getCell(11).value = `${item.period} ${item.periodUnit}`;
-      row.getCell(12).value = item.totalAmount;
+      row.getCell(12).value = totalAmortized;
       row.getCell(12).numFmt = '#,##0.0';
-      row.getCell(13).value = totalAmortized;
+      row.getCell(13).value = saldo;
       row.getCell(13).numFmt = '#,##0.0';
-      row.getCell(14).value = saldo;
-      row.getCell(14).numFmt = '#,##0.0';
       
       // Apply borders and styling
-      for (let col = 1; col <= 14; col++) {
+      for (let col = 1; col <= 13; col++) {
         const cell = row.getCell(col);
         cell.border = {
           top: { style: 'thin' },
@@ -1100,7 +1096,7 @@ export default function MonitoringPrepaidPage() {
                         'Company', 'No PO', 'Assignment/Order', 'Cost Center',
                         'Kd Akun Prepaid', 'Kd Akun Biaya', 'Deskripsi', 'Header Text', 'Klasifikasi',
                         'Amount', 'Start', 'Finish', 'Periode',
-                        'Total Prepaid', 'Total Amortisasi', 'Saldo', 'Aksi'
+                        'Total Amortisasi', 'Saldo', 'Aksi'
                       ].map(h => (
                         <th key={h} className="px-3 py-3 whitespace-nowrap"
                           style={{
@@ -1165,10 +1161,6 @@ export default function MonitoringPrepaidPage() {
                             <td className="px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{startDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                             <td className="px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{finishDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                             <td className="px-3 py-2.5 text-center text-xs text-slate-700">{item.period} {item.periodUnit}</td>
-                            <td className="px-3 py-2.5 text-right font-semibold text-xs whitespace-nowrap font-mono"
-                              style={{ color: sign === -1 ? '#dc2626' : undefined }}>
-                              {formatCurrency(Math.abs(item.totalAmount) * sign)}
-                            </td>
                             <td className="px-3 py-2.5 text-right font-semibold text-xs text-slate-800 whitespace-nowrap font-mono">{formatCurrency(totalAmortisasi * sign)}</td>
                             <td className="px-3 py-2.5 text-right font-semibold text-xs whitespace-nowrap font-mono"
                               style={{ color: saldo * sign > 0 ? '#16a34a' : saldo * sign < 0 ? '#dc2626' : '#64748b' }}>
