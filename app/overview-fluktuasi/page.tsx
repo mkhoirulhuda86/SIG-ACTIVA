@@ -21,7 +21,7 @@ function PageSkeleton({ isMobileSidebarOpen, setMobileSidebar }: { isMobileSideb
     gsap.fromTo(cards, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.07, ease: 'power3.out' });
   }, []);
   return (
-    <div className="flex min-h-screen bg-[#f0f4fa]">
+    <div className="flex h-screen bg-[#f0f4fa] overflow-hidden">
       <div className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <Sidebar onClose={() => setMobileSidebar(false)} />
       </div>
@@ -33,7 +33,7 @@ function PageSkeleton({ isMobileSidebarOpen, setMobileSidebar }: { isMobileSideb
             <Skeleton key={i} className="h-10 w-20 rounded-md" />
           ))}
         </div>
-        <div ref={skeletonRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+        <div ref={skeletonRef} className="flex-1 overflow-hidden p-3 space-y-3">
           {/* Row 1 skeleton */}
           <div className="grid gap-3 grid-cols-1 lg:grid-cols-[minmax(240px,280px)_1fr_minmax(200px,220px)]">
             <div className="sk-card flex flex-col gap-3">
@@ -220,6 +220,8 @@ const FRAME_DEFS: FrameDef[] = [
   },
 ];
 
+const TOP_ACCOUNTS_PER_FRAME = 5;
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function OverviewFluktuasiPage() {
   const [records, setRecords]                   = useState<ParsedRecord[]>([]);
@@ -342,13 +344,18 @@ export default function OverviewFluktuasiPage() {
     }
 
     const frames = frameMaps.map(frame => {
-      const rows = [...frame.allAccounts].map(accountCode => ({
+      const allRows = [...frame.allAccounts].map(accountCode => ({
         accountCode,
         name: ACCOUNT_NAMES[accountCode] ?? accountCode,
         prev: frame.mapB.get(accountCode) ?? 0,
         curr: frame.mapA.get(accountCode) ?? 0,
       }));
-      rows.sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)));
+
+      const rows = allRows
+        .filter(row => row.prev !== 0 || row.curr !== 0)
+        .sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)))
+        .slice(0, TOP_ACCOUNTS_PER_FRAME);
+
       return {
         key: frame.key,
         title: frame.title,
@@ -382,7 +389,7 @@ export default function OverviewFluktuasiPage() {
 
   // ── Empty ──────────────────────────────────────────────────────────────────
   if (records.length === 0) return (
-    <div className="flex min-h-screen bg-[#f0f4fa]">
+    <div className="flex h-screen bg-[#f0f4fa] overflow-hidden">
       <div className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <Sidebar onClose={() => setMobileSidebar(false)} />
       </div>
@@ -403,7 +410,7 @@ export default function OverviewFluktuasiPage() {
 
   // ── Full Dashboard ─────────────────────────────────────────────────────────
   return (
-    <div className="flex min-h-screen bg-[#f0f4fa]">
+    <div className="flex h-screen bg-[#f0f4fa] overflow-hidden">
       {isMobileSidebarOpen && (
         <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setMobileSidebar(false)} />
       )}
@@ -421,7 +428,7 @@ export default function OverviewFluktuasiPage() {
         />
 
         {/* Content */}
-        <div ref={contentRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+        <div ref={contentRef} className="flex-1 overflow-hidden p-3 space-y-3">
 
           {/* 4 Frames: masing-masing 1 histogram gabungan */}
           <Card className="shadow-sm border-0 bg-white">
@@ -470,17 +477,17 @@ export default function OverviewFluktuasiPage() {
                       {frame.rows.length === 0 ? (
                         <p className="text-xs text-slate-400 text-center py-10">Tidak ada data akun pada periode ini</p>
                       ) : (
-                        <div className="overflow-x-auto">
-                          <div className="h-[300px]" style={{ minWidth: Math.max(frame.rows.length * 68, 620) }}>
+                        <div>
+                          <div className="h-[220px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
                               <BarChart data={frame.rows} margin={{ top: 12, right: 12, left: 0, bottom: 70 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                 <XAxis
                                   dataKey="accountCode"
                                   interval={0}
-                                  angle={-30}
+                                  angle={0}
                                   textAnchor="end"
-                                  height={74}
+                                  height={44}
                                   tick={{ fontSize: 10, fill: '#64748b' }}
                                 />
                                 <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={fmtCompact} />
