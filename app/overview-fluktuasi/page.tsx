@@ -158,6 +158,43 @@ const PALETTE = [
   '#4f46e5','#e11d48',
 ];
 
+const EXCLUDED_OVERVIEW_ACCOUNT_CODES = new Set([
+  '71510000', // BEBAN BUNGA PINJAMAN
+  '71400000', // PENDAPATAN KLAIM
+  '71560000', // BEBAN LAIN-LAIN
+  '71300000', // PENDAPATAN BUNGA
+  '71600000', // LABA (RUGI) SELISIH KURS
+]);
+
+type FrameDef = {
+  key: 'beban-bunga' | 'pendapatan-lain' | 'pendapatan-bunga' | 'selisih-kurs';
+  title: string;
+  match: (accountCode: string) => boolean;
+};
+
+const FRAME_DEFS: FrameDef[] = [
+  {
+    key: 'beban-bunga',
+    title: 'Beban Bunga',
+    match: (accountCode: string) => accountCode.startsWith('7151'),
+  },
+  {
+    key: 'pendapatan-lain',
+    title: 'Pendapatan Lain-Lain',
+    match: (accountCode: string) => accountCode.startsWith('714') || accountCode.startsWith('7156'),
+  },
+  {
+    key: 'pendapatan-bunga',
+    title: 'Pendapatan Bunga',
+    match: (accountCode: string) => accountCode.startsWith('713'),
+  },
+  {
+    key: 'selisih-kurs',
+    title: 'Laba (Rugi) Selisih Kurs',
+    match: (accountCode: string) => accountCode.startsWith('716'),
+  },
+];
+
 // ─── Semi-circular gauge ──────────────────────────────────────────────────────
 function SemiGauge({
   value, max, label, amount, color, animDelay = 0,
@@ -517,6 +554,59 @@ function YearCompRow({
   );
 }
 
+function AccountFrameCard({
+  title,
+  rows,
+  maxVal,
+  tagA,
+  tagB,
+}: {
+  title: string;
+  rows: { accountCode: string; prev: number; curr: number }[];
+  maxVal: number;
+  tagA: string;
+  tagB: string;
+}) {
+  const totalPrev = rows.reduce((s, r) => s + r.prev, 0);
+  const totalCurr = rows.reduce((s, r) => s + r.curr, 0);
+  const delta = totalCurr - totalPrev;
+
+  return (
+    <Card className="anim-card shadow-sm hover:shadow-md transition-shadow duration-300 border-0 bg-white">
+      <CardHeader className="p-3 pb-1">
+        <CardTitle className="text-xs font-semibold uppercase tracking-wide text-red-600">{title}</CardTitle>
+        <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-2 py-1">
+          <span className="text-[10px] text-slate-500">{tagB}: <strong className="text-slate-700 font-mono">{fmtCompact(totalPrev)}</strong></span>
+          <span className="text-[10px] text-slate-500">{tagA}: <strong className="text-slate-700 font-mono">{fmtCompact(totalCurr)}</strong></span>
+          <span className="text-[10px] font-mono font-bold" style={{ color: delta >= 0 ? '#16a34a' : '#dc2626' }}>
+            {delta >= 0 ? '▲' : '▼'} {fmtCompact(Math.abs(delta))}
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent className="p-3 pt-2">
+        <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+          {rows.length === 0 && (
+            <p className="text-xs text-slate-400 text-center py-6">Tidak ada data akun pada periode ini</p>
+          )}
+          {rows.map((row, i) => (
+            <YearCompRow
+              key={row.accountCode}
+              label={row.accountCode}
+              v2025={row.prev}
+              v2026={row.curr}
+              maxVal={maxVal}
+              rank={i + 1}
+              animDelay={i * 30}
+              tagA={tagA}
+              tagB={tagB}
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Animated Aging Chart ─────────────────────────────────────────────────────
 function AnimatedAgingChart({ buckets, maxAbsB, bColors, VW, slot, bw, BAR_MAX, BASE_Y }:
   { buckets: {label:string;value:number}[]; maxAbsB:number; bColors:string[]; VW:number; slot:number; bw:number; BAR_MAX:number; BASE_Y:number }) {
@@ -865,6 +955,100 @@ export default function OverviewFluktuasiPage() {
     return { rows, displayRows, maxVal, totalA, totalB, labelA, labelB, tagA, tagB };
   }, [records, compMode, compPeriode, filterKlasifikasi, filterAccount]);
 
+  const accountFramesByMode = useMemo(() => {
+    if (!compPeriode) {
+      return {
+        frames: FRAME_DEFS.map(frame => ({ ...frame, rows: [] as { accountCode: string; prev: number; curr: number }[], maxVal: 1 })),
+        labelA: '',
+        labelB: '',
+        tagA: 'A',
+        tagB: 'B',
+      };
+    }
+
+    const [yearStr, monStr] = compPeriode.split('.');
+    const yearA = parseInt(yearStr);
+    const monA = parseInt(monStr);
+
+    let periodesA: Set<string>;
+    let periodesB: Set<string>;
+    let labelA: string;
+    let labelB: string;
+    let tagA: string;
+    let tagB: string;
+
+    if (compMode === 'mom') {
+      const prevMon = monA === 1 ? 12 : monA - 1;
+      const prevYear = monA === 1 ? yearA - 1 : yearA;
+      const periodeB = `${prevYear}.${String(prevMon).padStart(2, '0')}`;
+      periodesA = new Set([compPeriode]);
+      periodesB = new Set([periodeB]);
+      labelA = periodeToLabel(compPeriode);
+      labelB = periodeToLabel(periodeB);
+      tagA = MONTHS_ID[monA - 1];
+      tagB = MONTHS_ID[prevMon - 1];
+    } else if (compMode === 'yoy') {
+      const periodeB = `${yearA - 1}.${monStr}`;
+      periodesA = new Set([compPeriode]);
+      periodesB = new Set([periodeB]);
+      labelA = periodeToLabel(compPeriode);
+      labelB = periodeToLabel(periodeB);
+      tagA = String(yearA).slice(-2);
+      tagB = String(yearA - 1).slice(-2);
+    } else {
+      periodesA = new Set<string>();
+      periodesB = new Set<string>();
+      for (let m = 1; m <= monA; m++) {
+        periodesA.add(`${yearA}.${String(m).padStart(2, '0')}`);
+        periodesB.add(`${yearA - 1}.${String(m).padStart(2, '0')}`);
+      }
+      labelA = `YTD ${yearA}`;
+      labelB = `YTD ${yearA - 1}`;
+      tagA = String(yearA).slice(-2);
+      tagB = String(yearA - 1).slice(-2);
+    }
+
+    const frameMaps = FRAME_DEFS.map(frame => ({
+      ...frame,
+      mapA: new Map<string, number>(),
+      mapB: new Map<string, number>(),
+    }));
+
+    for (const r of records) {
+      if (EXCLUDED_OVERVIEW_ACCOUNT_CODES.has(r.accountCode)) continue;
+      if (filterKlasifikasi.size > 0 && !r.klasifikasiParts.some(k => filterKlasifikasi.has(k))) continue;
+      if (filterAccount.size > 0 && !filterAccount.has(r.accountCode)) continue;
+
+      const frame = frameMaps.find(f => f.match(r.accountCode));
+      if (!frame) continue;
+
+      if (periodesA.has(r.periode)) {
+        frame.mapA.set(r.accountCode, (frame.mapA.get(r.accountCode) ?? 0) + r.amount);
+      } else if (periodesB.has(r.periode)) {
+        frame.mapB.set(r.accountCode, (frame.mapB.get(r.accountCode) ?? 0) + r.amount);
+      }
+    }
+
+    const frames = frameMaps.map(frame => {
+      const keys = new Set([...frame.mapA.keys(), ...frame.mapB.keys()]);
+      const rows = [...keys].map(accountCode => ({
+        accountCode,
+        prev: frame.mapB.get(accountCode) ?? 0,
+        curr: frame.mapA.get(accountCode) ?? 0,
+      }));
+      rows.sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)));
+      const maxVal = Math.max(...rows.flatMap(r => [Math.abs(r.prev), Math.abs(r.curr)]), 1);
+      return {
+        key: frame.key,
+        title: frame.title,
+        rows,
+        maxVal,
+      };
+    });
+
+    return { frames, labelA, labelB, tagA, tagB };
+  }, [records, compMode, compPeriode, filterKlasifikasi, filterAccount]);
+
   // Paginated listing (cheap slice — not in the large memo)
   const listingTotalPages = Math.ceil(listingRows.length / LIST_PAGE_SIZE);
   const listingPage = useMemo(
@@ -1033,6 +1217,58 @@ export default function OverviewFluktuasiPage() {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
+
+          {/* 4 Frames: Perbandingan kode akun sesuai kelompok utama */}
+          <Card className="shadow-sm border-0 bg-white">
+            <CardHeader className="p-3 pb-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                  <Activity size={12} className="text-red-500" /> OVERVIEW 4 FRAME KODE AKUN
+                </CardTitle>
+                <div className="flex gap-1 ml-auto">
+                  {(['mom', 'yoy', 'ytd'] as const).map(m => (
+                    <button
+                      key={m}
+                      onClick={() => setCompMode(m)}
+                      className="px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all duration-200 hover:scale-105 active:scale-95"
+                      style={{ backgroundColor: compMode === m ? '#dc2626' : '#f1f5f9', color: compMode === m ? 'white' : '#64748b' }}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[9px]">
+                <span className="text-slate-400 font-semibold uppercase">Periode:</span>
+                <select
+                  value={compPeriode}
+                  onChange={e => setCompPeriodeRaw(e.target.value)}
+                  className="text-[9px] font-mono font-semibold border border-slate-200 rounded px-1.5 py-0.5 bg-slate-50 text-slate-700 focus:outline-none focus:border-blue-400 transition-colors"
+                >
+                  {allPeriodes.map(p => (
+                    <option key={p} value={p}>{periodeToLabel(p)}</option>
+                  ))}
+                </select>
+                <span className="text-slate-400 ml-auto">
+                  Basis: <strong className="text-slate-600">{accountFramesByMode.labelB}</strong> vs <strong className="text-slate-600">{accountFramesByMode.labelA}</strong>
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className="p-3 pt-2">
+              <div className="grid gap-3 grid-cols-1 xl:grid-cols-2">
+                {accountFramesByMode.frames.map(frame => (
+                  <AccountFrameCard
+                    key={frame.key}
+                    title={frame.title}
+                    rows={frame.rows}
+                    maxVal={frame.maxVal}
+                    tagA={accountFramesByMode.tagA}
+                    tagB={accountFramesByMode.tagB}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Row 1 */}
           <div ref={row1Ref} className="grid gap-3 grid-cols-1 lg:grid-cols-[minmax(240px,280px)_1fr_minmax(200px,220px)]">
