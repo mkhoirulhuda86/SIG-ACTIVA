@@ -156,8 +156,19 @@ async function recalcPeriodeAmount(accrualPeriodeId: number) {
   });
 
   const newAmount = agg._sum.amount ?? 0;
-  await prisma.accrualPeriode.update({
+  const updatedPeriode = await prisma.accrualPeriode.update({
     where: { id: accrualPeriodeId },
     data: { amountAccrual: newAmount },
+    select: { accrualId: true },
+  });
+
+  // Keep parent totalAmount in sync with all periode amounts
+  const totalAgg = await prisma.accrualPeriode.aggregate({
+    where: { accrualId: updatedPeriode.accrualId },
+    _sum: { amountAccrual: true },
+  });
+  await prisma.accrual.update({
+    where: { id: updatedPeriode.accrualId },
+    data: { totalAmount: Math.abs(totalAgg._sum.amountAccrual ?? 0) },
   });
 }
