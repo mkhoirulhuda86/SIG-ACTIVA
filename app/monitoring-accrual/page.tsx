@@ -271,7 +271,7 @@ export default function MonitoringAccrualPage() {
     periodeId: number;
     item: Accrual;
     periode: AccrualPeriode;
-    rect: { top: number; right: number };
+    rect: { top: number; right: number; flipUp?: boolean; buttonTop?: number };
   } | null>(null);
   // Dialog header/line text untuk jurnal realisasi
   const [showJurnalHeaderModal, setShowJurnalHeaderModal] = useState(false);
@@ -3855,7 +3855,9 @@ export default function MonitoringAccrualPage() {
                                                 if (openPeriodeJurnalDropdown?.periodeId === periode.id) {
                                                   setOpenPeriodeJurnalDropdown(null);
                                                 } else {
-                                                  setOpenPeriodeJurnalDropdown({ periodeId: periode.id, item, periode, rect: { top: rect.bottom, right: window.innerWidth - rect.right } });
+                                                  const dropdownH = 130;
+                                                  const flipUp = rect.bottom + dropdownH > window.innerHeight;
+                                                  setOpenPeriodeJurnalDropdown({ periodeId: periode.id, item, periode, rect: { top: rect.bottom, right: window.innerWidth - rect.right, flipUp, buttonTop: rect.top } });
                                                 }
                                               }}
                                               className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded transition-colors flex items-center gap-1"
@@ -5541,7 +5543,9 @@ export default function MonitoringAccrualPage() {
           <div className="fixed inset-0 z-[9998]" onClick={() => setOpenPeriodeJurnalDropdown(null)} />
           <div
             className="fixed z-[9999] bg-white border border-gray-200 rounded-xl shadow-2xl"
-            style={{ top: openPeriodeJurnalDropdown.rect.top + 4, right: openPeriodeJurnalDropdown.rect.right, minWidth: 180 }}
+            style={openPeriodeJurnalDropdown.rect.flipUp
+              ? { bottom: window.innerHeight - (openPeriodeJurnalDropdown.rect.buttonTop ?? openPeriodeJurnalDropdown.rect.top) + 4, right: openPeriodeJurnalDropdown.rect.right, minWidth: 180 }
+              : { top: openPeriodeJurnalDropdown.rect.top + 4, right: openPeriodeJurnalDropdown.rect.right, minWidth: 180 }}
           >
             <div className="p-2">
               <p className="text-[10px] font-semibold text-gray-400 px-1 mb-1.5">Accrual · {openPeriodeJurnalDropdown.periode.bulan}</p>
