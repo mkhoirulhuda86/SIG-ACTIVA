@@ -5,6 +5,7 @@ import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import dynamic from 'next/dynamic';
 import { Activity, TrendingUp } from 'lucide-react';
 import { gsap } from 'gsap';
+import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Skeleton } from '../components/ui/skeleton';
 
@@ -182,7 +183,6 @@ const ACCOUNT_NAMES: Record<string, string> = {
 
 type FrameDef = {
   key: 'beban-bunga' | 'pendapatan-lain' | 'pendapatan-bunga' | 'selisih-kurs';
-  title: string;
   accounts: string[];
   match: (accountCode: string) => boolean;
 };
@@ -190,166 +190,25 @@ type FrameDef = {
 const FRAME_DEFS: FrameDef[] = [
   {
     key: 'beban-bunga',
-    title: 'Beban Bunga',
     accounts: ['71510001','71510002','71510003','71510004','71510005','71510098','71510099'],
     match: (accountCode: string) => accountCode.startsWith('7151'),
   },
   {
     key: 'pendapatan-lain',
-    title: 'Pendapatan Lain-Lain',
     accounts: ['71410001','71410009','71421001','71421002','71421009','71430001','71430002','71440001','71460001','71460002','71460009','71560001'],
     match: (accountCode: string) => accountCode.startsWith('714') || accountCode.startsWith('7156'),
   },
   {
     key: 'pendapatan-bunga',
-    title: 'Pendapatan Bunga',
     accounts: ['71310001','71310002','71320001','71320002'],
     match: (accountCode: string) => accountCode.startsWith('713'),
   },
   {
     key: 'selisih-kurs',
-    title: 'Laba (Rugi) Selisih Kurs',
     accounts: ['71610001','71610002','71620001','71620002','71620004'],
     match: (accountCode: string) => accountCode.startsWith('716'),
   },
 ];
-
-
-// ─── Year Comparison Row (2025 vs 2026) ──────────────────────────────────────
-function YearCompRow({
-  label, v2025, v2026, maxVal, rank, animDelay = 0, tagA = '26', tagB = '25',
-}: { label: string; v2025: number; v2026: number; maxVal: number; rank: number; animDelay?: number; tagA?: string; tagB?: string }) {
-  const bar25Ref = useRef<HTMLDivElement>(null);
-  const bar26Ref = useRef<HTMLDivElement>(null);
-  const rowRef   = useRef<HTMLDivElement>(null);
-  const mountedRef = useRef(false);
-
-  const pct25 = maxVal > 0 ? (Math.abs(v2025) / maxVal) * 100 : 0;
-  const pct26 = maxVal > 0 ? (Math.abs(v2026) / maxVal) * 100 : 0;
-  const delta = v2026 - v2025;
-  const deltaDir = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
-  const deltaPct = v2025 !== 0 ? (delta / Math.abs(v2025)) * 100 : null;
-
-  useEffect(() => {
-    if (mountedRef.current || !rowRef.current || !bar25Ref.current || !bar26Ref.current) return;
-    mountedRef.current = true;
-    gsap.fromTo(rowRef.current, { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.45, delay: animDelay / 1000, ease: 'power3.out' });
-    gsap.fromTo(bar25Ref.current, { height: '0%' }, { height: `${pct25}%`, duration: 0.9, delay: animDelay / 1000 + 0.1, ease: 'power3.out' });
-    gsap.fromTo(bar26Ref.current, { height: '0%' }, { height: `${pct26}%`, duration: 0.9, delay: animDelay / 1000 + 0.2, ease: 'power3.out' });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (!mountedRef.current || !bar25Ref.current || !bar26Ref.current) return;
-    gsap.to(bar25Ref.current, { height: `${pct25}%`, duration: 0.5, ease: 'power2.out' });
-    gsap.to(bar26Ref.current, { height: `${pct26}%`, duration: 0.5, ease: 'power2.out' });
-  }, [pct25, pct26]);
-
-  return (
-    <div ref={rowRef} className="rounded-lg border border-slate-100 bg-slate-50/60 px-2 py-2">
-      <div className="flex items-center gap-1.5">
-        <span className="text-[9px] w-4 text-right flex-shrink-0 text-slate-400">{rank}.</span>
-        <span className="text-[10px] font-semibold text-slate-700 flex-1 min-w-0 truncate" title={label}>
-          {label}
-        </span>
-        <span
-          className="text-[9px] font-mono font-bold flex-shrink-0 px-1 rounded"
-          style={{
-            color: deltaDir === 'up' ? '#16a34a' : deltaDir === 'down' ? '#dc2626' : '#94a3b8',
-            backgroundColor: deltaDir === 'up' ? '#f0fdf4' : deltaDir === 'down' ? '#fef2f2' : '#f8fafc',
-          }}
-        >
-          {deltaDir === 'up' ? '▲' : deltaDir === 'down' ? '▼' : '─'}{' '}
-          {fmtCompact(Math.abs(delta))}
-          {deltaPct !== null && <span className="text-[8px] opacity-70 ml-0.5">({Math.abs(deltaPct).toFixed(0)}%)</span>}
-        </span>
-      </div>
-
-      <div className="mt-1.5 flex items-end justify-center gap-4 rounded-md border border-slate-100 bg-white p-2">
-        <div className="flex flex-col items-center gap-1" style={{ width: 72 }}>
-          <span className="text-[8px] text-slate-500 font-semibold">{tagB}</span>
-          <div className="h-20 w-8 rounded bg-slate-100 relative flex items-end overflow-hidden">
-            <div
-              ref={bar25Ref}
-              className="w-full rounded-t"
-              style={{ height: '0%', backgroundColor: '#2563eb', opacity: 0.82 }}
-            />
-          </div>
-          <span className="text-[8.5px] font-semibold text-slate-700 text-center leading-tight">
-            {v2025 !== 0 ? fmtCompact(v2025) : '—'}
-          </span>
-        </div>
-
-        <div className="flex flex-col items-center gap-1" style={{ width: 72 }}>
-          <span className="text-[8px] text-slate-500 font-semibold">{tagA}</span>
-          <div className="h-20 w-8 rounded bg-slate-100 relative flex items-end overflow-hidden">
-            <div
-              ref={bar26Ref}
-              className="w-full rounded-t"
-              style={{ height: '0%', backgroundColor: '#16a34a', opacity: 0.82 }}
-            />
-          </div>
-          <span className="text-[8.5px] font-semibold text-slate-700 text-center leading-tight">
-            {v2026 !== 0 ? fmtCompact(v2026) : '—'}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AccountFrameCard({
-  title,
-  rows,
-  maxVal,
-  tagA,
-  tagB,
-}: {
-  title: string;
-  rows: { accountCode: string; prev: number; curr: number }[];
-  maxVal: number;
-  tagA: string;
-  tagB: string;
-}) {
-  const totalPrev = rows.reduce((s, r) => s + r.prev, 0);
-  const totalCurr = rows.reduce((s, r) => s + r.curr, 0);
-  const delta = totalCurr - totalPrev;
-
-  return (
-    <Card className="anim-card shadow-sm hover:shadow-md transition-shadow duration-300 border-0 bg-white">
-      <CardHeader className="p-3 pb-1">
-        <CardTitle className="text-xs font-semibold uppercase tracking-wide text-red-600">{title}</CardTitle>
-        <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-2 py-1">
-          <span className="text-[10px] text-slate-500">{tagB}: <strong className="text-slate-700 font-mono">{fmtCompact(totalPrev)}</strong></span>
-          <span className="text-[10px] text-slate-500">{tagA}: <strong className="text-slate-700 font-mono">{fmtCompact(totalCurr)}</strong></span>
-          <span className="text-[10px] font-mono font-bold" style={{ color: delta >= 0 ? '#16a34a' : '#dc2626' }}>
-            {delta >= 0 ? '▲' : '▼'} {fmtCompact(Math.abs(delta))}
-          </span>
-        </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-2">
-        <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
-          {rows.length === 0 && (
-            <p className="text-xs text-slate-400 text-center py-6">Tidak ada data akun pada periode ini</p>
-          )}
-          {rows.map((row, i) => (
-            <YearCompRow
-              key={row.accountCode}
-              label={ACCOUNT_NAMES[row.accountCode] ?? row.accountCode}
-              v2025={row.prev}
-              v2026={row.curr}
-              maxVal={maxVal}
-              rank={i + 1}
-              animDelay={i * 30}
-              tagA={tagA}
-              tagB={tagB}
-            />
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function OverviewFluktuasiPage() {
@@ -394,10 +253,10 @@ export default function OverviewFluktuasiPage() {
 
   const compPeriode = compPeriodeRaw || (allPeriodes.length > 0 ? allPeriodes[allPeriodes.length - 1] : '');
 
-  const accountFramesByMode = useMemo(() => {
+  const histogramByMode = useMemo(() => {
     if (!compPeriode) {
       return {
-        frames: FRAME_DEFS.map(frame => ({ ...frame, rows: [] as { accountCode: string; prev: number; curr: number }[], maxVal: 1 })),
+        rows: [] as { accountCode: string; name: string; prev: number; curr: number }[],
         labelA: '',
         labelB: '',
         tagA: 'A',
@@ -447,45 +306,33 @@ export default function OverviewFluktuasiPage() {
       tagB = String(yearA - 1).slice(-2);
     }
 
-    const frameMaps = FRAME_DEFS.map(frame => ({
-      ...frame,
-      mapA: new Map<string, number>(),
-      mapB: new Map<string, number>(),
-      // Pre-seed with the static account list so all accounts always appear
-      allAccounts: new Set<string>(frame.accounts),
-    }));
+    const mapA = new Map<string, number>();
+    const mapB = new Map<string, number>();
+    const allAccounts = new Set<string>(FRAME_DEFS.flatMap(frame => frame.accounts));
 
     for (const r of records) {
       if (EXCLUDED_OVERVIEW_ACCOUNT_CODES.has(r.accountCode)) continue;
-      const frame = frameMaps.find(f => f.match(r.accountCode));
-      if (!frame) continue;
+      const isIncluded = FRAME_DEFS.some(frame => frame.match(r.accountCode));
+      if (!isIncluded) continue;
 
-      frame.allAccounts.add(r.accountCode);
+      allAccounts.add(r.accountCode);
 
       if (periodesA.has(r.periode)) {
-        frame.mapA.set(r.accountCode, (frame.mapA.get(r.accountCode) ?? 0) + r.amount);
+        mapA.set(r.accountCode, (mapA.get(r.accountCode) ?? 0) + r.amount);
       } else if (periodesB.has(r.periode)) {
-        frame.mapB.set(r.accountCode, (frame.mapB.get(r.accountCode) ?? 0) + r.amount);
+        mapB.set(r.accountCode, (mapB.get(r.accountCode) ?? 0) + r.amount);
       }
     }
 
-    const frames = frameMaps.map(frame => {
-      const rows = [...frame.allAccounts].map(accountCode => ({
-        accountCode,
-        prev: frame.mapB.get(accountCode) ?? 0,
-        curr: frame.mapA.get(accountCode) ?? 0,
-      }));
-      rows.sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)));
-      const maxVal = Math.max(...rows.flatMap(r => [Math.abs(r.prev), Math.abs(r.curr)]), 1);
-      return {
-        key: frame.key,
-        title: frame.title,
-        rows,
-        maxVal,
-      };
-    });
+    const rows = [...allAccounts].map(accountCode => ({
+      accountCode,
+      name: ACCOUNT_NAMES[accountCode] ?? accountCode,
+      prev: mapB.get(accountCode) ?? 0,
+      curr: mapA.get(accountCode) ?? 0,
+    }));
+    rows.sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)));
 
-    return { frames, labelA, labelB, tagA, tagB };
+    return { rows, labelA, labelB, tagA, tagB };
   }, [records, compMode, compPeriode]);
 
   // ── Refs for GSAP page animations ─────────────────────────────────────────
@@ -552,12 +399,12 @@ export default function OverviewFluktuasiPage() {
         {/* Content */}
         <div ref={contentRef} className="flex-1 overflow-y-auto p-3 space-y-3">
 
-          {/* 4 Frames: Perbandingan kode akun sesuai kelompok utama */}
+          {/* Histogram Gabungan: seluruh akun dalam satu grafik */}
           <Card className="shadow-sm border-0 bg-white">
             <CardHeader className="p-3 pb-1">
               <div className="flex flex-wrap items-center gap-2">
                 <CardTitle className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
-                  <Activity size={12} className="text-red-500" /> OVERVIEW 4 FRAME KODE AKUN
+                  <Activity size={12} className="text-red-500" /> HISTOGRAM GABUNGAN SELURUH AKUN
                 </CardTitle>
                 <div className="flex gap-1 ml-auto">
                   {(['mom', 'yoy', 'ytd'] as const).map(m => (
@@ -584,22 +431,44 @@ export default function OverviewFluktuasiPage() {
                   ))}
                 </select>
                 <span className="text-slate-400 ml-auto">
-                  Basis: <strong className="text-slate-600">{accountFramesByMode.labelB}</strong> vs <strong className="text-slate-600">{accountFramesByMode.labelA}</strong>
+                  Basis: <strong className="text-slate-600">{histogramByMode.labelB}</strong> vs <strong className="text-slate-600">{histogramByMode.labelA}</strong>
                 </span>
               </div>
             </CardHeader>
             <CardContent className="p-3 pt-2">
-              <div className="grid gap-3 grid-cols-1 lg:grid-cols-2">
-                {accountFramesByMode.frames.map(frame => (
-                  <AccountFrameCard
-                    key={frame.key}
-                    title={frame.title}
-                    rows={frame.rows}
-                    maxVal={frame.maxVal}
-                    tagA={accountFramesByMode.tagA}
-                    tagB={accountFramesByMode.tagB}
-                  />
-                ))}
+              <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-2">
+                {histogramByMode.rows.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-10">Tidak ada data akun pada periode ini</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <div className="h-[430px]" style={{ minWidth: Math.max(histogramByMode.rows.length * 72, 900) }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={histogramByMode.rows} margin={{ top: 12, right: 12, left: 0, bottom: 76 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis
+                            dataKey="accountCode"
+                            interval={0}
+                            angle={-35}
+                            textAnchor="end"
+                            height={80}
+                            tick={{ fontSize: 10, fill: '#64748b' }}
+                          />
+                          <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={fmtCompact} />
+                          <Tooltip
+                            formatter={(value) => {
+                              const normalized = typeof value === 'number' ? value : Number(value ?? 0);
+                              return fmtCompact(Number.isFinite(normalized) ? normalized : 0);
+                            }}
+                            labelFormatter={(accountCode: string) => `${accountCode} - ${ACCOUNT_NAMES[accountCode] ?? accountCode}`}
+                          />
+                          <Legend />
+                          <Bar dataKey="prev" name={histogramByMode.labelB || histogramByMode.tagB} fill="#2563eb" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="curr" name={histogramByMode.labelA || histogramByMode.tagA} fill="#16a34a" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
