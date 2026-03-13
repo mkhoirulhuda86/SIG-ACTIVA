@@ -27,7 +27,7 @@ function PageSkeleton({ isMobileSidebarOpen, setMobileSidebar }: { isMobileSideb
       </div>
       <div className="flex-1 lg:ml-64 flex flex-col">
         <Header title="Overview Fluktuasi OI/EXP" subtitle="Memuat data…" onMenuClick={() => setMobileSidebar(true)} />
-        <div ref={skeletonRef} className="flex-1 overflow-hidden p-3 space-y-3">
+        <div ref={skeletonRef} className="flex-1 overflow-hidden p-2 space-y-2">
           <Card className="sk-card shadow-sm border border-blue-100 bg-[#eef5ff]">
             <div className="p-3 pb-1">
               <div className="flex items-center gap-2">
@@ -49,17 +49,17 @@ function PageSkeleton({ isMobileSidebarOpen, setMobileSidebar }: { isMobileSideb
                 <Skeleton className="h-3 w-20" />
               </div>
 
-              <div className="grid gap-3 grid-cols-1 lg:grid-cols-2">
+              <div className="grid gap-2 grid-cols-1 lg:grid-cols-2">
                 {[...Array(4)].map((_, i) => (
                   <Card key={i} className="border border-slate-200 shadow-sm bg-white">
                     <div className="p-3 pb-1">
                       <Skeleton className="h-3 w-28" />
                     </div>
                     <div className="p-2.5 pt-1.5 space-y-1.5">
-                      <Skeleton className="h-[180px] w-full rounded-md" />
-                      <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-1.5">
+                      <Skeleton className="h-[120px] w-full rounded-md" />
+                      <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-1">
                         <Skeleton className="h-3 w-20 mb-1" />
-                        <Skeleton className="h-3 w-full" />
+                        <Skeleton className="h-3 w-2/3" />
                       </div>
                     </div>
                   </Card>
@@ -137,38 +137,36 @@ const compactReason = (reason: string, maxLen = 80): string => {
 };
 
 const summarizeFrameReason = (
-  rows: { accountCode: string; prev: number; curr: number; reason: string }[],
+  rows: { klasifikasi: string; prev: number; curr: number; reason: string }[],
+  frameTitle: string,
   mode: 'mom' | 'yoy' | 'ytd',
   labelA: string,
   labelB: string,
 ): string => {
   if (rows.length === 0) return '-';
 
-  const movers = rows
-    .map((row) => ({ ...row, delta: row.curr - row.prev }))
-    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
-
-  const top = movers[0];
-  if (!top || top.delta === 0) {
+  const movers = rows.map((row) => ({ ...row, delta: row.curr - row.prev }));
+  const nonZero = movers.filter((m) => m.delta !== 0);
+  if (nonZero.length === 0) {
     return `Tidak ada perubahan ${mode.toUpperCase()} yang signifikan pada frame ini.`;
   }
 
-  const naik = movers.find(m => m.delta > 0);
-  const turun = movers.find(m => m.delta < 0);
+  const topNaik = nonZero
+    .filter((m) => m.delta > 0)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
+  const topTurun = nonZero
+    .filter((m) => m.delta < 0)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
+  const netDelta = nonZero.reduce((s, m) => s + m.delta, 0);
+  const netDir = netDelta >= 0 ? 'naik' : 'turun';
 
-  const dirTop = top.delta > 0 ? 'kenaikan' : 'penurunan';
-  let summary = `${mode.toUpperCase()}: ${dirTop} dominan pada akun ${top.accountCode} sebesar ${fmtCompact(Math.abs(top.delta))} (${labelB} -> ${labelA}).`;
+  let summary = `${mode.toUpperCase()}: ${frameTitle} ${netDir} ${fmtCompact(Math.abs(netDelta))}.`;
 
-  if (naik && turun) {
-    summary += ` Pendorong naik: ${naik.accountCode} (${fmtCompact(Math.abs(naik.delta))}); penekan utama: ${turun.accountCode} (${fmtCompact(Math.abs(turun.delta))}).`;
+  if (topNaik) {
+    summary += ` Naik terbesar: ${topNaik.klasifikasi} ${fmtCompact(Math.abs(topNaik.delta))}.`;
   }
-
-  const reasonCandidate = movers
-    .flatMap(m => String(m.reason || '').split(';').map(s => s.trim()).filter(Boolean))
-    .find(r => r.length >= 14 && r.trim().split(/\s+/).length >= 3);
-
-  if (reasonCandidate) {
-    summary += ` Faktor utama: ${compactReason(reasonCandidate, 85)}.`;
+  if (topTurun) {
+    summary += ` Turun terbesar: ${topTurun.klasifikasi} ${fmtCompact(Math.abs(topTurun.delta))}.`;
   }
 
   return summary;
@@ -252,7 +250,7 @@ const FRAME_DEFS: FrameDef[] = [
   },
 ];
 
-const TOP_ACCOUNTS_PER_FRAME = 5;
+const TOP_CLASSIFICATIONS_PER_FRAME = 5;
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function OverviewFluktuasiPage() {
@@ -306,7 +304,7 @@ export default function OverviewFluktuasiPage() {
         frames: FRAME_DEFS.map(frame => ({
           key: frame.key,
           title: frame.title,
-          rows: [] as { accountCode: string; name: string; prev: number; curr: number; reason: string }[],
+          rows: [] as { klasifikasi: string; prev: number; curr: number; reason: string }[],
           frameReason: '-',
         })),
         labelA: '',
@@ -364,6 +362,7 @@ export default function OverviewFluktuasiPage() {
       mapB: new Map<string, number>(),
       allAccounts: new Set<string>(frame.accounts),
       reasons: new Map<string, Set<string>>(),
+      axisKlasifikasi: new Map<string, string>(),
     }));
 
     for (const r of records) {
@@ -381,6 +380,13 @@ export default function OverviewFluktuasiPage() {
         frame.reasons.set(r.accountCode, set);
       }
 
+      // X-axis classification should consistently use klasifikasi source.
+      // In imported data this is represented by reasonMoM.
+      if (!frame.axisKlasifikasi.has(r.accountCode)) {
+        const klasifikasi = String(r.reasonMoM || '').split(';').map(s => s.trim()).find(Boolean);
+        if (klasifikasi) frame.axisKlasifikasi.set(r.accountCode, klasifikasi);
+      }
+
       if (periodesA.has(r.periode)) {
         frame.mapA.set(r.accountCode, (frame.mapA.get(r.accountCode) ?? 0) + r.amount);
       } else if (periodesB.has(r.periode)) {
@@ -389,24 +395,37 @@ export default function OverviewFluktuasiPage() {
     }
 
     const frames = frameMaps.map(frame => {
-      const allRows = [...frame.allAccounts].map(accountCode => ({
-        accountCode,
-        name: ACCOUNT_NAMES[accountCode] ?? accountCode,
-        prev: frame.mapB.get(accountCode) ?? 0,
-        curr: frame.mapA.get(accountCode) ?? 0,
-        reason: [...(frame.reasons.get(accountCode) ?? new Set<string>())].join('; '),
-      }));
+      const klasifikasiMap = new Map<string, { prev: number; curr: number; reasons: Set<string> }>();
 
-      const rows = allRows
+      for (const accountCode of frame.allAccounts) {
+        const klasifikasi = frame.axisKlasifikasi.get(accountCode) ?? ACCOUNT_NAMES[accountCode] ?? accountCode;
+        const prev = frame.mapB.get(accountCode) ?? 0;
+        const curr = frame.mapA.get(accountCode) ?? 0;
+        const reasonSet = frame.reasons.get(accountCode) ?? new Set<string>();
+
+        const existing = klasifikasiMap.get(klasifikasi) ?? { prev: 0, curr: 0, reasons: new Set<string>() };
+        existing.prev += prev;
+        existing.curr += curr;
+        for (const reason of reasonSet) existing.reasons.add(reason);
+        klasifikasiMap.set(klasifikasi, existing);
+      }
+
+      const rows = [...klasifikasiMap.entries()]
+        .map(([klasifikasi, v]) => ({
+          klasifikasi,
+          prev: v.prev,
+          curr: v.curr,
+          reason: [...v.reasons].join('; '),
+        }))
         .filter(row => row.prev !== 0 || row.curr !== 0)
         .sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)))
-        .slice(0, TOP_ACCOUNTS_PER_FRAME);
+        .slice(0, TOP_CLASSIFICATIONS_PER_FRAME);
 
       return {
         key: frame.key,
         title: frame.title,
         rows,
-        frameReason: summarizeFrameReason(rows, compMode, labelA, labelB),
+        frameReason: summarizeFrameReason(rows, frame.title, compMode, labelA, labelB),
       };
     });
 
@@ -475,11 +494,11 @@ export default function OverviewFluktuasiPage() {
         />
 
         {/* Content */}
-        <div ref={contentRef} className="flex-1 overflow-hidden p-3 space-y-3 bg-white">
+        <div ref={contentRef} className="flex-1 overflow-hidden p-1.5 space-y-1.5 bg-white">
 
           {/* 4 Frames: masing-masing 1 histogram gabungan */}
-          <Card className="shadow-sm border border-blue-100 bg-[#eef5ff]">
-            <CardHeader className="p-3 pb-1">
+          <Card className="shadow-sm border border-blue-100 bg-[#eef5ff] h-full flex flex-col">
+            <CardHeader className="p-1.5 pb-1">
               <div className="flex flex-wrap items-center gap-2">
                 <CardTitle className="text-xs font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
                   <Activity size={12} className="text-red-500" /> OVERVIEW 4 FRAME KODE AKUN
@@ -513,8 +532,8 @@ export default function OverviewFluktuasiPage() {
                 </span>
               </div>
             </CardHeader>
-            <CardContent className="p-3 pt-2">
-              <div className="mb-2 flex items-center justify-end gap-3 text-[10px] font-semibold text-slate-700">
+            <CardContent className="p-1.5 pt-1 flex-1 min-h-0 flex flex-col">
+              <div className="mb-0.5 flex items-center justify-end gap-3 text-[10px] font-semibold text-slate-700">
                 <div className="flex items-center gap-1.5">
                   <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#2563eb]" />
                   <span>{accountFramesByMode.labelB || accountFramesByMode.tagB}</span>
@@ -524,28 +543,29 @@ export default function OverviewFluktuasiPage() {
                   <span>{accountFramesByMode.labelA || accountFramesByMode.tagA}</span>
                 </div>
               </div>
-              <div className="grid gap-3 grid-cols-1 lg:grid-cols-2">
+              <div className="grid gap-1.5 grid-cols-1 lg:grid-cols-2 flex-1 min-h-0">
                 {accountFramesByMode.frames.map(frame => (
-                  <Card key={frame.key} className="anim-card border border-slate-200 shadow-sm bg-white">
-                    <CardHeader className="p-3 pb-1">
+                  <Card key={frame.key} className="anim-card border border-slate-200 shadow-sm bg-white flex flex-col min-h-0">
+                    <CardHeader className="p-1.5 pb-0.5">
                       <CardTitle className="text-xs font-semibold uppercase tracking-wide text-red-600">{frame.title}</CardTitle>
                     </CardHeader>
-                    <CardContent className="p-2.5 pt-1.5">
+                    <CardContent className="p-1.5 pt-0 flex-1 min-h-0">
                       {frame.rows.length === 0 ? (
                         <p className="text-xs text-slate-400 text-center py-10">Tidak ada data akun pada periode ini</p>
                       ) : (
-                        <div className="space-y-1.5">
-                          <div className="h-[180px] w-full">
+                        <div className="h-full flex flex-col gap-0.5">
+                          <div className="flex-1 min-h-[120px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
                               <BarChart data={frame.rows} margin={{ top: 8, right: 8, left: 0, bottom: 22 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                 <XAxis
-                                  dataKey="accountCode"
+                                  dataKey="klasifikasi"
                                   interval={0}
-                                  angle={0}
-                                  textAnchor="middle"
-                                  height={28}
-                                  tick={{ fontSize: 9, fill: '#64748b' }}
+                                  angle={-18}
+                                  textAnchor="end"
+                                  height={42}
+                                  tick={{ fontSize: 8, fill: '#64748b' }}
+                                  tickFormatter={(v: string) => (v.length > 22 ? `${v.slice(0, 22)}...` : v)}
                                 />
                                 <YAxis width={34} tick={{ fontSize: 9, fill: '#64748b' }} tickFormatter={fmtCompact} />
                                 <Tooltip
@@ -553,7 +573,7 @@ export default function OverviewFluktuasiPage() {
                                     const normalized = typeof value === 'number' ? value : Number(value ?? 0);
                                     return fmtCompact(Number.isFinite(normalized) ? normalized : 0);
                                   }}
-                                  labelFormatter={(accountCode: string) => `${accountCode} - ${ACCOUNT_NAMES[accountCode] ?? accountCode}`}
+                                  labelFormatter={(klasifikasi: string) => klasifikasi}
                                 />
                                 <Bar dataKey="prev" name={accountFramesByMode.labelB || accountFramesByMode.tagB} fill="#2563eb" radius={[4, 4, 0, 0]} />
                                 <Bar dataKey="curr" name={accountFramesByMode.labelA || accountFramesByMode.tagA} fill="#16a34a" radius={[4, 4, 0, 0]} />
@@ -561,9 +581,17 @@ export default function OverviewFluktuasiPage() {
                             </ResponsiveContainer>
                           </div>
 
-                          <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-1.5">
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Reason Singkat</p>
-                            <p className="text-[10px] leading-4 text-slate-600">{frame.frameReason}</p>
+                          <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-0.5 flex-none">
+                            <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 mb-0.5">Reason Singkat</p>
+                            <p
+                              className="text-[9px] leading-3.5 text-slate-600"
+                              style={{
+                                maxHeight: '2.4em',
+                                overflow: 'hidden',
+                              }}
+                            >
+                              {frame.frameReason}
+                            </p>
                           </div>
                         </div>
                       )}
