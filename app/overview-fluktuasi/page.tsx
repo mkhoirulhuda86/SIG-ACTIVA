@@ -362,12 +362,12 @@ export default function OverviewFluktuasiPage() {
 
   // ── Load data ──────────────────────────────────────────────────────────────
   const loadData = useCallback(() => {
-    // ?slim=1 → server selects only the 4 needed columns (no remark/uploadedBy/etc.)
-    fetch('/api/fluktuasi/akun-periodes?slim=1')
+    // Use rekap-amounts which reads from FluktuasiImport.rekapSheetData — covers ALL accounts
+    // including those that only appear in the REKAP sheet (not individual account sheets).
+    fetch('/api/fluktuasi/rekap-amounts')
       .then(r => r.json())
       .then((data: { success: boolean; data: AkunPeriodeRecord[] }) => {
         if (data.success && Array.isArray(data.data)) {
-          // Pre-parse klasifikasi and year ONCE here → all memos reuse the result
           setRecords(data.data.map(r => ({
             accountCode: r.accountCode,
             periode:     r.periode,

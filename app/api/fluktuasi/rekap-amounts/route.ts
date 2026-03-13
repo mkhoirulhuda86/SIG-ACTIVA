@@ -1,0 +1,129 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+
+const parseNum = (val: unknown): number => {
+  if (typeof val === 'number') return val;
+  if (val === null || val === undefined || val === '') return 0;
+  const n = Number(String(val).replace(/\./g, '').replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+};
+
+/**
+ * Convert an AmountCol descriptor to a YYYY.MM period string.
+ * Handles both:
+ *  - Synthetic rekap (buildRekapFromAkunPeriodes): label is already "YYYY.MM"
+ *  - Real Excel rekap: parse year from yearLabel, month from dateLabel / label text
+ */
+function amountColToPeriode(ac: {
+  label?: unknown;
+  yearLabel?: unknown;
+  dateLabel?: unknown;
+}): string {
+  const labelStr = String(ac.label ?? '');
+
+  // Synthetic rekap stores label as "YYYY.MM" directly
+  if (/^\d{4}\.\d{2}$/.test(labelStr)) return labelStr;
+
+  // Real Excel rekap: extract 4-digit year from yearLabel
+  const yr = String(ac.yearLabel ?? '').match(/20\d{2}/)?.[0];
+  if (!yr) return '';
+
+  // Combine dateLabel + label to find month abbreviation
+  const text = (String(ac.dateLabel ?? '') + ' ' + labelStr).toLowerCase();
+
+  const MONTHS: [string, number][] = [
+    ['jan', 1], ['feb', 2], ['mar', 3], ['apr', 4],
+    ['mei', 5], ['may', 5],
+    ['jun', 6], ['jul', 7],
+    ['aug', 8], ['agt', 8],
+    ['sep', 9],
+    ['oct', 10], ['okt', 10],
+    ['nov', 11],
+    ['dec', 12], ['des', 12],
+  ];
+
+  for (const [abbr, mo] of MONTHS) {
+    if (text.includes(abbr)) return `${yr}.${String(mo).padStart(2, '0')}`;
+  }
+
+  return '';
+}
+
+// GET /api/fluktuasi/rekap-amounts
+// Returns per-account per-period amounts extracted from all stored FluktuasiImport.rekapSheetData.
+// Covers accounts that only appear in the REKAP sheet and not in individual account sheets.
+export async function GET() {
+  try {
+    // Fetch all imports oldest-first so latest values overwrite older ones.
+    const imports = await prisma.fluktuasiImport.findMany({
+      select: { rekapSheetData: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Merge map: "accountCode|periode" -> amount (latest import wins)
+    const dataMap = new Map<string, number>();
+
+    for (const imp of imports) {
+      const rekap = imp.rekapSheetData as Record<string, unknown> | null;
+      if (!rekap || typeof rekap !== 'object') continue;
+
+      const rows = rekap.rows as unknown[];
+      const amountCols = rekap.amountCols as unknown[];
+      const accountColIdx =
+        typeof rekap.accountColIdx === 'number' ? rekap.accountColIdx : 0;
+
+      if (!Array.isArray(rows) || !Array.isArray(amountCols)) continue;
+
+      for (const row of rows) {
+        const r = row as { type?: string; values?: unknown[] };
+        if (r.type !== 'detail') continue;
+
+        const values = Array.isArray(r.values) ? r.values : [];
+        const accountCode = String(values[accountColIdx] ?? '').trim();
+        // Only include real account codes (5+ digits)
+        if (!accountCode || !/^\d{5,}$/.test(accountCode)) continue;
+
+        for (const ac of amountCols) {
+          const a = ac as {
+            colIdx?: unknown;
+            isCumulative?: unknown;
+            label?: unknown;
+            yearLabel?: unknown;
+            dateLabel?: unknown;
+          };
+
+          // Skip cumulative / YTD columns — only use monthly point-in-time columns
+          if (a.isCumulative) continue;
+
+          const colIdx = typeof a.colIdx === 'number' ? a.colIdx : -1;
+          if (colIdx < 0 || colIdx >= values.length) continue;
+
+          const periode = amountColToPeriode(a);
+          if (!periode) continue;
+
+          const amount = parseNum(values[colIdx]);
+          dataMap.set(`${accountCode}|${periode}`, amount);
+        }
+      }
+    }
+
+    const data = [...dataMap.entries()].map(([key, amount]) => {
+      const pipeIdx = key.indexOf('|');
+      return {
+        accountCode: key.slice(0, pipeIdx),
+        periode: key.slice(pipeIdx + 1),
+        amount,
+      };
+    });
+
+    const res = NextResponse.json({ success: true, data });
+    res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+    return res;
+  } catch (error) {
+    console.error('Error fetching rekap amounts:', error);
+    return NextResponse.json(
+      { success: false, error: 'Gagal mengambil data rekap amounts' },
+      { status: 500 },
+    );
+  }
+}
