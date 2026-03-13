@@ -2839,7 +2839,7 @@ export default function MonitoringAccrualPage() {
 
   const handleQuickRincianSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!quickRincianPeriode) return;
+    if (!quickRincianPeriode || !quickRincianAccrual) return;
     setSubmittingQuickRincian(true);
     try {
       const response = await fetch('/api/accrual/periode-costcenter', {
@@ -2858,7 +2858,28 @@ export default function MonitoringAccrualPage() {
       if (!response.ok) throw new Error('Failed to save');
       toast.success('Rincian berhasil ditambahkan!');
       setShowQuickRincianModal(false);
-      fetchAccrualData();
+
+      // Hindari full refresh (yang memicu loading/skeleton): cukup update item accrual terkait.
+      try {
+        const updatedRes = await fetch(`/api/accrual?id=${quickRincianAccrual.id}`);
+        if (updatedRes.ok) {
+          const records = await updatedRes.json();
+          const updated = records?.[0];
+          if (updated) {
+            setAccrualData(prev => {
+              const idx = prev.findIndex(a => a.id === updated.id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = updated;
+                return next;
+              }
+              return [updated, ...prev];
+            });
+          }
+        }
+      } catch {
+        // no-op: realtime update fallback dari SSE tetap akan sinkronkan data
+      }
     } catch (error) {
       console.error('Error saving quick rincian:', error);
       toast.error('Gagal menyimpan rincian');
