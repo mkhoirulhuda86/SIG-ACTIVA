@@ -352,11 +352,15 @@ export async function PATCH(request: NextRequest) {
     // Detect whether amount-affecting fields actually changed (to avoid wiping data on type switch)
     const currentAccrual = await prisma.accrual.findUnique({
       where: { id: parseInt(id) },
-      select: { totalAmount: true, jumlahPeriode: true },
+      select: { totalAmount: true, jumlahPeriode: true, pembagianType: true },
     });
     const newTotalAmount = Math.abs(parseFloat(totalAmount));
     const totalAmountChanged = !currentAccrual || Math.round((currentAccrual.totalAmount ?? 0) * 100) !== Math.round(newTotalAmount * 100);
     const jumlahPeriodeChanged = !currentAccrual || (currentAccrual.jumlahPeriode ?? 0) !== parseInt(jumlahPeriode);
+    const switchedToOtomatis =
+      !!currentAccrual &&
+      currentAccrual.pembagianType !== 'otomatis' &&
+      pembagianType === 'otomatis';
 
     // Generate new periodes data
     const start = new Date(startDate);
@@ -397,11 +401,11 @@ export async function PATCH(request: NextRequest) {
       
       let amountAccrual;
       if (pembagianType === 'otomatis') {
-        if (totalAmountChanged || jumlahPeriodeChanged) {
-          // Recalculate only when totalAmount or period count actually changed
+        if (totalAmountChanged || jumlahPeriodeChanged || switchedToOtomatis) {
+          // Recalculate when value drivers changed or when switching from manual to otomatis
           amountAccrual = newTotalAmount / newJumlahPeriode;
         } else {
-          // Keep existing amount (switch from manual → otomatis without changing values)
+          // Keep existing amount when mode already otomatis and drivers did not change
           amountAccrual = i < existingCount
             ? Math.abs(existingPeriodes[i].amountAccrual)
             : newTotalAmount / newJumlahPeriode;
