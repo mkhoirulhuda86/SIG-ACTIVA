@@ -183,6 +183,7 @@ const ACCOUNT_NAMES: Record<string, string> = {
 
 type FrameDef = {
   key: 'beban-bunga' | 'pendapatan-lain' | 'pendapatan-bunga' | 'selisih-kurs';
+  title: string;
   accounts: string[];
   match: (accountCode: string) => boolean;
 };
@@ -190,21 +191,25 @@ type FrameDef = {
 const FRAME_DEFS: FrameDef[] = [
   {
     key: 'beban-bunga',
+    title: 'Beban Bunga',
     accounts: ['71510001','71510002','71510003','71510004','71510005','71510098','71510099'],
     match: (accountCode: string) => accountCode.startsWith('7151'),
   },
   {
     key: 'pendapatan-lain',
+    title: 'Pendapatan Lain-Lain',
     accounts: ['71410001','71410009','71421001','71421002','71421009','71430001','71430002','71440001','71460001','71460002','71460009','71560001'],
     match: (accountCode: string) => accountCode.startsWith('714') || accountCode.startsWith('7156'),
   },
   {
     key: 'pendapatan-bunga',
+    title: 'Pendapatan Bunga',
     accounts: ['71310001','71310002','71320001','71320002'],
     match: (accountCode: string) => accountCode.startsWith('713'),
   },
   {
     key: 'selisih-kurs',
+    title: 'Laba (Rugi) Selisih Kurs',
     accounts: ['71610001','71610002','71620001','71620002','71620004'],
     match: (accountCode: string) => accountCode.startsWith('716'),
   },
@@ -253,10 +258,14 @@ export default function OverviewFluktuasiPage() {
 
   const compPeriode = compPeriodeRaw || (allPeriodes.length > 0 ? allPeriodes[allPeriodes.length - 1] : '');
 
-  const histogramByMode = useMemo(() => {
+  const accountFramesByMode = useMemo(() => {
     if (!compPeriode) {
       return {
-        rows: [] as { accountCode: string; name: string; prev: number; curr: number }[],
+        frames: FRAME_DEFS.map(frame => ({
+          key: frame.key,
+          title: frame.title,
+          rows: [] as { accountCode: string; name: string; prev: number; curr: number }[],
+        })),
         labelA: '',
         labelB: '',
         tagA: 'A',
@@ -306,33 +315,43 @@ export default function OverviewFluktuasiPage() {
       tagB = String(yearA - 1).slice(-2);
     }
 
-    const mapA = new Map<string, number>();
-    const mapB = new Map<string, number>();
-    const allAccounts = new Set<string>(FRAME_DEFS.flatMap(frame => frame.accounts));
+    const frameMaps = FRAME_DEFS.map(frame => ({
+      ...frame,
+      mapA: new Map<string, number>(),
+      mapB: new Map<string, number>(),
+      allAccounts: new Set<string>(frame.accounts),
+    }));
 
     for (const r of records) {
       if (EXCLUDED_OVERVIEW_ACCOUNT_CODES.has(r.accountCode)) continue;
-      const isIncluded = FRAME_DEFS.some(frame => frame.match(r.accountCode));
-      if (!isIncluded) continue;
+      const frame = frameMaps.find(f => f.match(r.accountCode));
+      if (!frame) continue;
 
-      allAccounts.add(r.accountCode);
+      frame.allAccounts.add(r.accountCode);
 
       if (periodesA.has(r.periode)) {
-        mapA.set(r.accountCode, (mapA.get(r.accountCode) ?? 0) + r.amount);
+        frame.mapA.set(r.accountCode, (frame.mapA.get(r.accountCode) ?? 0) + r.amount);
       } else if (periodesB.has(r.periode)) {
-        mapB.set(r.accountCode, (mapB.get(r.accountCode) ?? 0) + r.amount);
+        frame.mapB.set(r.accountCode, (frame.mapB.get(r.accountCode) ?? 0) + r.amount);
       }
     }
 
-    const rows = [...allAccounts].map(accountCode => ({
-      accountCode,
-      name: ACCOUNT_NAMES[accountCode] ?? accountCode,
-      prev: mapB.get(accountCode) ?? 0,
-      curr: mapA.get(accountCode) ?? 0,
-    }));
-    rows.sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)));
+    const frames = frameMaps.map(frame => {
+      const rows = [...frame.allAccounts].map(accountCode => ({
+        accountCode,
+        name: ACCOUNT_NAMES[accountCode] ?? accountCode,
+        prev: frame.mapB.get(accountCode) ?? 0,
+        curr: frame.mapA.get(accountCode) ?? 0,
+      }));
+      rows.sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)));
+      return {
+        key: frame.key,
+        title: frame.title,
+        rows,
+      };
+    });
 
-    return { rows, labelA, labelB, tagA, tagB };
+    return { frames, labelA, labelB, tagA, tagB };
   }, [records, compMode, compPeriode]);
 
   // ── Refs for GSAP page animations ─────────────────────────────────────────
@@ -399,12 +418,12 @@ export default function OverviewFluktuasiPage() {
         {/* Content */}
         <div ref={contentRef} className="flex-1 overflow-y-auto p-3 space-y-3">
 
-          {/* Histogram Gabungan: seluruh akun dalam satu grafik */}
+          {/* 4 Frames: masing-masing 1 histogram gabungan */}
           <Card className="shadow-sm border-0 bg-white">
             <CardHeader className="p-3 pb-1">
               <div className="flex flex-wrap items-center gap-2">
                 <CardTitle className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
-                  <Activity size={12} className="text-red-500" /> HISTOGRAM GABUNGAN SELURUH AKUN
+                  <Activity size={12} className="text-red-500" /> OVERVIEW 4 FRAME KODE AKUN
                 </CardTitle>
                 <div className="flex gap-1 ml-auto">
                   {(['mom', 'yoy', 'ytd'] as const).map(m => (
@@ -431,44 +450,53 @@ export default function OverviewFluktuasiPage() {
                   ))}
                 </select>
                 <span className="text-slate-400 ml-auto">
-                  Basis: <strong className="text-slate-600">{histogramByMode.labelB}</strong> vs <strong className="text-slate-600">{histogramByMode.labelA}</strong>
+                  Basis: <strong className="text-slate-600">{accountFramesByMode.labelB}</strong> vs <strong className="text-slate-600">{accountFramesByMode.labelA}</strong>
                 </span>
               </div>
             </CardHeader>
             <CardContent className="p-3 pt-2">
-              <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-2">
-                {histogramByMode.rows.length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-10">Tidak ada data akun pada periode ini</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <div className="h-[430px]" style={{ minWidth: Math.max(histogramByMode.rows.length * 72, 900) }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={histogramByMode.rows} margin={{ top: 12, right: 12, left: 0, bottom: 76 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                          <XAxis
-                            dataKey="accountCode"
-                            interval={0}
-                            angle={-35}
-                            textAnchor="end"
-                            height={80}
-                            tick={{ fontSize: 10, fill: '#64748b' }}
-                          />
-                          <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={fmtCompact} />
-                          <Tooltip
-                            formatter={(value) => {
-                              const normalized = typeof value === 'number' ? value : Number(value ?? 0);
-                              return fmtCompact(Number.isFinite(normalized) ? normalized : 0);
-                            }}
-                            labelFormatter={(accountCode: string) => `${accountCode} - ${ACCOUNT_NAMES[accountCode] ?? accountCode}`}
-                          />
-                          <Legend />
-                          <Bar dataKey="prev" name={histogramByMode.labelB || histogramByMode.tagB} fill="#2563eb" radius={[4, 4, 0, 0]} />
-                          <Bar dataKey="curr" name={histogramByMode.labelA || histogramByMode.tagA} fill="#16a34a" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
+              <div className="grid gap-3 grid-cols-1 lg:grid-cols-2">
+                {accountFramesByMode.frames.map(frame => (
+                  <Card key={frame.key} className="anim-card border border-slate-100 shadow-sm bg-slate-50/60">
+                    <CardHeader className="p-3 pb-1">
+                      <CardTitle className="text-xs font-semibold uppercase tracking-wide text-red-600">{frame.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-3 pt-2">
+                      {frame.rows.length === 0 ? (
+                        <p className="text-xs text-slate-400 text-center py-10">Tidak ada data akun pada periode ini</p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <div className="h-[300px]" style={{ minWidth: Math.max(frame.rows.length * 68, 620) }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={frame.rows} margin={{ top: 12, right: 12, left: 0, bottom: 70 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                <XAxis
+                                  dataKey="accountCode"
+                                  interval={0}
+                                  angle={-30}
+                                  textAnchor="end"
+                                  height={74}
+                                  tick={{ fontSize: 10, fill: '#64748b' }}
+                                />
+                                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={fmtCompact} />
+                                <Tooltip
+                                  formatter={(value) => {
+                                    const normalized = typeof value === 'number' ? value : Number(value ?? 0);
+                                    return fmtCompact(Number.isFinite(normalized) ? normalized : 0);
+                                  }}
+                                  labelFormatter={(accountCode: string) => `${accountCode} - ${ACCOUNT_NAMES[accountCode] ?? accountCode}`}
+                                />
+                                <Legend />
+                                <Bar dataKey="prev" name={accountFramesByMode.labelB || accountFramesByMode.tagB} fill="#2563eb" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="curr" name={accountFramesByMode.labelA || accountFramesByMode.tagA} fill="#16a34a" radius={[4, 4, 0, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             </CardContent>
           </Card>
