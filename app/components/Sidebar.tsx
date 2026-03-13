@@ -314,8 +314,12 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         {/* Footer */}
         <div ref={footerRef} className="p-4">
           <div className="flex items-center gap-2 px-2 py-2">
-            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <span className="text-[10px] font-bold text-primary">SIG</span>
+            <div className="w-7 h-7 rounded-full bg-white border border-sidebar-border flex items-center justify-center shrink-0 overflow-hidden">
+              <img
+                src="/logo aplikasi.png"
+                alt="SIG ACTIVA Footer Logo"
+                className="w-6 h-6 object-contain"
+              />
             </div>
             <div className="min-w-0">
               <p className="text-[11px] font-medium text-foreground truncate">PT Semen Indonesia Grup</p>
