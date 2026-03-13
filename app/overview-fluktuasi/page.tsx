@@ -415,12 +415,15 @@ export default function OverviewFluktuasiPage() {
       ...frame,
       mapA: new Map<string, number>(),
       mapB: new Map<string, number>(),
+      allAccounts: new Set<string>(),
     }));
 
     for (const r of records) {
       if (EXCLUDED_OVERVIEW_ACCOUNT_CODES.has(r.accountCode)) continue;
       const frame = frameMaps.find(f => f.match(r.accountCode));
       if (!frame) continue;
+
+      frame.allAccounts.add(r.accountCode);
 
       if (periodesA.has(r.periode)) {
         frame.mapA.set(r.accountCode, (frame.mapA.get(r.accountCode) ?? 0) + r.amount);
@@ -430,8 +433,7 @@ export default function OverviewFluktuasiPage() {
     }
 
     const frames = frameMaps.map(frame => {
-      const keys = new Set([...frame.mapA.keys(), ...frame.mapB.keys()]);
-      const rows = [...keys].map(accountCode => ({
+      const rows = [...frame.allAccounts].map(accountCode => ({
         accountCode,
         prev: frame.mapB.get(accountCode) ?? 0,
         curr: frame.mapA.get(accountCode) ?? 0,
