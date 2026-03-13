@@ -593,6 +593,7 @@ export default function MonitoringAccrualPage() {
         item.kdAkunBiaya.toLowerCase().includes(searchLower) ||
         item.vendor.toLowerCase().includes(searchLower) ||
         item.deskripsi.toLowerCase().includes(searchLower) ||
+        (item.klasifikasi ?? '').toLowerCase().includes(searchLower) ||
         (item.noPo ?? '').toLowerCase().includes(searchLower);
     });
   }, [accrualData, debouncedSearchTerm]);

@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
         kdAkunBiaya?: { contains: string; mode: 'insensitive' }; 
         vendor?: { contains: string; mode: 'insensitive' }; 
         deskripsi?: { contains: string; mode: 'insensitive' };
+        klasifikasi?: { contains: string; mode: 'insensitive' };
         companyCode?: { contains: string; mode: 'insensitive' };
         noPo?: { contains: string; mode: 'insensitive' };
       }[];
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest) {
         { kdAkunBiaya: { contains: search, mode: 'insensitive' } },
         { vendor: { contains: search, mode: 'insensitive' } },
         { deskripsi: { contains: search, mode: 'insensitive' } },
+        { klasifikasi: { contains: search, mode: 'insensitive' } },
         { companyCode: { contains: search, mode: 'insensitive' } },
         { noPo: { contains: search, mode: 'insensitive' } },
       ];

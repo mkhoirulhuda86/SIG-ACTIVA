@@ -484,6 +484,7 @@ export default function MonitoringPrepaidPage() {
       const py = parseInt(parts[1]);
       const lastDay = new Date(py, pm + 1, 0).getDate();
       const docDate = `${py}${String(pm + 1).padStart(2, '0')}${String(lastDay).padStart(2, '0')}`;
+      const defaultCostCenter = item.costCenter || item.alokasi || '';
 
       const applyRowStyle = (row: any) => {
         for (let col = 1; col <= 19; col++) {
@@ -510,7 +511,7 @@ export default function MonitoringPrepaidPage() {
       row1.getCell(11).numFmt = '0';
       row1.getCell(12).value = item.headerText || '';
       row1.getCell(13).value = '';
-      row1.getCell(14).value = '';
+      row1.getCell(14).value = defaultCostCenter;
       row1.getCell(15).value = '';
       row1.getCell(16).value = '';
       row1.getCell(17).value = '';
@@ -535,7 +536,7 @@ export default function MonitoringPrepaidPage() {
       row2.getCell(11).numFmt = '0';
       row2.getCell(12).value = item.headerText || '';
       row2.getCell(13).value = '';
-      row2.getCell(14).value = item.alokasi || '';
+      row2.getCell(14).value = defaultCostCenter;
       row2.getCell(15).value = '';
       row2.getCell(16).value = '';
       row2.getCell(17).value = '';
@@ -581,6 +582,7 @@ export default function MonitoringPrepaidPage() {
       const docDate = `${py}${String(pm + 1).padStart(2, '0')}${String(lastDay).padStart(2, '0')}`;
       const total = entries.reduce((s, e) => s + e.amount, 0);
       const fallbackHeader = ccModalPrepaid.headerText || '';
+      const defaultCostCenter = ccModalPrepaid.costCenter || ccModalPrepaid.alokasi || '';
       let currentRow = 3;
       const writeRow = (hkont: string, wrbtr: number, kostl: string, bktxt: string, sgtxt: string) => {
         const row = worksheet.getRow(currentRow++);
@@ -600,9 +602,9 @@ export default function MonitoringPrepaidPage() {
           cell.alignment = { horizontal: col === 11 ? 'right' : 'left', vertical: 'bottom' };
         }
       };
-      writeRow(ccModalPrepaid.kdAkr, -Math.round(total), ccModalPrepaid.alokasi || '', fallbackHeader, fallbackHeader);
+      writeRow(ccModalPrepaid.kdAkr, -Math.round(total), defaultCostCenter, fallbackHeader, fallbackHeader);
       for (const e of entries) {
-        writeRow(e.kdAkunBiaya || kdAkunBiaya, Math.round(e.amount), e.costCenter || ccModalPrepaid.costCenter || '', e.headerText || fallbackHeader, e.lineText || fallbackHeader);
+        writeRow(e.kdAkunBiaya || kdAkunBiaya, Math.round(e.amount), e.costCenter || defaultCostCenter, e.headerText || fallbackHeader, e.lineText || fallbackHeader);
       }
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -628,11 +630,12 @@ export default function MonitoringPrepaidPage() {
     const total = entries.reduce((s, e) => s + e.amount, 0);
     const fallbackHeader = ccModalPrepaid.headerText || '';
     const companyCode = ccModalPrepaid.companyCode || '';
+    const defaultCostCenter = ccModalPrepaid.costCenter || ccModalPrepaid.alokasi || '';
     const rows: string[][] = [
-      ['', companyCode, 'SA', docDate, docDate, 'IDR', '', fallbackHeader, '', ccModalPrepaid.kdAkr, (-Math.round(total)).toString(), fallbackHeader, '', ccModalPrepaid.alokasi || '', '', '', '', '', 'G'],
+      ['', companyCode, 'SA', docDate, docDate, 'IDR', '', fallbackHeader, '', ccModalPrepaid.kdAkr, (-Math.round(total)).toString(), fallbackHeader, '', defaultCostCenter, '', '', '', '', 'G'],
     ];
     for (const e of entries) {
-      rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '', e.headerText || fallbackHeader, '', e.kdAkunBiaya || kdAkunBiaya, Math.round(e.amount).toString(), e.lineText || fallbackHeader, '', e.costCenter || ccModalPrepaid.costCenter || '', '', '', '', '', 'G']);
+      rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '', e.headerText || fallbackHeader, '', e.kdAkunBiaya || kdAkunBiaya, Math.round(e.amount).toString(), e.lineText || fallbackHeader, '', e.costCenter || defaultCostCenter, '', '', '', '', 'G']);
     }
     const txtContent = rows.map(row => row.join('\t')).join('\n');
     const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
@@ -748,14 +751,15 @@ export default function MonitoringPrepaidPage() {
     const py = parseInt(parts[1]);
     const lastDay = new Date(py, pm + 1, 0).getDate();
     const docDate = `${py}${String(pm + 1).padStart(2, '0')}${String(lastDay).padStart(2, '0')}`;
+    const defaultCostCenter = item.costCenter || item.alokasi || '';
 
     const rows: string[][] = [
       // Entry 1: DEBIT – Kode Akun Biaya (positive)
       ['', item.companyCode || '', 'SA', docDate, docDate, 'IDR', '', item.headerText || '', '',
-        item.namaAkun, amount.toString(), item.headerText || '', '', '', '', '', '', '', 'G'],
+        item.namaAkun, amount.toString(), item.headerText || '', '', defaultCostCenter, '', '', '', '', 'G'],
       // Entry 2: KREDIT – Kode Akun Prepaid (negative)
       ['', item.companyCode || '', 'SA', docDate, docDate, 'IDR', '', item.headerText || '', '',
-        item.kdAkr, (-amount).toString(), item.headerText || '', '', item.alokasi || '', '', '', '', '', 'G'],
+        item.kdAkr, (-amount).toString(), item.headerText || '', '', defaultCostCenter, '', '', '', '', 'G'],
     ];
 
     const txtContent = rows.map(row => row.join('\t')).join('\n');

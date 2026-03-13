@@ -27,62 +27,44 @@ function PageSkeleton({ isMobileSidebarOpen, setMobileSidebar }: { isMobileSideb
       </div>
       <div className="flex-1 lg:ml-64 flex flex-col">
         <Header title="Overview Fluktuasi OI/EXP" subtitle="Memuat data…" onMenuClick={() => setMobileSidebar(true)} />
-        {/* Shimmer year bar */}
-        <div className="bg-white border-b border-gray-200 px-4 py-2 flex gap-2">
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-10 w-20 rounded-md" />
-          ))}
-        </div>
         <div ref={skeletonRef} className="flex-1 overflow-hidden p-3 space-y-3">
-          {/* Row 1 skeleton */}
-          <div className="grid gap-3 grid-cols-1 lg:grid-cols-[minmax(240px,280px)_1fr_minmax(200px,220px)]">
-            <div className="sk-card flex flex-col gap-3">
-              <Card className="p-3">
-                <Skeleton className="h-4 w-32 mb-3" />
-                <div className="flex gap-2">
-                  <Skeleton className="rounded-full w-36 h-36" />
-                  <div className="flex-1 space-y-2 mt-2">
-                    {[...Array(6)].map((_,i) => <Skeleton key={i} className="h-3 w-full" />)}
-                  </div>
+          <Card className="sk-card shadow-sm border border-blue-100 bg-[#eef5ff]">
+            <div className="p-3 pb-1">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-4 w-44" />
+                <div className="ml-auto flex gap-1">
+                  {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-5 w-10 rounded" />)}
                 </div>
-              </Card>
-              <Card className="p-3">
-                <Skeleton className="h-4 w-28 mb-3" />
-                {[...Array(4)].map((_,i) => <Skeleton key={i} className="h-10 w-full mb-2 rounded-md" />)}
-              </Card>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <Skeleton className="h-3 w-12" />
+                <Skeleton className="h-6 w-24 rounded" />
+                <Skeleton className="ml-auto h-3 w-44" />
+              </div>
             </div>
-            <div className="sk-card flex flex-col gap-3">
-              <Card className="p-3">
-                <Skeleton className="h-4 w-48 mb-3 mx-auto" />
-                <div className="flex flex-wrap justify-center gap-3">
-                  {[...Array(6)].map((_,i) => <Skeleton key={i} className="w-24 h-24 rounded-full" />)}
-                </div>
-              </Card>
-              <Card className="p-3">
-                <Skeleton className="h-4 w-40 mb-2" />
-                <Skeleton className="h-36 w-full" />
-              </Card>
-            </div>
-            <Card className="sk-card p-3">
-              <Skeleton className="h-4 w-16 mb-3" />
-              {[...Array(8)].map((_,i) => <Skeleton key={i} className="h-5 w-full mb-1.5 rounded" />)}
-            </Card>
-          </div>
-          {/* Row 2 */}
-          <div className="sk-card grid gap-3 grid-cols-1 md:grid-cols-[1fr_minmax(300px,380px)]">
-            <Card className="p-3">
-              <Skeleton className="h-4 w-32 mb-2" /><Skeleton className="h-56 w-full" />
-            </Card>
-            <Card className="p-3">
-              <Skeleton className="h-4 w-40 mb-2" />
-              {[...Array(10)].map((_,i) => <Skeleton key={i} className="h-5 w-full mb-1.5 rounded" />)}
-            </Card>
-          </div>
-          {/* Table */}
-          <Card className="sk-card overflow-hidden">
-            <div className="border-b px-4 py-2.5"><Skeleton className="h-4 w-40" /></div>
-            <div className="p-3 space-y-2">
-              {[...Array(8)].map((_,i) => <Skeleton key={i} className="h-8 w-full rounded" />)}
+
+            <div className="px-3 pb-2">
+              <div className="mb-2 flex items-center justify-end gap-3">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-20" />
+              </div>
+
+              <div className="grid gap-3 grid-cols-1 lg:grid-cols-2">
+                {[...Array(4)].map((_, i) => (
+                  <Card key={i} className="border border-slate-200 shadow-sm bg-white">
+                    <div className="p-3 pb-1">
+                      <Skeleton className="h-3 w-28" />
+                    </div>
+                    <div className="p-2.5 pt-1.5 space-y-1.5">
+                      <Skeleton className="h-[180px] w-full rounded-md" />
+                      <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-1.5">
+                        <Skeleton className="h-3 w-20 mb-1" />
+                        <Skeleton className="h-3 w-full" />
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
             </div>
           </Card>
         </div>
@@ -493,13 +475,13 @@ export default function OverviewFluktuasiPage() {
         />
 
         {/* Content */}
-        <div ref={contentRef} className="flex-1 overflow-hidden p-3 space-y-3">
+        <div ref={contentRef} className="flex-1 overflow-hidden p-3 space-y-3 bg-white">
 
           {/* 4 Frames: masing-masing 1 histogram gabungan */}
-          <Card className="shadow-sm border-0 bg-white">
+          <Card className="shadow-sm border border-blue-100 bg-[#eef5ff]">
             <CardHeader className="p-3 pb-1">
               <div className="flex flex-wrap items-center gap-2">
-                <CardTitle className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                <CardTitle className="text-xs font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
                   <Activity size={12} className="text-red-500" /> OVERVIEW 4 FRAME KODE AKUN
                 </CardTitle>
                 <div className="flex gap-1 ml-auto">
@@ -508,7 +490,7 @@ export default function OverviewFluktuasiPage() {
                       key={m}
                       onClick={() => setCompMode(m)}
                       className="px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all duration-200 hover:scale-105 active:scale-95"
-                      style={{ backgroundColor: compMode === m ? '#dc2626' : '#f1f5f9', color: compMode === m ? 'white' : '#64748b' }}
+                      style={{ backgroundColor: compMode === m ? '#dc2626' : '#dbeafe', color: compMode === m ? 'white' : '#1e3a8a' }}
                     >
                       {m}
                     </button>
@@ -516,23 +498,23 @@ export default function OverviewFluktuasiPage() {
                 </div>
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[9px]">
-                <span className="text-slate-400 font-semibold uppercase">Periode:</span>
+                <span className="text-slate-500 font-semibold uppercase">Periode:</span>
                 <select
                   value={compPeriode}
                   onChange={e => setCompPeriodeRaw(e.target.value)}
-                  className="text-[9px] font-mono font-semibold border border-slate-200 rounded px-1.5 py-0.5 bg-slate-50 text-slate-700 focus:outline-none focus:border-blue-400 transition-colors"
+                  className="text-[9px] font-mono font-semibold border border-blue-200 rounded px-1.5 py-0.5 bg-[#f8fbff] text-slate-700 focus:outline-none focus:border-blue-400 transition-colors"
                 >
                   {allPeriodes.map(p => (
                     <option key={p} value={p}>{periodeToLabel(p)}</option>
                   ))}
                 </select>
-                <span className="text-slate-400 ml-auto">
+                <span className="text-slate-500 ml-auto">
                   Basis: <strong className="text-slate-600">{accountFramesByMode.labelB}</strong> vs <strong className="text-slate-600">{accountFramesByMode.labelA}</strong>
                 </span>
               </div>
             </CardHeader>
             <CardContent className="p-3 pt-2">
-              <div className="mb-2 flex items-center justify-end gap-3 text-[10px] font-semibold text-slate-600">
+              <div className="mb-2 flex items-center justify-end gap-3 text-[10px] font-semibold text-slate-700">
                 <div className="flex items-center gap-1.5">
                   <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#2563eb]" />
                   <span>{accountFramesByMode.labelB || accountFramesByMode.tagB}</span>
@@ -544,7 +526,7 @@ export default function OverviewFluktuasiPage() {
               </div>
               <div className="grid gap-3 grid-cols-1 lg:grid-cols-2">
                 {accountFramesByMode.frames.map(frame => (
-                  <Card key={frame.key} className="anim-card border border-slate-100 shadow-sm bg-slate-50/60">
+                  <Card key={frame.key} className="anim-card border border-slate-200 shadow-sm bg-white">
                     <CardHeader className="p-3 pb-1">
                       <CardTitle className="text-xs font-semibold uppercase tracking-wide text-red-600">{frame.title}</CardTitle>
                     </CardHeader>
@@ -579,7 +561,7 @@ export default function OverviewFluktuasiPage() {
                             </ResponsiveContainer>
                           </div>
 
-                          <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
+                          <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-1.5">
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Reason Singkat</p>
                             <p className="text-[10px] leading-4 text-slate-600">{frame.frameReason}</p>
                           </div>
