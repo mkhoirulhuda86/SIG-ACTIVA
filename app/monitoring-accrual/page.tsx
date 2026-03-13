@@ -5605,28 +5605,6 @@ export default function MonitoringAccrualPage() {
               <button onClick={() => setShowQuickRincianModal(false)} className="text-white hover:text-teal-100 rounded-full hover:bg-white/10 p-1"><X size={22} /></button>
             </div>
             <form onSubmit={handleQuickRincianSubmit} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Kode Akun Biaya</label>
-                  <input
-                    type="text"
-                    value={quickRincianForm.kdAkunBiaya}
-                    onChange={(e) => setQuickRincianForm(prev => ({ ...prev, kdAkunBiaya: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    placeholder="Kode akun biaya"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Cost Center</label>
-                  <input
-                    type="text"
-                    value={quickRincianForm.costCenter}
-                    onChange={(e) => setQuickRincianForm(prev => ({ ...prev, costCenter: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    placeholder="Cost center"
-                  />
-                </div>
-              </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Amount</label>
                 <input
@@ -5635,28 +5613,10 @@ export default function MonitoringAccrualPage() {
                   onChange={(e) => setQuickRincianForm(prev => ({ ...prev, amount: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   placeholder="Amount"
+                  autoFocus
                   required
                 />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Header Text</label>
-                <input
-                  type="text"
-                  value={quickRincianForm.headerText}
-                  onChange={(e) => setQuickRincianForm(prev => ({ ...prev, headerText: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  placeholder="Header text (opsional)"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Line Text</label>
-                <input
-                  type="text"
-                  value={quickRincianForm.lineText}
-                  onChange={(e) => setQuickRincianForm(prev => ({ ...prev, lineText: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  placeholder="Line text (opsional)"
-                />
+                <p className="text-[11px] text-gray-400 mt-1">Kode akun & cost center otomatis dari data accrual. Edit detail lainnya lewat Rincian Accrual.</p>
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button
