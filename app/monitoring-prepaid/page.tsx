@@ -484,7 +484,7 @@ export default function MonitoringPrepaidPage() {
       const py = parseInt(parts[1]);
       const lastDay = new Date(py, pm + 1, 0).getDate();
       const docDate = `${py}${String(pm + 1).padStart(2, '0')}${String(lastDay).padStart(2, '0')}`;
-      const defaultCostCenter = item.costCenter || item.alokasi || '';
+      const defaultCostCenter = item.costCenter || '';
 
       const applyRowStyle = (row: any) => {
         for (let col = 1; col <= 19; col++) {
@@ -536,7 +536,8 @@ export default function MonitoringPrepaidPage() {
       row2.getCell(11).numFmt = '0';
       row2.getCell(12).value = item.headerText || '';
       row2.getCell(13).value = '';
-      row2.getCell(14).value = defaultCostCenter;
+      // Baris kredit prepaid tidak membawa cost center
+      row2.getCell(14).value = '';
       row2.getCell(15).value = '';
       row2.getCell(16).value = '';
       row2.getCell(17).value = '';
@@ -582,7 +583,7 @@ export default function MonitoringPrepaidPage() {
       const docDate = `${py}${String(pm + 1).padStart(2, '0')}${String(lastDay).padStart(2, '0')}`;
       const total = entries.reduce((s, e) => s + e.amount, 0);
       const fallbackHeader = ccModalPrepaid.headerText || '';
-      const defaultCostCenter = ccModalPrepaid.costCenter || ccModalPrepaid.alokasi || '';
+      const defaultCostCenter = ccModalPrepaid.costCenter || '';
       let currentRow = 3;
       const writeRow = (hkont: string, wrbtr: number, kostl: string, bktxt: string, sgtxt: string) => {
         const row = worksheet.getRow(currentRow++);
@@ -602,7 +603,8 @@ export default function MonitoringPrepaidPage() {
           cell.alignment = { horizontal: col === 11 ? 'right' : 'left', vertical: 'bottom' };
         }
       };
-      writeRow(ccModalPrepaid.kdAkr, -Math.round(total), defaultCostCenter, fallbackHeader, fallbackHeader);
+      // Baris kredit prepaid tanpa cost center
+      writeRow(ccModalPrepaid.kdAkr, -Math.round(total), '', fallbackHeader, fallbackHeader);
       for (const e of entries) {
         writeRow(e.kdAkunBiaya || kdAkunBiaya, Math.round(e.amount), e.costCenter || defaultCostCenter, e.headerText || fallbackHeader, e.lineText || fallbackHeader);
       }
@@ -630,9 +632,10 @@ export default function MonitoringPrepaidPage() {
     const total = entries.reduce((s, e) => s + e.amount, 0);
     const fallbackHeader = ccModalPrepaid.headerText || '';
     const companyCode = ccModalPrepaid.companyCode || '';
-    const defaultCostCenter = ccModalPrepaid.costCenter || ccModalPrepaid.alokasi || '';
+    const defaultCostCenter = ccModalPrepaid.costCenter || '';
     const rows: string[][] = [
-      ['', companyCode, 'SA', docDate, docDate, 'IDR', '', fallbackHeader, '', ccModalPrepaid.kdAkr, (-Math.round(total)).toString(), fallbackHeader, '', defaultCostCenter, '', '', '', '', 'G'],
+      // Baris kredit prepaid tanpa cost center
+      ['', companyCode, 'SA', docDate, docDate, 'IDR', '', fallbackHeader, '', ccModalPrepaid.kdAkr, (-Math.round(total)).toString(), fallbackHeader, '', '', '', '', '', '', 'G'],
     ];
     for (const e of entries) {
       rows.push(['', companyCode, 'SA', docDate, docDate, 'IDR', '', e.headerText || fallbackHeader, '', e.kdAkunBiaya || kdAkunBiaya, Math.round(e.amount).toString(), e.lineText || fallbackHeader, '', e.costCenter || defaultCostCenter, '', '', '', '', 'G']);
@@ -751,7 +754,7 @@ export default function MonitoringPrepaidPage() {
     const py = parseInt(parts[1]);
     const lastDay = new Date(py, pm + 1, 0).getDate();
     const docDate = `${py}${String(pm + 1).padStart(2, '0')}${String(lastDay).padStart(2, '0')}`;
-    const defaultCostCenter = item.costCenter || item.alokasi || '';
+    const defaultCostCenter = item.costCenter || '';
 
     const rows: string[][] = [
       // Entry 1: DEBIT – Kode Akun Biaya (positive)
@@ -759,7 +762,7 @@ export default function MonitoringPrepaidPage() {
         item.namaAkun, amount.toString(), item.headerText || '', '', defaultCostCenter, '', '', '', '', 'G'],
       // Entry 2: KREDIT – Kode Akun Prepaid (negative)
       ['', item.companyCode || '', 'SA', docDate, docDate, 'IDR', '', item.headerText || '', '',
-        item.kdAkr, (-amount).toString(), item.headerText || '', '', defaultCostCenter, '', '', '', '', 'G'],
+        item.kdAkr, (-amount).toString(), item.headerText || '', '', '', '', '', '', '', 'G'],
     ];
 
     const txtContent = rows.map(row => row.join('\t')).join('\n');
