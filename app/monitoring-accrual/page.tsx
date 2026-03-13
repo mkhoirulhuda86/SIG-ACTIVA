@@ -260,6 +260,19 @@ export default function MonitoringAccrualPage() {
     accrualItem: Accrual;
     rect: { top: number; right: number };
   } | null>(null);
+  // Quick input rincian accrual (input langsung tanpa buka modal Rincian)
+  const [showQuickRincianModal, setShowQuickRincianModal] = useState(false);
+  const [quickRincianPeriode, setQuickRincianPeriode] = useState<AccrualPeriode | null>(null);
+  const [quickRincianAccrual, setQuickRincianAccrual] = useState<Accrual | null>(null);
+  const [quickRincianForm, setQuickRincianForm] = useState({ kdAkunBiaya: '', costCenter: '', amount: '', headerText: '', lineText: '', keterangan: '' });
+  const [submittingQuickRincian, setSubmittingQuickRincian] = useState(false);
+  // Portal dropdown jurnal per periode (Accrual Excel/TXT, Realisasi Excel/TXT)
+  const [openPeriodeJurnalDropdown, setOpenPeriodeJurnalDropdown] = useState<{
+    periodeId: number;
+    item: Accrual;
+    periode: AccrualPeriode;
+    rect: { top: number; right: number };
+  } | null>(null);
   // Dialog header/line text untuk jurnal realisasi
   const [showJurnalHeaderModal, setShowJurnalHeaderModal] = useState(false);
   const [jurnalHeaderInput, setJurnalHeaderInput] = useState('');
@@ -291,6 +304,7 @@ export default function MonitoringAccrualPage() {
   const jurnalHeaderModalPanelRef = useRef<HTMLDivElement>(null);
   const importGlobalModalPanelRef = useRef<HTMLDivElement>(null);
   const importExcelModalPanelRef  = useRef<HTMLDivElement>(null);
+  const quickRincianModalPanelRef = useRef<HTMLDivElement>(null);
 
   // -- Display states for animated metric counters -----------------
   const [displaySaldo,    setDisplaySaldo]    = useState(0);
@@ -530,6 +544,12 @@ export default function MonitoringAccrualPage() {
       gsap.fromTo(jurnalHeaderModalPanelRef.current, { opacity: 0, scale: 0.93, y: 20 }, { opacity: 1, scale: 1, y: 0, duration: 0.3, ease: 'back.out(1.5)' });
     }
   }, [showJurnalHeaderModal]);
+
+  useEffect(() => {
+    if (showQuickRincianModal && quickRincianModalPanelRef.current) {
+      gsap.fromTo(quickRincianModalPanelRef.current, { opacity: 0, scale: 0.93, y: 28 }, { opacity: 1, scale: 1, y: 0, duration: 0.36, ease: 'back.out(1.5)' });
+    }
+  }, [showQuickRincianModal]);
 
   useEffect(() => {
     if (showImportGlobalModal && importGlobalModalPanelRef.current) {
@@ -2803,6 +2823,50 @@ export default function MonitoringAccrualPage() {
 
   // -------------------------------------------------------------------------
 
+  const handleOpenQuickRincianModal = (accrual: Accrual, periode: AccrualPeriode) => {
+    setQuickRincianAccrual(accrual);
+    setQuickRincianPeriode(periode);
+    setQuickRincianForm({
+      kdAkunBiaya: accrual.kdAkunBiaya || '',
+      costCenter: accrual.costCenter || '',
+      amount: Math.abs(periode.amountAccrual).toString(),
+      headerText: accrual.headerText || '',
+      lineText: '',
+      keterangan: '',
+    });
+    setShowQuickRincianModal(true);
+  };
+
+  const handleQuickRincianSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickRincianPeriode) return;
+    setSubmittingQuickRincian(true);
+    try {
+      const response = await fetch('/api/accrual/periode-costcenter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accrualPeriodeId: quickRincianPeriode.id,
+          costCenter: quickRincianForm.costCenter || null,
+          kdAkunBiaya: quickRincianForm.kdAkunBiaya || null,
+          amount: parseFloat(quickRincianForm.amount),
+          headerText: quickRincianForm.headerText || null,
+          lineText: quickRincianForm.lineText || null,
+          keterangan: quickRincianForm.keterangan || null,
+        }),
+      });
+      if (!response.ok) throw new Error('Failed to save');
+      toast.success('Rincian berhasil ditambahkan!');
+      setShowQuickRincianModal(false);
+      fetchAccrualData();
+    } catch (error) {
+      console.error('Error saving quick rincian:', error);
+      toast.error('Gagal menyimpan rincian');
+    } finally {
+      setSubmittingQuickRincian(false);
+    }
+  };
+
   const handleOpenCostCenterModal = async (accrual: Accrual, periode: AccrualPeriode) => {
     setCostCenterModalAccrual(accrual);
     setCostCenterModalPeriode(periode);
@@ -3772,6 +3836,13 @@ export default function MonitoringAccrualPage() {
                                               Rincian Accrual
                                             </button>
                                             <button
+                                              onClick={() => handleOpenQuickRincianModal(item, periode)}
+                                              className="text-xs bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded transition-colors"
+                                              title="Input rincian accrual langsung (kode akun & cost center dari data accrual)"
+                                            >
+                                              + Input Rincian
+                                            </button>
+                                            <button
                                               onClick={() => handleOpenRealisasiModal(periode, false)}
                                               className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded transition-colors"
                                               title="Input realisasi baru"
@@ -3779,32 +3850,18 @@ export default function MonitoringAccrualPage() {
                                               Input Realisasi
                                             </button>
                                             <button
-                                              onClick={() => promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriode(item, periode, ht, lt), item)}
-                                              className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded transition-colors"
-                                              title="Download jurnal accrual periode ini (Excel)"
+                                              onClick={(e) => {
+                                                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                                if (openPeriodeJurnalDropdown?.periodeId === periode.id) {
+                                                  setOpenPeriodeJurnalDropdown(null);
+                                                } else {
+                                                  setOpenPeriodeJurnalDropdown({ periodeId: periode.id, item, periode, rect: { top: rect.bottom, right: window.innerWidth - rect.right } });
+                                                }
+                                              }}
+                                              className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded transition-colors flex items-center gap-1"
+                                              title="Download jurnal periode ini"
                                             >
-                                              ↓ Accrual Excel
-                                            </button>
-                                            <button
-                                              onClick={() => promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriodeTxt(item, periode, ht, lt), item)}
-                                              className="text-xs bg-slate-500 hover:bg-slate-600 text-white px-3 py-1 rounded transition-colors"
-                                              title="Download jurnal accrual periode ini (TXT)"
-                                            >
-                                              ↓ Accrual TXT
-                                            </button>
-                                            <button
-                                              onClick={() => promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPRealisasiPerPeriode(item, periode, ht, lt), item)}
-                                              className="text-xs bg-violet-600 hover:bg-violet-700 text-white px-3 py-1 rounded transition-colors"
-                                              title="Download jurnal realisasi periode ini (Excel)"
-                                            >
-                                              ↓ Realisasi Excel
-                                            </button>
-                                            <button
-                                              onClick={() => promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPRealisasiPerPeriodeTxt(item, periode, ht, lt), item)}
-                                              className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded transition-colors"
-                                              title="Download jurnal realisasi periode ini (TXT)"
-                                            >
-                                              ↓ Realisasi TXT
+                                              ↓ Jurnal <ChevronDown size={11} />
                                             </button>
                                           </div>
                                         </td>
@@ -5474,6 +5531,146 @@ export default function MonitoringAccrualPage() {
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
               >Download</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Portal dropdown Jurnal per Periode */}
+      {openPeriodeJurnalDropdown && (
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setOpenPeriodeJurnalDropdown(null)} />
+          <div
+            className="fixed z-[9999] w-52 bg-white border border-gray-200 rounded-xl shadow-2xl"
+            style={{ top: openPeriodeJurnalDropdown.rect.top + 4, right: openPeriodeJurnalDropdown.rect.right }}
+          >
+            <div className="px-3 py-2 border-b border-gray-100">
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Download Jurnal</p>
+              <p className="text-[10px] text-gray-400">{openPeriodeJurnalDropdown.periode.bulan}</p>
+            </div>
+            <div className="p-2 space-y-1">
+              <p className="text-[10px] font-semibold text-gray-500 px-1">Accrual</p>
+              <button
+                onClick={() => {
+                  promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriode(openPeriodeJurnalDropdown.item, openPeriodeJurnalDropdown.periode, ht, lt), openPeriodeJurnalDropdown.item);
+                  setOpenPeriodeJurnalDropdown(null);
+                }}
+                className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-emerald-50 rounded-lg transition-colors"
+              >
+                <span className="font-medium">↓ Excel</span>
+              </button>
+              <button
+                onClick={() => {
+                  promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriodeTxt(openPeriodeJurnalDropdown.item, openPeriodeJurnalDropdown.periode, ht, lt), openPeriodeJurnalDropdown.item);
+                  setOpenPeriodeJurnalDropdown(null);
+                }}
+                className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-slate-50 rounded-lg transition-colors"
+              >
+                <span className="font-medium">↓ TXT</span>
+              </button>
+              <div className="border-t border-gray-100 pt-1">
+                <p className="text-[10px] font-semibold text-gray-500 px-1">Realisasi</p>
+              </div>
+              <button
+                onClick={() => {
+                  promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPRealisasiPerPeriode(openPeriodeJurnalDropdown.item, openPeriodeJurnalDropdown.periode, ht, lt), openPeriodeJurnalDropdown.item);
+                  setOpenPeriodeJurnalDropdown(null);
+                }}
+                className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-violet-50 rounded-lg transition-colors"
+              >
+                <span className="font-medium">↓ Excel</span>
+              </button>
+              <button
+                onClick={() => {
+                  promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPRealisasiPerPeriodeTxt(openPeriodeJurnalDropdown.item, openPeriodeJurnalDropdown.periode, ht, lt), openPeriodeJurnalDropdown.item);
+                  setOpenPeriodeJurnalDropdown(null);
+                }}
+                className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+              >
+                <span className="font-medium">↓ TXT</span>
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Modal Quick Input Rincian Accrual */}
+      {showQuickRincianModal && quickRincianPeriode && quickRincianAccrual && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div ref={quickRincianModalPanelRef} className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="px-6 py-4 bg-gradient-to-r from-teal-600 to-teal-700 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">Input Rincian Accrual</h2>
+                <p className="text-teal-100 text-xs mt-0.5">{quickRincianAccrual.deskripsi} · {quickRincianPeriode.bulan}</p>
+              </div>
+              <button onClick={() => setShowQuickRincianModal(false)} className="text-white hover:text-teal-100 rounded-full hover:bg-white/10 p-1"><X size={22} /></button>
+            </div>
+            <form onSubmit={handleQuickRincianSubmit} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Kode Akun Biaya</label>
+                  <input
+                    type="text"
+                    value={quickRincianForm.kdAkunBiaya}
+                    onChange={(e) => setQuickRincianForm(prev => ({ ...prev, kdAkunBiaya: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="Kode akun biaya"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Cost Center</label>
+                  <input
+                    type="text"
+                    value={quickRincianForm.costCenter}
+                    onChange={(e) => setQuickRincianForm(prev => ({ ...prev, costCenter: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="Cost center"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Amount</label>
+                <input
+                  type="number"
+                  value={quickRincianForm.amount}
+                  onChange={(e) => setQuickRincianForm(prev => ({ ...prev, amount: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder="Amount"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Header Text</label>
+                <input
+                  type="text"
+                  value={quickRincianForm.headerText}
+                  onChange={(e) => setQuickRincianForm(prev => ({ ...prev, headerText: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder="Header text (opsional)"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Line Text</label>
+                <input
+                  type="text"
+                  value={quickRincianForm.lineText}
+                  onChange={(e) => setQuickRincianForm(prev => ({ ...prev, lineText: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder="Line text (opsional)"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickRincianModal(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
+                >Batal</button>
+                <button
+                  type="submit"
+                  disabled={submittingQuickRincian}
+                  className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium disabled:opacity-60"
+                >{submittingQuickRincian ? 'Menyimpan...' : 'Simpan Rincian'}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
