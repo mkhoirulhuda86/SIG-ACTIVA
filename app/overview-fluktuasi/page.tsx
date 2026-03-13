@@ -198,24 +198,23 @@ function YearCompRow({
     if (mountedRef.current || !rowRef.current || !bar25Ref.current || !bar26Ref.current) return;
     mountedRef.current = true;
     gsap.fromTo(rowRef.current, { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.45, delay: animDelay / 1000, ease: 'power3.out' });
-    gsap.fromTo(bar25Ref.current, { width: '0%' }, { width: `${pct25}%`, duration: 0.9, delay: animDelay / 1000 + 0.1, ease: 'power3.out' });
-    gsap.fromTo(bar26Ref.current, { width: '0%' }, { width: `${pct26}%`, duration: 0.9, delay: animDelay / 1000 + 0.2, ease: 'power3.out' });
+    gsap.fromTo(bar25Ref.current, { height: '0%' }, { height: `${pct25}%`, duration: 0.9, delay: animDelay / 1000 + 0.1, ease: 'power3.out' });
+    gsap.fromTo(bar26Ref.current, { height: '0%' }, { height: `${pct26}%`, duration: 0.9, delay: animDelay / 1000 + 0.2, ease: 'power3.out' });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (!mountedRef.current || !bar25Ref.current || !bar26Ref.current) return;
-    gsap.to(bar25Ref.current, { width: `${pct25}%`, duration: 0.5, ease: 'power2.out' });
-    gsap.to(bar26Ref.current, { width: `${pct26}%`, duration: 0.5, ease: 'power2.out' });
+    gsap.to(bar25Ref.current, { height: `${pct25}%`, duration: 0.5, ease: 'power2.out' });
+    gsap.to(bar26Ref.current, { height: `${pct26}%`, duration: 0.5, ease: 'power2.out' });
   }, [pct25, pct26]);
 
   return (
-    <div ref={rowRef} className="flex flex-col gap-0.5 py-1 border-b border-slate-50 last:border-0">
-      {/* Label row */}
+    <div ref={rowRef} className="rounded-lg border border-slate-100 bg-slate-50/60 px-2 py-2">
       <div className="flex items-center gap-1.5">
-        <span className="text-[9px] w-3 text-right flex-shrink-0 text-slate-400">{rank}.</span>
+        <span className="text-[9px] w-4 text-right flex-shrink-0 text-slate-400">{rank}.</span>
         <span className="text-[10px] font-semibold text-slate-700 flex-1 min-w-0 truncate" title={label}>
-          {label.length > 26 ? label.slice(0, 26) + '…' : label}
+          {label}
         </span>
         <span
           className="text-[9px] font-mono font-bold flex-shrink-0 px-1 rounded"
@@ -229,22 +228,32 @@ function YearCompRow({
           {deltaPct !== null && <span className="text-[8px] opacity-70 ml-0.5">({Math.abs(deltaPct).toFixed(0)}%)</span>}
         </span>
       </div>
-      {/* 2025 bar */}
-      <div className="flex items-center gap-1">
-        <span className="text-[8px] font-bold w-6 flex-shrink-0 text-right" style={{ color: '#2563eb' }}>{tagB}</span>
-        <div className="flex-1 relative h-[18px] rounded overflow-hidden bg-slate-100">
-          <div ref={bar25Ref} className="h-full rounded" style={{ width: '0%', backgroundColor: '#2563eb', opacity: 0.78 }} />
-          <span className="absolute inset-0 flex items-center px-1.5 text-[8.5px] font-semibold text-slate-700">
+
+      <div className="mt-1.5 flex items-end justify-center gap-4 rounded-md border border-slate-100 bg-white p-2">
+        <div className="flex flex-col items-center gap-1" style={{ width: 72 }}>
+          <span className="text-[8px] text-slate-500 font-semibold">{tagB}</span>
+          <div className="h-20 w-8 rounded bg-slate-100 relative flex items-end overflow-hidden">
+            <div
+              ref={bar25Ref}
+              className="w-full rounded-t"
+              style={{ height: '0%', backgroundColor: '#2563eb', opacity: 0.82 }}
+            />
+          </div>
+          <span className="text-[8.5px] font-semibold text-slate-700 text-center leading-tight">
             {v2025 !== 0 ? fmtCompact(v2025) : '—'}
           </span>
         </div>
-      </div>
-      {/* 2026 bar */}
-      <div className="flex items-center gap-1">
-        <span className="text-[8px] font-bold w-6 flex-shrink-0 text-right" style={{ color: '#16a34a' }}>{tagA}</span>
-        <div className="flex-1 relative h-[18px] rounded overflow-hidden bg-slate-100">
-          <div ref={bar26Ref} className="h-full rounded" style={{ width: '0%', backgroundColor: '#16a34a', opacity: 0.78 }} />
-          <span className="absolute inset-0 flex items-center px-1.5 text-[8.5px] font-semibold text-slate-700">
+
+        <div className="flex flex-col items-center gap-1" style={{ width: 72 }}>
+          <span className="text-[8px] text-slate-500 font-semibold">{tagA}</span>
+          <div className="h-20 w-8 rounded bg-slate-100 relative flex items-end overflow-hidden">
+            <div
+              ref={bar26Ref}
+              className="w-full rounded-t"
+              style={{ height: '0%', backgroundColor: '#16a34a', opacity: 0.82 }}
+            />
+          </div>
+          <span className="text-[8.5px] font-semibold text-slate-700 text-center leading-tight">
             {v2026 !== 0 ? fmtCompact(v2026) : '—'}
           </span>
         </div>
@@ -541,7 +550,7 @@ export default function OverviewFluktuasiPage() {
               </div>
             </CardHeader>
             <CardContent className="p-3 pt-2">
-              <div className="grid gap-3 grid-cols-1">
+              <div className="grid gap-3 grid-cols-1 lg:grid-cols-2">
                 {accountFramesByMode.frames.map(frame => (
                   <AccountFrameCard
                     key={frame.key}
@@ -553,19 +562,6 @@ export default function OverviewFluktuasiPage() {
                   />
                 ))}
               </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm border-0 bg-white">
-            <CardHeader className="p-3 pb-2">
-              <CardTitle className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Keterangan
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-3 pb-3 pt-0">
-              <p className="text-xs text-slate-500">
-                Dashboard lama sudah dihapus. Halaman ini sekarang fokus ke 4 frame perbandingan akun secara vertikal.
-              </p>
             </CardContent>
           </Card>
 
