@@ -149,9 +149,41 @@ const EXCLUDED_OVERVIEW_ACCOUNT_CODES = new Set([
   '71600000', // LABA (RUGI) SELISIH KURS
 ]);
 
+const ACCOUNT_NAMES: Record<string, string> = {
+  '71510001': 'BEBAN BUNGA PINJAMAN INVESTASI',
+  '71510002': 'BEBAN BUNGA PINJAMAN MODAL KERJA',
+  '71510003': 'BEBAN BUNGA OBLIGASI',
+  '71510004': 'BEBAN BUNGA SEWA PEMBIAYAAN',
+  '71510005': 'DERIVATIVE INSTRUMENT INTEREST EXPENSES',
+  '71510098': 'BEBAN BUNGA (PSAK 57)',
+  '71510099': 'BEBAN BUNGA LAIN - LAIN',
+  '71410001': 'PENDAPATAN KLAIM ASURANSI',
+  '71410009': 'PENDAPATAN KLAIM LAINNYA',
+  '71421001': 'PENDAPATAN HASIL ANALISA',
+  '71421002': 'PENDAPATAN JASA PELABUHAN',
+  '71421009': 'PENDAPATAN JASA LAINNYA',
+  '71430001': 'PENDAPATAN SEWA TANAH',
+  '71430002': 'PENDAPATAN SEWA BANGUNAN',
+  '71440001': 'PENDAPATAN PENJUALAN AFVAL',
+  '71460001': 'PENDAPATAN PEMAKAIAN LISTRIK',
+  '71460002': 'PENDAPATAN PEMAKAIAN AIR',
+  '71460009': 'PENDAPATAN LAIN-LAIN',
+  '71560001': 'BEBAN LAIN-LAINNYA',
+  '71310001': 'PENDAPATAN BUNGA DEPOSITO',
+  '71310002': 'PENDAPATAN JASA GIRO',
+  '71320001': 'PENDAPATAN CICILAN',
+  '71320002': 'PENDAPATAN BUNGA OBLIGASI',
+  '71610001': 'LABA SELISIH KURS [REALISED]',
+  '71610002': 'RUGI SELISIH KURS [REALISED]',
+  '71620001': 'LABA SELISIH KURS [UNREALISED]',
+  '71620002': 'RUGI SELISIH KURS [UNREALISED]',
+  '71620004': 'EXCHANGE RATE DIFFERENCE UTK PEMBELIAN',
+};
+
 type FrameDef = {
   key: 'beban-bunga' | 'pendapatan-lain' | 'pendapatan-bunga' | 'selisih-kurs';
   title: string;
+  accounts: string[];
   match: (accountCode: string) => boolean;
 };
 
@@ -159,21 +191,25 @@ const FRAME_DEFS: FrameDef[] = [
   {
     key: 'beban-bunga',
     title: 'Beban Bunga',
+    accounts: ['71510001','71510002','71510003','71510004','71510005','71510098','71510099'],
     match: (accountCode: string) => accountCode.startsWith('7151'),
   },
   {
     key: 'pendapatan-lain',
     title: 'Pendapatan Lain-Lain',
+    accounts: ['71410001','71410009','71421001','71421002','71421009','71430001','71430002','71440001','71460001','71460002','71460009','71560001'],
     match: (accountCode: string) => accountCode.startsWith('714') || accountCode.startsWith('7156'),
   },
   {
     key: 'pendapatan-bunga',
     title: 'Pendapatan Bunga',
+    accounts: ['71310001','71310002','71320001','71320002'],
     match: (accountCode: string) => accountCode.startsWith('713'),
   },
   {
     key: 'selisih-kurs',
     title: 'Laba (Rugi) Selisih Kurs',
+    accounts: ['71610001','71610002','71620001','71620002','71620004'],
     match: (accountCode: string) => accountCode.startsWith('716'),
   },
 ];
@@ -299,7 +335,7 @@ function AccountFrameCard({
           {rows.map((row, i) => (
             <YearCompRow
               key={row.accountCode}
-              label={row.accountCode}
+              label={ACCOUNT_NAMES[row.accountCode] ?? row.accountCode}
               v2025={row.prev}
               v2026={row.curr}
               maxVal={maxVal}
@@ -415,7 +451,8 @@ export default function OverviewFluktuasiPage() {
       ...frame,
       mapA: new Map<string, number>(),
       mapB: new Map<string, number>(),
-      allAccounts: new Set<string>(),
+      // Pre-seed with the static account list so all accounts always appear
+      allAccounts: new Set<string>(frame.accounts),
     }));
 
     for (const r of records) {
