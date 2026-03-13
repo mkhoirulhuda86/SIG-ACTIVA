@@ -5,7 +5,7 @@ import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import dynamic from 'next/dynamic';
 import { Activity, TrendingUp } from 'lucide-react';
 import { gsap } from 'gsap';
-import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Skeleton } from '../components/ui/skeleton';
 
@@ -154,23 +154,42 @@ const compactReason = (reason: string, maxLen = 80): string => {
   return `${firstPoint.slice(0, maxLen - 1)}...`;
 };
 
-const summarizeFrameReason = (rows: { reason: string }[]): string => {
-  const uniq: string[] = [];
-  const seen = new Set<string>();
+const summarizeFrameReason = (
+  rows: { accountCode: string; prev: number; curr: number; reason: string }[],
+  mode: 'mom' | 'yoy' | 'ytd',
+  labelA: string,
+  labelB: string,
+): string => {
+  if (rows.length === 0) return '-';
 
-  for (const row of rows) {
-    const parts = String(row.reason || '').split(';').map(s => s.trim()).filter(Boolean);
-    for (const p of parts) {
-      const key = p.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      uniq.push(p);
-    }
+  const movers = rows
+    .map((row) => ({ ...row, delta: row.curr - row.prev }))
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+  const top = movers[0];
+  if (!top || top.delta === 0) {
+    return `Tidak ada perubahan ${mode.toUpperCase()} yang signifikan pada frame ini.`;
   }
 
-  if (uniq.length === 0) return '-';
-  const shown = uniq.slice(0, 2).map(r => compactReason(r, 70)).join(' | ');
-  return uniq.length > 2 ? `${shown} (+${uniq.length - 2} lainnya)` : shown;
+  const naik = movers.find(m => m.delta > 0);
+  const turun = movers.find(m => m.delta < 0);
+
+  const dirTop = top.delta > 0 ? 'kenaikan' : 'penurunan';
+  let summary = `${mode.toUpperCase()}: ${dirTop} dominan pada akun ${top.accountCode} sebesar ${fmtCompact(Math.abs(top.delta))} (${labelB} -> ${labelA}).`;
+
+  if (naik && turun) {
+    summary += ` Pendorong naik: ${naik.accountCode} (${fmtCompact(Math.abs(naik.delta))}); penekan utama: ${turun.accountCode} (${fmtCompact(Math.abs(turun.delta))}).`;
+  }
+
+  const reasonCandidate = movers
+    .flatMap(m => String(m.reason || '').split(';').map(s => s.trim()).filter(Boolean))
+    .find(r => r.length >= 14 && r.trim().split(/\s+/).length >= 3);
+
+  if (reasonCandidate) {
+    summary += ` Faktor utama: ${compactReason(reasonCandidate, 85)}.`;
+  }
+
+  return summary;
 };
 
 const EXCLUDED_OVERVIEW_ACCOUNT_CODES = new Set([
@@ -306,6 +325,7 @@ export default function OverviewFluktuasiPage() {
           key: frame.key,
           title: frame.title,
           rows: [] as { accountCode: string; name: string; prev: number; curr: number; reason: string }[],
+          frameReason: '-',
         })),
         labelA: '',
         labelB: '',
@@ -404,6 +424,7 @@ export default function OverviewFluktuasiPage() {
         key: frame.key,
         title: frame.title,
         rows,
+        frameReason: summarizeFrameReason(rows, compMode, labelA, labelB),
       };
     });
 
@@ -511,30 +532,40 @@ export default function OverviewFluktuasiPage() {
               </div>
             </CardHeader>
             <CardContent className="p-3 pt-2">
+              <div className="mb-2 flex items-center justify-end gap-3 text-[10px] font-semibold text-slate-600">
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#2563eb]" />
+                  <span>{accountFramesByMode.labelB || accountFramesByMode.tagB}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#16a34a]" />
+                  <span>{accountFramesByMode.labelA || accountFramesByMode.tagA}</span>
+                </div>
+              </div>
               <div className="grid gap-3 grid-cols-1 lg:grid-cols-2">
                 {accountFramesByMode.frames.map(frame => (
                   <Card key={frame.key} className="anim-card border border-slate-100 shadow-sm bg-slate-50/60">
                     <CardHeader className="p-3 pb-1">
                       <CardTitle className="text-xs font-semibold uppercase tracking-wide text-red-600">{frame.title}</CardTitle>
                     </CardHeader>
-                    <CardContent className="p-3 pt-2">
+                    <CardContent className="p-2.5 pt-1.5">
                       {frame.rows.length === 0 ? (
                         <p className="text-xs text-slate-400 text-center py-10">Tidak ada data akun pada periode ini</p>
                       ) : (
-                        <div className="space-y-2">
-                          <div className="h-[220px] w-full">
+                        <div className="space-y-1.5">
+                          <div className="h-[180px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={frame.rows} margin={{ top: 12, right: 12, left: 0, bottom: 70 }}>
+                              <BarChart data={frame.rows} margin={{ top: 8, right: 8, left: 0, bottom: 22 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                 <XAxis
                                   dataKey="accountCode"
                                   interval={0}
                                   angle={0}
-                                  textAnchor="end"
-                                  height={44}
-                                  tick={{ fontSize: 10, fill: '#64748b' }}
+                                  textAnchor="middle"
+                                  height={28}
+                                  tick={{ fontSize: 9, fill: '#64748b' }}
                                 />
-                                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={fmtCompact} />
+                                <YAxis width={34} tick={{ fontSize: 9, fill: '#64748b' }} tickFormatter={fmtCompact} />
                                 <Tooltip
                                   formatter={(value) => {
                                     const normalized = typeof value === 'number' ? value : Number(value ?? 0);
@@ -542,16 +573,15 @@ export default function OverviewFluktuasiPage() {
                                   }}
                                   labelFormatter={(accountCode: string) => `${accountCode} - ${ACCOUNT_NAMES[accountCode] ?? accountCode}`}
                                 />
-                                <Legend />
                                 <Bar dataKey="prev" name={accountFramesByMode.labelB || accountFramesByMode.tagB} fill="#2563eb" radius={[4, 4, 0, 0]} />
                                 <Bar dataKey="curr" name={accountFramesByMode.labelA || accountFramesByMode.tagA} fill="#16a34a" radius={[4, 4, 0, 0]} />
                               </BarChart>
                             </ResponsiveContainer>
                           </div>
 
-                          <div className="rounded-md border border-slate-200 bg-white px-2 py-2">
+                          <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Reason Singkat</p>
-                            <p className="text-[10px] leading-4 text-slate-600">{summarizeFrameReason(frame.rows)}</p>
+                            <p className="text-[10px] leading-4 text-slate-600">{frame.frameReason}</p>
                           </div>
                         </div>
                       )}
