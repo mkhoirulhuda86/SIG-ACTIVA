@@ -5540,54 +5540,29 @@ export default function MonitoringAccrualPage() {
         <>
           <div className="fixed inset-0 z-[9998]" onClick={() => setOpenPeriodeJurnalDropdown(null)} />
           <div
-            className="fixed z-[9999] w-52 bg-white border border-gray-200 rounded-xl shadow-2xl"
-            style={{ top: openPeriodeJurnalDropdown.rect.top + 4, right: openPeriodeJurnalDropdown.rect.right }}
+            className="fixed z-[9999] bg-white border border-gray-200 rounded-xl shadow-2xl"
+            style={{ top: openPeriodeJurnalDropdown.rect.top + 4, right: openPeriodeJurnalDropdown.rect.right, minWidth: 180 }}
           >
-            <div className="px-3 py-2 border-b border-gray-100">
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Download Jurnal</p>
-              <p className="text-[10px] text-gray-400">{openPeriodeJurnalDropdown.periode.bulan}</p>
-            </div>
-            <div className="p-2 space-y-1">
-              <p className="text-[10px] font-semibold text-gray-500 px-1">Accrual</p>
-              <button
-                onClick={() => {
-                  promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriode(openPeriodeJurnalDropdown.item, openPeriodeJurnalDropdown.periode, ht, lt), openPeriodeJurnalDropdown.item);
-                  setOpenPeriodeJurnalDropdown(null);
-                }}
-                className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-emerald-50 rounded-lg transition-colors"
-              >
-                <span className="font-medium">↓ Excel</span>
-              </button>
-              <button
-                onClick={() => {
-                  promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriodeTxt(openPeriodeJurnalDropdown.item, openPeriodeJurnalDropdown.periode, ht, lt), openPeriodeJurnalDropdown.item);
-                  setOpenPeriodeJurnalDropdown(null);
-                }}
-                className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-slate-50 rounded-lg transition-colors"
-              >
-                <span className="font-medium">↓ TXT</span>
-              </button>
-              <div className="border-t border-gray-100 pt-1">
-                <p className="text-[10px] font-semibold text-gray-500 px-1">Realisasi</p>
+            <div className="p-2">
+              <p className="text-[10px] font-semibold text-gray-400 px-1 mb-1.5">Accrual · {openPeriodeJurnalDropdown.periode.bulan}</p>
+              <div className="grid grid-cols-2 gap-1 mb-1">
+                <button
+                  onClick={() => { promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriode(openPeriodeJurnalDropdown.item, openPeriodeJurnalDropdown.periode, ht, lt), openPeriodeJurnalDropdown.item); setOpenPeriodeJurnalDropdown(null); }}
+                  className="text-[11px] font-medium bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-2 py-1.5 rounded-lg transition-colors"
+                >↓ Accrual Excel</button>
+                <button
+                  onClick={() => { promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPPerPeriodeTxt(openPeriodeJurnalDropdown.item, openPeriodeJurnalDropdown.periode, ht, lt), openPeriodeJurnalDropdown.item); setOpenPeriodeJurnalDropdown(null); }}
+                  className="text-[11px] font-medium bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1.5 rounded-lg transition-colors"
+                >↓ Accrual TXT</button>
+                <button
+                  onClick={() => { promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPRealisasiPerPeriode(openPeriodeJurnalDropdown.item, openPeriodeJurnalDropdown.periode, ht, lt), openPeriodeJurnalDropdown.item); setOpenPeriodeJurnalDropdown(null); }}
+                  className="text-[11px] font-medium bg-violet-50 hover:bg-violet-100 text-violet-700 px-2 py-1.5 rounded-lg transition-colors"
+                >↓ Realisasi Excel</button>
+                <button
+                  onClick={() => { promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPRealisasiPerPeriodeTxt(openPeriodeJurnalDropdown.item, openPeriodeJurnalDropdown.periode, ht, lt), openPeriodeJurnalDropdown.item); setOpenPeriodeJurnalDropdown(null); }}
+                  className="text-[11px] font-medium bg-gray-50 hover:bg-gray-100 text-gray-600 px-2 py-1.5 rounded-lg transition-colors"
+                >↓ Realisasi TXT</button>
               </div>
-              <button
-                onClick={() => {
-                  promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPRealisasiPerPeriode(openPeriodeJurnalDropdown.item, openPeriodeJurnalDropdown.periode, ht, lt), openPeriodeJurnalDropdown.item);
-                  setOpenPeriodeJurnalDropdown(null);
-                }}
-                className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-violet-50 rounded-lg transition-colors"
-              >
-                <span className="font-medium">↓ Excel</span>
-              </button>
-              <button
-                onClick={() => {
-                  promptJurnalTexts((ht, lt) => handleDownloadJurnalSAPRealisasiPerPeriodeTxt(openPeriodeJurnalDropdown.item, openPeriodeJurnalDropdown.periode, ht, lt), openPeriodeJurnalDropdown.item);
-                  setOpenPeriodeJurnalDropdown(null);
-                }}
-                className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-              >
-                <span className="font-medium">↓ TXT</span>
-              </button>
             </div>
           </div>
         </>
