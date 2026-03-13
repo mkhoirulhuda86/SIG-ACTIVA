@@ -60,8 +60,13 @@ export async function GET() {
       orderBy: { createdAt: 'asc' },
     });
 
-    // Merge map: "accountCode|periode" -> amount (latest import wins)
-    const dataMap = new Map<string, number>();
+    // Merge map: "accountCode|periode" -> payload (latest import wins)
+    const dataMap = new Map<string, {
+      amount: number;
+      reasonMoM: string;
+      reasonYoY: string;
+      reasonYtD: string;
+    }>();
 
     for (const imp of imports) {
       const rekap = imp.rekapSheetData as Record<string, unknown> | null;
@@ -75,13 +80,23 @@ export async function GET() {
       if (!Array.isArray(rows) || !Array.isArray(amountCols)) continue;
 
       for (const row of rows) {
-        const r = row as { type?: string; values?: unknown[] };
+        const r = row as {
+          type?: string;
+          values?: unknown[];
+          reasonMoM?: unknown;
+          reasonYoY?: unknown;
+          reasonYtD?: unknown;
+        };
         if (r.type !== 'detail') continue;
 
         const values = Array.isArray(r.values) ? r.values : [];
         const accountCode = String(values[accountColIdx] ?? '').trim();
         // Only include real account codes (5+ digits)
         if (!accountCode || !/^\d{5,}$/.test(accountCode)) continue;
+
+        const reasonMoM = String(r.reasonMoM ?? '').trim();
+        const reasonYoY = String(r.reasonYoY ?? '').trim();
+        const reasonYtD = String(r.reasonYtD ?? '').trim();
 
         for (const ac of amountCols) {
           const a = ac as {
@@ -102,17 +117,25 @@ export async function GET() {
           if (!periode) continue;
 
           const amount = parseNum(values[colIdx]);
-          dataMap.set(`${accountCode}|${periode}`, amount);
+          dataMap.set(`${accountCode}|${periode}`, {
+            amount,
+            reasonMoM,
+            reasonYoY,
+            reasonYtD,
+          });
         }
       }
     }
 
-    const data = [...dataMap.entries()].map(([key, amount]) => {
+    const data = [...dataMap.entries()].map(([key, payload]) => {
       const pipeIdx = key.indexOf('|');
       return {
         accountCode: key.slice(0, pipeIdx),
         periode: key.slice(pipeIdx + 1),
-        amount,
+        amount: payload.amount,
+        reasonMoM: payload.reasonMoM,
+        reasonYoY: payload.reasonYoY,
+        reasonYtD: payload.reasonYtD,
       };
     });
 

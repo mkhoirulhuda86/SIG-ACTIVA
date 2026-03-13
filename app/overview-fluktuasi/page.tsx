@@ -114,14 +114,18 @@ type AkunPeriodeRecord = {
   accountCode: string;
   periode: string;
   amount: number;
-  klasifikasi: string;
-  remark: string;
+  reasonMoM?: string;
+  reasonYoY?: string;
+  reasonYtD?: string;
 };
 
 type ParsedRecord = {
   accountCode: string;
   periode: string;
   amount: number;
+  reasonMoM: string;
+  reasonYoY: string;
+  reasonYtD: string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -140,6 +144,33 @@ const periodeToLabel = (p: string): string => {
   const [yr, mo] = p.split('.');
   const m = parseInt(mo) - 1;
   return `${MONTHS_ID[m] ?? mo} ${yr}`;
+};
+
+const compactReason = (reason: string, maxLen = 80): string => {
+  const base = String(reason || '').replace(/\s+/g, ' ').trim();
+  if (!base) return '-';
+  const firstPoint = base.split(';').map(s => s.trim()).find(Boolean) ?? base;
+  if (firstPoint.length <= maxLen) return firstPoint;
+  return `${firstPoint.slice(0, maxLen - 1)}...`;
+};
+
+const summarizeFrameReason = (rows: { reason: string }[]): string => {
+  const uniq: string[] = [];
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    const parts = String(row.reason || '').split(';').map(s => s.trim()).filter(Boolean);
+    for (const p of parts) {
+      const key = p.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      uniq.push(p);
+    }
+  }
+
+  if (uniq.length === 0) return '-';
+  const shown = uniq.slice(0, 2).map(r => compactReason(r, 70)).join(' | ');
+  return uniq.length > 2 ? `${shown} (+${uniq.length - 2} lainnya)` : shown;
 };
 
 const EXCLUDED_OVERVIEW_ACCOUNT_CODES = new Set([
@@ -243,6 +274,9 @@ export default function OverviewFluktuasiPage() {
             accountCode: r.accountCode,
             periode:     r.periode,
             amount:      r.amount,
+            reasonMoM:   String(r.reasonMoM ?? ''),
+            reasonYoY:   String(r.reasonYoY ?? ''),
+            reasonYtD:   String(r.reasonYtD ?? ''),
           })));
         }
       })
@@ -271,7 +305,7 @@ export default function OverviewFluktuasiPage() {
         frames: FRAME_DEFS.map(frame => ({
           key: frame.key,
           title: frame.title,
-          rows: [] as { accountCode: string; name: string; prev: number; curr: number }[],
+          rows: [] as { accountCode: string; name: string; prev: number; curr: number; reason: string }[],
         })),
         labelA: '',
         labelB: '',
@@ -327,6 +361,7 @@ export default function OverviewFluktuasiPage() {
       mapA: new Map<string, number>(),
       mapB: new Map<string, number>(),
       allAccounts: new Set<string>(frame.accounts),
+      reasons: new Map<string, Set<string>>(),
     }));
 
     for (const r of records) {
@@ -335,6 +370,14 @@ export default function OverviewFluktuasiPage() {
       if (!frame) continue;
 
       frame.allAccounts.add(r.accountCode);
+
+      const reasonRaw = compMode === 'mom' ? r.reasonMoM : compMode === 'yoy' ? r.reasonYoY : r.reasonYtD;
+      const reasonList = String(reasonRaw || '').split(';').map(s => s.trim()).filter(Boolean);
+      if (reasonList.length > 0) {
+        const set = frame.reasons.get(r.accountCode) ?? new Set<string>();
+        for (const reason of reasonList) set.add(reason);
+        frame.reasons.set(r.accountCode, set);
+      }
 
       if (periodesA.has(r.periode)) {
         frame.mapA.set(r.accountCode, (frame.mapA.get(r.accountCode) ?? 0) + r.amount);
@@ -349,6 +392,7 @@ export default function OverviewFluktuasiPage() {
         name: ACCOUNT_NAMES[accountCode] ?? accountCode,
         prev: frame.mapB.get(accountCode) ?? 0,
         curr: frame.mapA.get(accountCode) ?? 0,
+        reason: [...(frame.reasons.get(accountCode) ?? new Set<string>())].join('; '),
       }));
 
       const rows = allRows
@@ -477,7 +521,7 @@ export default function OverviewFluktuasiPage() {
                       {frame.rows.length === 0 ? (
                         <p className="text-xs text-slate-400 text-center py-10">Tidak ada data akun pada periode ini</p>
                       ) : (
-                        <div>
+                        <div className="space-y-2">
                           <div className="h-[220px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
                               <BarChart data={frame.rows} margin={{ top: 12, right: 12, left: 0, bottom: 70 }}>
@@ -503,6 +547,11 @@ export default function OverviewFluktuasiPage() {
                                 <Bar dataKey="curr" name={accountFramesByMode.labelA || accountFramesByMode.tagA} fill="#16a34a" radius={[4, 4, 0, 0]} />
                               </BarChart>
                             </ResponsiveContainer>
+                          </div>
+
+                          <div className="rounded-md border border-slate-200 bg-white px-2 py-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Reason Singkat</p>
+                            <p className="text-[10px] leading-4 text-slate-600">{summarizeFrameReason(frame.rows)}</p>
                           </div>
                         </div>
                       )}
