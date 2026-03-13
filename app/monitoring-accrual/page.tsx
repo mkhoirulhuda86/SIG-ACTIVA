@@ -2881,17 +2881,6 @@ export default function MonitoringAccrualPage() {
       if (res.ok) {
         const data = await res.json();
         setCostCenterData(data);
-        // Jika belum ada rincian, auto-isi form dari data accrual induk
-        if (data.length === 0 && Math.abs(periode.amountAccrual) > 0) {
-          setCostCenterForm({
-            costCenter: accrual.costCenter || '',
-            kdAkunBiaya: accrual.kdAkunBiaya || '',
-            amount: Math.abs(periode.amountAccrual).toString(),
-            headerText: accrual.headerText || '',
-            lineText: '',
-            keterangan: '',
-          });
-        }
       }
     } catch (error) {
       console.error('Error fetching cost center data:', error);
@@ -4974,8 +4963,8 @@ export default function MonitoringAccrualPage() {
                     <p className="text-sm text-gray-500 mb-3">Belum ada rincian untuk periode ini</p>
                     {costCenterModalPeriode && Math.abs(costCenterModalPeriode.amountAccrual) > 0 && (
                       <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-700 text-left">
-                        <p className="font-semibold mb-1">?? Form di atas sudah diisi otomatis dari data accrual periode ini ({formatCurrency(Math.abs(costCenterModalPeriode.amountAccrual))}).</p>
-                        <p>Scroll ke atas lalu klik <strong>Simpan Rincian</strong> untuk menambahkannya, atau ubah sesuai kebutuhan.</p>
+                        <p className="font-semibold mb-1">Belum ada rincian tersimpan untuk periode ini ({formatCurrency(Math.abs(costCenterModalPeriode.amountAccrual))}).</p>
+                        <p>Klik <strong>Isi form dari data accrual ini</strong> kalau mau pakai nilai default periode, atau pakai tombol <strong>+ Input Rincian</strong> di tabel untuk input cepat amount saja.</p>
                       </div>
                     )}
                   </div>
