@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import { RotateCcw, Search, TrendingUp, Layers, Filter, List, BarChart3 } from 'lucide-react';
 import { gsap } from 'gsap';
 import { animate, stagger } from 'animejs';
+import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -21,8 +22,11 @@ type AkunPeriodeRecord = {
   accountCode: string;
   periode: string;
   amount: number;
-  klasifikasi: string;
-  remark: string;
+  klasifikasi?: string;
+  remark?: string;
+  reasonMoM?: string;
+  reasonYoY?: string;
+  reasonYtD?: string;
 };
 
 // --- Helpers -----------------------------------------------------------------
@@ -74,6 +78,77 @@ const SUB_AKUN_GROUPS = [
   { label: '71510000', color: '#d97706' },
   { label: '71600000', color: '#7c3aed' },
 ];
+
+const EXCLUDED_PARENT_ACCOUNT_CODES = new Set([
+  '71510000',
+  '71400000',
+  '71560000',
+  '71300000',
+  '71600000',
+]);
+
+type AccountTabDef = {
+  key: 'beban-bunga' | 'pendapatan-lain' | 'pendapatan-bunga' | 'selisih-kurs';
+  title: string;
+  accountCodes: string[];
+};
+
+const ACCOUNT_TAB_DEFS: AccountTabDef[] = [
+  {
+    key: 'beban-bunga',
+    title: 'Beban Bunga',
+    accountCodes: [
+      '71510001',
+      '71510002',
+      '71510003',
+      '71510004',
+      '71510005',
+      '71510098',
+      '71510099',
+    ],
+  },
+  {
+    key: 'pendapatan-lain',
+    title: 'Pendapatan Lain-Lain',
+    accountCodes: [
+      '71410001',
+      '71410009',
+      '71421001',
+      '71421002',
+      '71421009',
+      '71430001',
+      '71430002',
+      '71440001',
+      '71460001',
+      '71460002',
+      '71460009',
+      '71560001',
+    ],
+  },
+  {
+    key: 'pendapatan-bunga',
+    title: 'Pendapatan Bunga',
+    accountCodes: [
+      '71310001',
+      '71310002',
+      '71320001',
+      '71320002',
+    ],
+  },
+  {
+    key: 'selisih-kurs',
+    title: 'Laba (Rugi) Selisih Kurs',
+    accountCodes: [
+      '71610001',
+      '71610002',
+      '71620001',
+      '71620002',
+      '71620004',
+    ],
+  },
+];
+
+const MAX_KLASIFIKASI_PER_ACCOUNT = 8;
 
 // Pre-built cache: code prefix → sub-group (O(1) lookup per code)
 const _subGroupCache = new Map<string, { prefix: string; label: string; color: string } | null>();
@@ -345,6 +420,9 @@ export default function DetailAkunFluktuasiPage() {
   const [records, setRecords]                   = useState<ProcessedRecord[]>([]);
   const [loading, setLoading]                   = useState(true);
   const [isMobileSidebarOpen, setMobileSidebar] = useState(false);
+  const [compMode, setCompMode]                 = useState<'mom' | 'yoy' | 'ytd'>('yoy');
+  const [compPeriodeRaw, setCompPeriodeRaw]     = useState('');
+  const [activeAccountTab, setActiveAccountTab] = useState<AccountTabDef['key']>('beban-bunga');
 
   // Filters
   const [selectedYear,      setSelectedYear]      = useState<string>('all');
@@ -372,23 +450,41 @@ export default function DetailAkunFluktuasiPage() {
   const subAkunListRef = useRef<HTMLDivElement>(null);
   const tableBodyRef   = useRef<HTMLTableSectionElement>(null);
 
-  const loadData = useCallback(() => {
-    // slim=1: skip remark/uploadedBy/fileName/createdAt/updatedAt — smaller payload
-    fetch('/api/fluktuasi/akun-periodes?slim=1')
-      .then(r => r.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.data)) {
-          // Pre-process once: cache klasifikasi parts to avoid repeated splits later
-          const processed: ProcessedRecord[] = data.data.map((r: AkunPeriodeRecord) => ({
-            ...r,
-            _parts: (r.klasifikasi || '(Tanpa Klasifikasi)')
-              .split(';').map((p: string) => p.trim()).filter(Boolean),
-          }));
-          setRecords(processed);
+  const loadData = useCallback(async () => {
+    try {
+      // Primary source: rekap-amounts (covers full imported rekap data)
+      const resRekap = await fetch('/api/fluktuasi/rekap-amounts');
+      const dataRekap = await resRekap.json();
+
+      let sourceRows: AkunPeriodeRecord[] = [];
+      if (dataRekap?.success && Array.isArray(dataRekap.data) && dataRekap.data.length > 0) {
+        sourceRows = dataRekap.data as AkunPeriodeRecord[];
+      } else {
+        // Fallback for legacy data path
+        const resAkun = await fetch('/api/fluktuasi/akun-periodes?slim=1');
+        const dataAkun = await resAkun.json();
+        if (dataAkun?.success && Array.isArray(dataAkun.data)) {
+          sourceRows = dataAkun.data as AkunPeriodeRecord[];
         }
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      }
+
+      const processed: ProcessedRecord[] = sourceRows.map((r) => {
+        const klasifikasiRaw = (r.klasifikasi || r.reasonMoM || '(Tanpa Klasifikasi)').toString();
+        return {
+          ...r,
+          accountCode: String(r.accountCode || '').trim(),
+          periode: String(r.periode || '').trim(),
+          amount: Number(r.amount || 0),
+          _parts: klasifikasiRaw.split(';').map((p: string) => p.trim()).filter(Boolean),
+        };
+      });
+
+      setRecords(processed);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -401,21 +497,21 @@ export default function DetailAkunFluktuasiPage() {
   // ── GSAP page-entry after data loads ────────────────────────────────────
   useEffect(() => {
     if (loading || records.length === 0) return;
+    const animTargets = [
+      pillsRef.current,
+      donutCardRef.current,
+      centerColRef.current,
+      filterColRef.current,
+      tableRef.current,
+    ].filter((el): el is HTMLDivElement => el !== null);
+
+    if (animTargets.length === 0) return;
+
     const ctx = gsap.context(() => {
       gsap.fromTo(
-        pillsRef.current,
-        { opacity: 0, x: -16 },
-        { opacity: 1, x: 0, duration: 0.45, ease: 'power3.out' }
-      );
-      gsap.fromTo(
-        [donutCardRef.current, centerColRef.current, filterColRef.current],
-        { opacity: 0, y: 36, scale: 0.96 },
-        { opacity: 1, y: 0, scale: 1, duration: 0.7, stagger: 0.13, ease: 'power3.out', delay: 0.15 }
-      );
-      gsap.fromTo(
-        tableRef.current,
-        { opacity: 0, y: 24 },
-        { opacity: 1, y: 0, duration: 0.65, ease: 'power3.out', delay: 0.52 }
+        animTargets,
+        { opacity: 0, y: 18, scale: 0.985 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.45, stagger: 0.06, ease: 'power3.out' }
       );
     });
     return () => ctx.revert();
@@ -483,6 +579,117 @@ export default function DetailAkunFluktuasiPage() {
     const s = new Set(records.map(r => r.periode.split('.')[0]));
     return [...s].sort();
   }, [records]);
+
+  const allPeriodes = useMemo(() => {
+    const s = new Set(records.map(r => r.periode));
+    return [...s].sort();
+  }, [records]);
+
+  const compPeriode = compPeriodeRaw || (allPeriodes.length > 0 ? allPeriodes[allPeriodes.length - 1] : '');
+
+  const activeTabDef = useMemo(
+    () => ACCOUNT_TAB_DEFS.find(t => t.key === activeAccountTab) || ACCOUNT_TAB_DEFS[0],
+    [activeAccountTab],
+  );
+
+  const accountFramesByMode = useMemo(() => {
+    if (!compPeriode) {
+      return {
+        frames: [] as { accountCode: string; rows: { klasifikasi: string; prev: number; curr: number }[] }[],
+        labelA: '',
+        labelB: '',
+      };
+    }
+
+    const [yearStr, monStr] = compPeriode.split('.');
+    const yearA = parseInt(yearStr);
+    const monA = parseInt(monStr);
+
+    let periodesA: Set<string>;
+    let periodesB: Set<string>;
+    let labelA: string;
+    let labelB: string;
+
+    if (compMode === 'mom') {
+      const prevMon = monA === 1 ? 12 : monA - 1;
+      const prevYear = monA === 1 ? yearA - 1 : yearA;
+      const periodeB = `${prevYear}.${String(prevMon).padStart(2, '0')}`;
+      periodesA = new Set([compPeriode]);
+      periodesB = new Set([periodeB]);
+      labelA = periodeToLabel(compPeriode);
+      labelB = periodeToLabel(periodeB);
+    } else if (compMode === 'yoy') {
+      const periodeB = `${yearA - 1}.${monStr}`;
+      periodesA = new Set([compPeriode]);
+      periodesB = new Set([periodeB]);
+      labelA = periodeToLabel(compPeriode);
+      labelB = periodeToLabel(periodeB);
+    } else {
+      periodesA = new Set<string>();
+      periodesB = new Set<string>();
+      for (let m = 1; m <= monA; m++) {
+        periodesA.add(`${yearA}.${String(m).padStart(2, '0')}`);
+        periodesB.add(`${yearA - 1}.${String(m).padStart(2, '0')}`);
+      }
+      labelA = `YTD ${yearA}`;
+      labelB = `YTD ${yearA - 1}`;
+    }
+
+    const allowedCodes = new Set(
+      activeTabDef.accountCodes.filter((code) => !EXCLUDED_PARENT_ACCOUNT_CODES.has(code)),
+    );
+    const accountMap = new Map<string, { mapA: Map<string, number>; mapB: Map<string, number> }>();
+
+    for (const code of allowedCodes) {
+      accountMap.set(code, { mapA: new Map<string, number>(), mapB: new Map<string, number>() });
+    }
+
+    for (const r of records) {
+      if (!allowedCodes.has(r.accountCode)) continue;
+
+      let entry = accountMap.get(r.accountCode);
+      if (!entry) {
+        entry = { mapA: new Map<string, number>(), mapB: new Map<string, number>() };
+        accountMap.set(r.accountCode, entry);
+      }
+
+      const klasifikasiParts = r._parts.length > 0 ? r._parts : ['(Tanpa Klasifikasi)'];
+      const share = r.amount / klasifikasiParts.length;
+
+      if (periodesA.has(r.periode)) {
+        for (const klasifikasi of klasifikasiParts) {
+          entry.mapA.set(klasifikasi, (entry.mapA.get(klasifikasi) ?? 0) + share);
+        }
+      } else if (periodesB.has(r.periode)) {
+        for (const klasifikasi of klasifikasiParts) {
+          entry.mapB.set(klasifikasi, (entry.mapB.get(klasifikasi) ?? 0) + share);
+        }
+      }
+    }
+
+    const frames = [...accountMap.entries()]
+      .map(([accountCode, entry]) => {
+        const allKlasifikasi = new Set<string>([
+          ...entry.mapA.keys(),
+          ...entry.mapB.keys(),
+        ]);
+
+        const rows = [...allKlasifikasi]
+          .map((klasifikasi) => ({
+            klasifikasi,
+            prev: entry.mapB.get(klasifikasi) ?? 0,
+            curr: entry.mapA.get(klasifikasi) ?? 0,
+          }))
+          .filter((row) => row.prev !== 0 || row.curr !== 0)
+          .sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)))
+          .slice(0, MAX_KLASIFIKASI_PER_ACCOUNT);
+
+        return { accountCode, rows };
+      })
+      .sort((a, b) => activeTabDef.accountCodes.indexOf(a.accountCode) - activeTabDef.accountCodes.indexOf(b.accountCode));
+
+    return { frames, labelA, labelB };
+  }, [records, compMode, compPeriode, activeTabDef]);
 
   const allAkunCodes = useMemo(() => {
     const m = new Map<string, number>();
@@ -700,465 +907,118 @@ export default function DetailAkunFluktuasiPage() {
   return shell(
     <div className="flex-1 overflow-y-auto">
 
-      {/* ── Filter summary + reset ─────────────────────────────────── */}
-      <div ref={pillsRef} className="flex items-center justify-between px-4 pt-3 pb-1 flex-wrap gap-2">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Filter aktif:</span>
-          <Badge variant="outline" className="text-[9px] px-2 py-0.5 h-5 bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold">
-            {filterSubAkun.size > 0 ? `${filterSubAkun.size} account group` : 'Semua account group'}
-          </Badge>
-          <Badge variant="outline" className="text-[9px] px-2 py-0.5 h-5 bg-blue-50 text-blue-700 border-blue-200 font-semibold">
-            {filterAkun.size > 0 ? `${filterAkun.size} akun` : 'Semua akun'}
-          </Badge>
-          <Badge variant="outline" className="text-[9px] px-2 py-0.5 h-5 bg-purple-50 text-purple-700 border-purple-200 font-semibold">
-            {filterKlasifikasi.size > 0 ? `${filterKlasifikasi.size} klasifikasi` : 'Semua klasifikasi'}
-          </Badge>
-          <Badge variant="outline" className="text-[9px] px-2 py-0.5 h-5 bg-slate-50 text-slate-600 border-slate-200 font-semibold">
-            {allAkunCodes.length} G/L account total
-          </Badge>
-          {selectedYear !== 'all' && (
-            <Badge variant="outline" className="text-[9px] px-2 py-0.5 h-5 bg-amber-50 text-amber-700 border-amber-200 font-semibold">
-              Tahun {selectedYear}
-            </Badge>
-          )}
-        </div>
-        <Button
-          ref={resetBtnRef}
-          onClick={resetFilters}
-          size="sm"
-          className="h-7 px-3 text-[10px] font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm gap-1.5 transition-all duration-200 active:scale-95 border-0"
-        >
-          <RotateCcw size={11} className="shrink-0" /> Reset Filter
-        </Button>
-      </div>
-
-      {/* ── 3-col top panel ────────────────────────────────────────── */}
-      <div className="grid gap-3 px-4 pt-1 pb-3 grid-cols-1 lg:grid-cols-[280px_1fr_270px]">
-
-        {/* ── LEFT – Donut ─────────────────────────────────────────── */}
-        <div ref={donutCardRef} style={{ opacity: 0 }}>
-          <Card className="h-full border-0 shadow-md bg-white/90 backdrop-blur-sm hover:shadow-lg transition-shadow duration-300">
-            <CardHeader className="pb-1 pt-3 px-3">
-              <CardTitle className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center flex items-center justify-center gap-1.5">
-                <Layers size={11} className="text-blue-500" />
-                DISTRIBUSI PER G/L ACCOUNT
+      <div className="px-4 pt-3 pb-1">
+        <Card className="border border-blue-100 bg-[#eef5ff] shadow-sm">
+          <CardHeader className="p-2 pb-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                Dashboard Detail Per Akun
               </CardTitle>
-            </CardHeader>
-            <CardContent className="px-3 pb-3 flex flex-col items-center gap-2">
-              <DonutChart data={topAccounts} total={totalFiltered} />
-              <div className="w-full space-y-1 overflow-y-auto" style={{ maxHeight: 200 }}>
-                {topAccounts.slice(0, 12).map((d, i) => {
-                  const pct = donutTotal > 0 ? (Math.abs(d.value) / donutTotal * 100).toFixed(1) : '0.0';
-                  return (
-                    <div key={i}
-                      className="flex items-center gap-2 cursor-pointer hover:bg-blue-50/60 rounded-md px-1.5 py-0.5 transition-all duration-150 group"
-                      onClick={() => {
-                        if (!d.label.startsWith('+')) { toggleAkun(d.label); setListPage(0); }
-                      }}>
-                      <span className="flex-shrink-0 rounded-sm transition-transform duration-150 group-hover:scale-125"
-                        style={{ width: 9, height: 9, backgroundColor: d.color }} />
-                      <span className="flex-1 text-[10px] font-mono text-slate-600 truncate">{d.label}</span>
-                      <span className="text-[10px] font-bold font-mono flex-shrink-0"
-                        style={{ color: d.value >= 0 ? '#16a34a' : '#dc2626' }}>
-                        {fmtCompact(d.value)}
-                      </span>
-                      <span className="text-[9px] text-slate-400 w-9 text-right flex-shrink-0">{pct}%</span>
-                    </div>
-                  );
-                })}
-                {topAccounts.length > 12 && (
-                  <div className="flex items-center gap-2 px-1.5">
-                    <span className="flex-shrink-0 rounded-sm" style={{ width: 9, height: 9, backgroundColor: '#cbd5e1' }} />
-                    <span className="flex-1 text-[10px] font-mono text-slate-400 italic">{topAccounts[topAccounts.length - 1]?.label}</span>
-                    <span className="text-[10px] font-bold font-mono text-slate-400">
-                      {fmtCompact(topAccounts[topAccounts.length - 1]?.value ?? 0)}
-                    </span>
-                  </div>
-                )}
-                <div className="border-t border-slate-100 pt-1.5 flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-600">Total keseluruhan</span>
-                  <span className="text-[11px] font-extrabold font-mono"
-                    style={{ color: totalFiltered >= 0 ? '#16a34a' : '#dc2626' }}>
-                    <span ref={counterRef}>{fmtFull(totalFiltered)}</span>
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* ── CENTER – Trend + tables ──────────────────────────────── */}
-        <div ref={centerColRef} className="flex flex-col gap-3" style={{ opacity: 0 }}>
-
-          {/* Trend chart card */}
-          <Card className="border-0 shadow-md bg-white/90 backdrop-blur-sm hover:shadow-lg transition-shadow duration-300">
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <TrendingUp size={11} className="text-blue-500" />
-                  TREN TOTAL FLUKTUASI PER PERIODE
-                </p>
-                <div className="flex items-center gap-1 text-[9px] text-slate-400">
-                  <span className="inline-block w-6 h-0.5 bg-blue-600 rounded" />
-                  Amount Outstanding
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-1 mb-2">
-                <button
-                  onClick={() => setSelectedYear('all')}
-                  className="px-2 py-0.5 rounded text-[9px] font-semibold transition-all duration-200 hover:scale-105 active:scale-95"
-                  style={{ backgroundColor: selectedYear === 'all' ? '#2563eb' : '#f1f5f9', color: selectedYear === 'all' ? 'white' : '#64748b' }}>
-                  Semua
-                </button>
-                {years.map(yr => (
-                  <button key={yr} onClick={() => setSelectedYear(yr)}
-                    className="px-2 py-0.5 rounded text-[9px] font-semibold transition-all duration-200 hover:scale-105 active:scale-95"
-                    style={{ backgroundColor: selectedYear === yr ? '#2563eb' : '#f1f5f9', color: selectedYear === yr ? 'white' : '#64748b' }}>
-                    {yr}
+              <div className="ml-auto flex gap-1">
+                {(['mom', 'yoy', 'ytd'] as const).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setCompMode(mode)}
+                    className="px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all duration-200 hover:scale-105 active:scale-95"
+                    style={{ backgroundColor: compMode === mode ? '#dc2626' : '#dbeafe', color: compMode === mode ? 'white' : '#1e3a8a' }}
+                  >
+                    {mode}
                   </button>
                 ))}
               </div>
-              <div style={{ height: 130 }}>
-                <TrendChart data={byPeriode} />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Side-by-side summary tables */}
-          <Card className="border-0 shadow-md bg-white/90 backdrop-blur-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
-            <div className="grid grid-cols-1 sm:grid-cols-2">
-
-              {/* Top Accounts table */}
-              <div className="border-r border-slate-100">
-                <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/80">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1">
-                    <BarChart3 size={9} className="text-blue-500" /> Top 10 G/L Account
-                  </p>
-                </div>
-                <table className="w-full" style={{ fontSize: 10.5, borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: 'linear-gradient(90deg,#1e3a5f,#1e40af)' }}>
-                      <th className="px-3 py-1.5 text-left text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>Account Group</th>
-                      <th className="px-3 py-1.5 text-left text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>G/L Account</th>
-                      <th className="px-3 py-1.5 text-right text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {accountSummaryRows.map(({ code, total }, i) => {
-                      const sg = subGroupForCode(code);
-                      const rowColor = sg?.color ?? '#64748b';
-                      return (
-                        <tr key={i}
-                          className={`${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'} hover:bg-blue-50/50 transition-colors duration-100`}
-                          style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td className="px-3 py-1.5">
-                            {sg ? (
-                              <span className="inline-block px-1 py-0.5 rounded text-[8.5px] font-mono font-bold"
-                                style={{ backgroundColor: sg.color + '18', color: sg.color }}>
-                                {sg.label}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400 text-[8.5px]">—</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-1.5 font-mono font-semibold" style={{ color: rowColor }}>
-                            {code}
-                          </td>
-                          <td className="px-3 py-1.5 text-right font-mono font-bold"
-                            style={{ color: total >= 0 ? '#16a34a' : '#dc2626' }}>
-                            {fmtFull(total)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    <tr className="border-t border-gray-200 bg-slate-50">
-                      <td colSpan={2} className="px-3 py-1.5 font-bold text-slate-600 text-[10px]">Total keseluruhan</td>
-                      <td className="px-3 py-1.5 text-right font-extrabold font-mono text-[11px]"
-                        style={{ color: totalFiltered >= 0 ? '#16a34a' : '#dc2626' }}>
-                        {fmtFull(totalFiltered)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Klasifikasi table */}
-              <div>
-                <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/80">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1">
-                    <Layers size={9} className="text-purple-500" /> Klasifikasi
-                  </p>
-                </div>
-                <table className="w-full" style={{ fontSize: 10.5, borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: 'linear-gradient(90deg,#1e3a5f,#1e40af)' }}>
-                      <th className="px-3 py-1.5 text-left text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>Klasifikasi</th>
-                      <th className="px-3 py-1.5 text-right text-[8.5px] font-semibold uppercase" style={{ color: '#bfdbfe' }}>Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {klasifikasiTotalsMap.slice(0, 7).map((d, i) => (
-                      <tr key={i}
-                        className={`${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'} hover:bg-purple-50/50 transition-colors duration-100`}
-                        style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td className="px-3 py-1.5 text-slate-600">
-                          <div className="flex items-center gap-1.5">
-                            <span className="flex-shrink-0 rounded-sm w-2 h-2" style={{ backgroundColor: d.color }} />
-                            <span className="truncate max-w-[140px]" title={d.label}>{d.label}</span>
-                          </div>
-                        </td>
-                        <td className="px-3 py-1.5 text-right font-mono font-bold"
-                          style={{ color: d.value >= 0 ? '#16a34a' : '#dc2626' }}>
-                          {fmtFull(d.value)}
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="border-t border-gray-200 bg-slate-50">
-                      <td className="px-3 py-1.5 font-bold text-slate-600 text-[10px]">Total keseluruhan</td>
-                      <td className="px-3 py-1.5 text-right font-extrabold font-mono text-[11px]"
-                        style={{ color: totalFiltered >= 0 ? '#16a34a' : '#dc2626' }}>
-                        {fmtFull(totalFiltered)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
             </div>
-          </Card>
-        </div>
 
-        {/* ── RIGHT – Filter ────────────────────────────────────────── */}
-        <div ref={filterColRef} style={{ opacity: 0 }}>
-          <Card className="h-full border-0 shadow-md bg-white/90 backdrop-blur-sm hover:shadow-lg transition-shadow duration-300">
-            <CardHeader className="pb-1 pt-3 px-3">
-              <CardTitle className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center flex items-center justify-center gap-1.5">
-                <Filter size={10} className="text-blue-500" /> FILTER
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-3 pb-3 flex flex-col gap-3">
-
-              {/* Account Group filter */}
-              <div className="flex flex-col min-h-0">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Account Group</p>
-                <div ref={subAkunListRef} className="border border-slate-200 rounded-lg bg-slate-50/60 overflow-hidden shadow-inner">
-                  {SUB_AKUN_GROUPS.map(sg => {
-                    const isChecked = filterSubAkun.size === 0 || filterSubAkun.has(sg.label);
-                    const amt = subAkunTotals.get(sg.label) ?? 0;
-                    return (
-                      <label key={sg.label}
-                        className="sub-akun-item flex items-center gap-2 px-2 py-1.5 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-indigo-50/70 transition-colors duration-150">
-                        <input type="checkbox" checked={isChecked}
-                          onChange={() => { toggleSubAkun(sg.label); setListPage(0); }}
-                          className="w-3 h-3 rounded" style={{ accentColor: sg.color }} />
-                        <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: sg.color }} />
-                        <span className="flex-1 text-[10px] font-mono font-bold text-slate-700">{sg.label}</span>
-                        <span className="text-[8.5px] font-mono text-slate-400 flex-shrink-0">{fmtCompact(amt)}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Akun filter with search */}
-              <div className="flex flex-col flex-1 min-h-0">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">G/L Account</p>
-                <div className="relative mb-1.5">
-                  <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  <Input
-                    type="text"
-                    placeholder="Cari G/L Account..."
-                    value={searchAkunRaw}
-                    onChange={e => setSearchAkunRaw(e.target.value)}
-                    className="pl-7 h-7 text-[10px] border-slate-200 bg-slate-50/80 focus:bg-white focus:border-blue-400 transition-colors duration-200"
-                  />
-                </div>
-                <div className="border border-slate-200 rounded-lg bg-slate-50/60 flex flex-col overflow-hidden flex-1 shadow-inner">
-                  <div className="flex items-center px-2 py-1.5 bg-slate-100/80 border-b border-slate-200 flex-shrink-0">
-                    <span className="flex-1 text-[8.5px] font-bold text-slate-500 uppercase tracking-wide">Akun</span>
-                    <span className="text-[8.5px] font-bold text-slate-500 uppercase tracking-wide">Amount</span>
-                  </div>
-                  <div ref={akunListRef} className="overflow-y-auto flex-1" style={{ maxHeight: 200 }}>
-                    {filteredAkunOptions.length === 0 && (
-                      <p className="text-center py-3 text-[9px] text-slate-400 italic">Tidak ditemukan</p>
-                    )}
-                    {filteredAkunOptions.map(code => {
-                      const amt       = accountTotalsMap.get(code) ?? 0;
-                      const isChecked = filterAkun.size === 0 || filterAkun.has(code);
-                      const color     = codeColorMap.get(code) ?? '#94a3b8';
-                      return (
-                        <label key={code}
-                          className="akun-item flex items-center gap-2 px-2 py-1 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-blue-50/70 transition-colors duration-150">
-                          <input type="checkbox" checked={isChecked}
-                            onChange={() => { toggleAkun(code); setListPage(0); }}
-                            className="w-3 h-3 rounded" style={{ accentColor: color }} />
-                          <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
-                          <span className="flex-1 text-[10px] font-mono text-slate-700">{code}</span>
-                          <span className="text-[8.5px] font-mono text-slate-400 flex-shrink-0">{fmtCompact(amt)}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Klasifikasi filter */}
-              <div className="flex flex-col min-h-0">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Klasifikasi</p>
-                <div className="border border-slate-200 rounded-lg bg-slate-50/60 overflow-hidden shadow-inner">
-                  <div className="flex items-center px-2 py-1.5 bg-slate-100/80 border-b border-slate-200">
-                    <span className="flex-1 text-[8.5px] font-bold text-slate-500 uppercase tracking-wide">Klasifikasi</span>
-                    <span className="text-[8.5px] font-bold text-slate-500 uppercase tracking-wide">Amount</span>
-                  </div>
-                  <div ref={klasListRef} className="overflow-y-auto" style={{ maxHeight: 150 }}>
-                    {allKlasifikasi.map(k => {
-                      const entry     = klasifikasiLookup.get(k);
-                      const color     = entry?.color ?? '#94a3b8';
-                      const amt       = entry?.value ?? 0;
-                      const isChecked = filterKlasifikasi.size === 0 || filterKlasifikasi.has(k);
-                      return (
-                        <label key={k}
-                          className="klas-item flex items-center gap-2 px-2 py-1 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-purple-50/70 transition-colors duration-150">
-                          <input type="checkbox" checked={isChecked}
-                            onChange={() => { toggleKlasifikasi(k); setListPage(0); }}
-                            className="w-3 h-3 rounded" style={{ accentColor: '#7c3aed' }} />
-                          <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
-                          <span className="flex-1 truncate text-[9.5px] text-slate-700" title={k}>
-                            {k.length > 22 ? k.slice(0, 22) + '...' : k}
-                          </span>
-                          <span className="text-[8.5px] font-mono text-slate-400 flex-shrink-0">{fmtCompact(amt)}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* ── Listing table ─────────────────────────────────────────── */}
-      <div ref={tableRef} className="mx-4 mb-4" style={{ opacity: 0 }}>
-        <Card className="border-0 shadow-md bg-white/90 backdrop-blur-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
-
-          <div className="border-b border-slate-100 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 bg-slate-50/60">
-            <div>
-              <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest flex items-center gap-1.5">
-                <List size={10} className="text-blue-500" />
-                LISTING OUTSTANDING PER G/L ACCOUNT
-              </p>
-              <p className="text-[9px] text-slate-400 mt-0.5">
-                {listingRows.length.toLocaleString('id-ID')} entri
-                {listingTotalPages > 1 && ` · Hal ${listPage + 1} / ${listingTotalPages}`}
-              </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px]">
+              <span className="text-slate-500 font-semibold uppercase">Periode:</span>
+              <select
+                value={compPeriode}
+                onChange={e => setCompPeriodeRaw(e.target.value)}
+                className="text-[9px] font-mono font-semibold border border-blue-200 rounded px-1.5 py-0.5 bg-[#f8fbff] text-slate-700 focus:outline-none focus:border-blue-400"
+              >
+                {allPeriodes.map(p => (
+                  <option key={p} value={p}>{periodeToLabel(p)}</option>
+                ))}
+              </select>
+              <span className="text-slate-500 ml-auto">
+                Basis: <strong className="text-slate-600">{accountFramesByMode.labelB || '-'}</strong> vs <strong className="text-slate-600">{accountFramesByMode.labelA || '-'}</strong>
+              </span>
             </div>
-            {listingTotalPages > 1 && (
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline" size="sm"
-                  disabled={listPage === 0}
-                  onClick={() => setListPage(p => Math.max(0, p - 1))}
-                  className="h-6 w-6 p-0 text-slate-500 disabled:opacity-30 transition-all duration-150 active:scale-90">
-                  &#8249;
-                </Button>
-                <Button
-                  variant="outline" size="sm"
-                  disabled={listPage >= listingTotalPages - 1}
-                  onClick={() => setListPage(p => Math.min(listingTotalPages - 1, p + 1))}
-                  className="h-6 w-6 p-0 text-slate-500 disabled:opacity-30 transition-all duration-150 active:scale-90">
-                  &#8250;
-                </Button>
+
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {ACCOUNT_TAB_DEFS.map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveAccountTab(tab.key)}
+                  className="px-2.5 py-1 rounded-md text-[10px] font-bold transition-all duration-200"
+                  style={{
+                    backgroundColor: activeAccountTab === tab.key ? '#fee2e2' : '#ffffff',
+                    color: '#dc2626',
+                    border: activeAccountTab === tab.key ? '1px solid #fca5a5' : '1px solid #fecaca',
+                  }}
+                >
+                  {tab.title}
+                </button>
+              ))}
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-2 pt-1">
+            {accountFramesByMode.frames.length === 0 ? (
+              <Card className="border border-slate-200 shadow-sm bg-white">
+                <CardContent className="p-6">
+                  <p className="text-xs text-slate-400 text-center py-10">Tidak ada data akun pada periode ini</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                {accountFramesByMode.frames.map((frame) => (
+                  <Card key={frame.accountCode} className="border border-slate-200 shadow-sm bg-white">
+                    <CardHeader className="p-2 pb-1">
+                      <CardTitle className="text-[11px] font-semibold uppercase tracking-wide text-red-600">
+                        Kode Akun {frame.accountCode}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-2 pt-0">
+                      {frame.rows.length === 0 ? (
+                        <p className="text-[11px] text-slate-400 text-center py-10">Tidak ada data untuk kode akun ini pada periode pembanding.</p>
+                      ) : (
+                        <div className="h-[250px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={frame.rows} margin={{ top: 10, right: 10, left: 0, bottom: 36 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                              <XAxis
+                                dataKey="klasifikasi"
+                                interval={0}
+                                angle={-18}
+                                textAnchor="end"
+                                height={54}
+                                tick={{ fontSize: 8, fill: '#64748b' }}
+                                tickFormatter={(v: string) => (v.length > 18 ? `${v.slice(0, 18)}...` : v)}
+                              />
+                              <YAxis width={40} tick={{ fontSize: 9, fill: '#64748b' }} tickFormatter={fmtCompact} />
+                              <Tooltip
+                                formatter={(value) => {
+                                  const normalized = typeof value === 'number' ? value : Number(value ?? 0);
+                                  return fmtCompact(Number.isFinite(normalized) ? normalized : 0);
+                                }}
+                                labelFormatter={(klasifikasi: string) => `Klasifikasi: ${klasifikasi}`}
+                              />
+                              <Bar dataKey="prev" name={accountFramesByMode.labelB || 'Basis'} fill="#2563eb" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="curr" name={accountFramesByMode.labelA || 'Berjalan'} fill="#16a34a" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             )}
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full" style={{ fontSize: 10.5, borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: 'linear-gradient(90deg,#1e3a5f,#1e40af)' }}>
-                  {['#','Account Group','G/L Account','Klasifikasi','Total Amount','Jml Periode'].map(h => (
-                    <th key={h} style={{
-                      padding: '7px 12px',
-                      textAlign: h === 'Total Amount' || h === 'Jml Periode' ? 'right' : 'left',
-                      color: '#bfdbfe',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.5,
-                      borderBottom: '1px solid rgba(255,255,255,0.1)',
-                      whiteSpace: 'nowrap',
-                      fontSize: 9,
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody ref={tableBodyRef}>
-                {listingPage.map((row, ri) => {
-                  const globalRi = listPage * LIST_PAGE_SIZE + ri;
-                  const isPos    = row.total >= 0;
-                  const sg       = subGroupForCode(row.accountCode);
-                  const rowColor = sg?.color ?? '#94a3b8';
-                  return (
-                    <tr key={ri}
-                      className={`${ri % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'} hover:bg-blue-50/40 transition-colors duration-100 cursor-default`}
-                      style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td className="px-3 py-1.5 text-slate-400 text-[9px]">{globalRi + 1}.</td>
-                      <td className="px-3 py-1.5">
-                        {sg ? (
-                          <span className="inline-block px-1 py-0.5 rounded text-[8.5px] font-mono font-bold"
-                            style={{ backgroundColor: sg.color + '18', color: sg.color }}>
-                            {sg.label}
-                          </span>
-                        ) : <span className="text-slate-300">-</span>}
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold font-mono transition-all duration-150 hover:scale-105"
-                          style={{ backgroundColor: rowColor + '18', color: rowColor }}>
-                          {row.accountCode}
-                        </span>
-                      </td>
-                      <td className="px-3 py-1.5 max-w-[200px]">
-                        <div className="flex flex-wrap gap-0.5">
-                          {(row.klasifikasi || '(Tanpa Klasifikasi)').split(';').map((k, ki) => (
-                            <span key={ki} className="inline-block px-1 py-0.5 rounded text-[8px] font-medium bg-slate-100 text-slate-600 border border-slate-200 transition-all duration-150 hover:bg-blue-50 hover:border-blue-200">{k.trim()}</span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-3 py-1.5 text-right font-mono font-bold"
-                        style={{ color: isPos ? '#16a34a' : '#dc2626' }}>
-                        {fmtFull(row.total)}
-                      </td>
-                      <td className="px-3 py-1.5 text-right text-slate-400 text-[9px]">{row.periodes}</td>
-                    </tr>
-                  );
-                })}
-                {listingPage.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="py-12 text-center text-slate-400 text-sm">
-                      <div className="flex flex-col items-center gap-2">
-                        <List size={20} className="text-slate-300" />
-                        Tidak ada data sesuai filter
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-              {listingPage.length > 0 && (
-                <tfoot>
-                  <tr className="bg-gradient-to-r from-slate-50 to-blue-50/30 border-t border-gray-200">
-                    <td colSpan={4} className="px-3 py-1.5 font-bold text-slate-600 text-xs">TOTAL (filtered)</td>
-                    <td className="px-3 py-1.5 text-right font-mono font-extrabold text-sm"
-                      style={{ color: totalFiltered >= 0 ? '#16a34a' : '#dc2626' }}>
-                      {fmtFull(totalFiltered)}
-                    </td>
-                    <td className="px-3 py-1.5 text-right text-slate-400 text-xs">{filtered.length} records</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
+          </CardContent>
         </Card>
       </div>
+
+      <div className="pb-4" />
 
     </div>
   );
