@@ -379,6 +379,7 @@ export default function MonitoringPrepaidPage() {
       // Use pre-computed values from API
       const totalAmortized = item.totalAmortisasi ?? (item.totalAmount - item.remaining);
       const saldo = item.totalAmount - totalAmortized;
+      const sign = item.kdAkr?.startsWith('1812') ? -1 : 1;
       
       const row = worksheet.getRow(currentRow);
       
@@ -398,14 +399,14 @@ export default function MonitoringPrepaidPage() {
       row.getCell(5).value = item.namaAkun;
       row.getCell(6).value = item.deskripsi || '';
       row.getCell(7).value = item.klasifikasi || '';
-      row.getCell(8).value = item.totalAmount;
+      row.getCell(8).value = item.totalAmount * sign;
       row.getCell(8).numFmt = '#,##0.0';
       row.getCell(9).value = startDateStr;
       row.getCell(10).value = finishDateStr;
       row.getCell(11).value = `${item.period} ${item.periodUnit}`;
-      row.getCell(12).value = totalAmortized;
+      row.getCell(12).value = totalAmortized * sign;
       row.getCell(12).numFmt = '#,##0.0';
-      row.getCell(13).value = saldo;
+      row.getCell(13).value = saldo * sign;
       row.getCell(13).numFmt = '#,##0.0';
       
       // Apply borders and styling
