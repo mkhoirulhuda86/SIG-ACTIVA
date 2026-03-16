@@ -1036,6 +1036,12 @@ export default function MonitoringAccrualPage() {
   // Download Jurnal SAP per Kode Akun
   const handleDownloadJurnalSAPPerKodeAkun = async (kodeAkun: string, items: Accrual[], format: 'excel' | 'txt', companyCode: string, jenis: 'accrual' | 'realisasi', headerText = '', lineText = '') => {
     try {
+      const resolveFallbackAccrualAmount = (item: Accrual): number => {
+        const totalPeriode = (item.periodes || []).reduce((sum, p) => sum + Math.abs(Number(p.amountAccrual || 0)), 0);
+        if (totalPeriode > 0) return totalPeriode;
+        return getSaldoAwal(item);
+      };
+
       if (jenis === 'accrual') {
         // Download Jurnal Accrual untuk semua item dalam kode akun
         if (format === 'excel') {
@@ -1093,10 +1099,10 @@ export default function MonitoringAccrualPage() {
             }) || item.periodes?.filter(p => {
               const [bn, ts] = p.bulan.split(' ');
               return new Date(parseInt(ts), bulanMapAcr[bn], 1) <= todayAcc;
-            }).slice(-1)[0];
+            }).slice(-1)[0] || item.periodes?.[0];
             const periodAmount = activePeriode ? Math.abs(activePeriode.amountAccrual) : 0;
             // Fallback ke saldoAwal untuk item import (amountAccrual = 0 tapi saldoAwal terisi)
-            const effectiveAmount = periodAmount > 0 ? periodAmount : getSaldoAwal(item);
+            const effectiveAmount = periodAmount > 0 ? periodAmount : resolveFallbackAccrualAmount(item);
             if (effectiveAmount > 0) {
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
               const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
@@ -1156,6 +1162,11 @@ export default function MonitoringAccrualPage() {
               }
             }
           });
+
+          if (currentRow === 3) {
+            toast.info('Tidak ada nilai accrual yang bisa dijurnal untuk kode akun ini.');
+            return;
+          }
           
           const buffer = await workbook.xlsx.writeBuffer();
           const blob = new Blob([buffer], { 
@@ -1182,10 +1193,10 @@ export default function MonitoringAccrualPage() {
             }) || item.periodes?.filter(p => {
               const [bn, ts] = p.bulan.split(' ');
               return new Date(parseInt(ts), bulanMapAcrTxt[bn], 1) <= todayAcc;
-            }).slice(-1)[0];
+            }).slice(-1)[0] || item.periodes?.[0];
             const periodAmountTxt = activePeriodeTxt ? Math.abs(activePeriodeTxt.amountAccrual) : 0;
             // Fallback ke saldoAwal untuk item import (amountAccrual = 0 tapi saldoAwal terisi)
-            const effectiveAmountTxt = periodAmountTxt > 0 ? periodAmountTxt : getSaldoAwal(item);
+            const effectiveAmountTxt = periodAmountTxt > 0 ? periodAmountTxt : resolveFallbackAccrualAmount(item);
             if (effectiveAmountTxt > 0) {
               const docDate = `${todayAcc.getFullYear()}${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getDate()).padStart(2, '0')}`;
               const mmyy = `${String(todayAcc.getMonth() + 1).padStart(2, '0')}${String(todayAcc.getFullYear()).slice(-2)}`;
@@ -1223,6 +1234,11 @@ export default function MonitoringAccrualPage() {
               }
             }
           });
+
+          if (rows.length === 0) {
+            toast.info('Tidak ada nilai accrual yang bisa dijurnal untuk kode akun ini.');
+            return;
+          }
           
           const txtContent = rows.map(row => row.join('\t')).join('\n');
           const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
