@@ -991,7 +991,7 @@ export default function DetailAkunFluktuasiPage() {
                                   const normalized = typeof value === 'number' ? value : Number(value ?? 0);
                                   return fmtCompact(Number.isFinite(normalized) ? normalized : 0);
                                 }}
-                                labelFormatter={(klasifikasi: string) => `Klasifikasi: ${klasifikasi}`}
+                                labelFormatter={(label) => `Klasifikasi: ${String(label ?? '')}`}
                               />
                               <Bar dataKey="prev" name={accountFramesByMode.labelB || 'Basis'} fill="#2563eb" radius={[4, 4, 0, 0]}>
                                 <LabelList dataKey="prev" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 8, fill: '#2563eb', fontWeight: 700 }} />

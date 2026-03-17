@@ -573,7 +573,7 @@ export default function OverviewFluktuasiPage() {
                                     const normalized = typeof value === 'number' ? value : Number(value ?? 0);
                                     return fmtCompact(Number.isFinite(normalized) ? normalized : 0);
                                   }}
-                                  labelFormatter={(klasifikasi: string) => klasifikasi}
+                                  labelFormatter={(label) => String(label ?? '')}
                                 />
                                 <Bar dataKey="prev" name={accountFramesByMode.labelB || accountFramesByMode.tagB} fill="#2563eb" radius={[4, 4, 0, 0]}>
                                   <LabelList dataKey="prev" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 7, fill: '#2563eb', fontWeight: 700 }} />

@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+const dbErrorMessage = (error: unknown, fallback: string): string => {
+  const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+  if (/planLimitReached/i.test(message)) {
+    return 'Koneksi database ditolak: limit paket Prisma sudah tercapai (planLimitReached).';
+  }
+  if (/P1001|Can\'t reach database server/i.test(message)) {
+    return 'Koneksi database gagal (P1001): server database tidak terjangkau.';
+  }
+  return fallback;
+};
+
 // GET: Ambil data fluktuasi terakhir
 export async function GET(req: NextRequest) {
   try {
@@ -35,7 +46,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('Error loading fluktuasi data:', error);
     return NextResponse.json(
-      { success: false, error: 'Gagal memuat data fluktuasi' },
+      { success: false, error: dbErrorMessage(error, 'Gagal memuat data fluktuasi') },
       { status: 500 }
     );
   }
@@ -76,7 +87,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Error saving fluktuasi data:', error);
     return NextResponse.json(
-      { success: false, error: 'Gagal menyimpan data fluktuasi' },
+      { success: false, error: dbErrorMessage(error, 'Gagal menyimpan data fluktuasi') },
       { status: 500 }
     );
   }
@@ -113,7 +124,7 @@ export async function DELETE(req: NextRequest) {
   } catch (error) {
     console.error('Error deleting old fluktuasi data:', error);
     return NextResponse.json(
-      { success: false, error: 'Gagal menghapus data lama' },
+      { success: false, error: dbErrorMessage(error, 'Gagal menghapus data lama') },
       { status: 500 }
     );
   }

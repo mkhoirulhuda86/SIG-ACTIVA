@@ -2,85 +2,138 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+const DASHBOARD_SUMMARY_TTL_MS = 30_000;
+
+type DashboardSummaryPayload = {
+  material: {
+    summary: Array<{ label: string; value: number; countSelisih: number; countClear: number; amount: number }>;
+    byType: Array<{ label: string; value: number }>;
+    total: number;
+  };
+  prepaid: {
+    status: { active: number; cleared: number; pending: number };
+    financial: { total: number; cleared: number; remaining: number };
+    topPrepaidByAmount: Array<{ label: string; value: number }>;
+    topByKlasifikasi: Array<{ label: string; value: number }>;
+    total: number;
+  };
+  accrual: {
+    status: { active: number; cleared: number; pending: number };
+    financial: { total: number; realized: number; remaining: number };
+    topVendors: Array<{ label: string; value: number }>;
+    topByKlasifikasi: Array<{ label: string; value: number }>;
+    total: number;
+  };
+  fluktuasi: {
+    total: number;
+    netAmount: number;
+    momChange: number;
+    momPct: number;
+    topByKlasifikasi: Array<{ label: string; value: number }>;
+    last6Periodes: Array<{ periode: string; value: number }>;
+  };
+};
+
+type DashboardSummaryCache = {
+  expiresAt: number;
+  payload: DashboardSummaryPayload | null;
+  inFlight: Promise<DashboardSummaryPayload> | null;
+};
+
+const globalForDashboardSummary = globalThis as typeof globalThis & {
+  dashboardSummaryCache?: DashboardSummaryCache;
+};
+
+const dashboardSummaryCache = globalForDashboardSummary.dashboardSummaryCache ?? {
+  expiresAt: 0,
+  payload: null,
+  inFlight: null,
+};
+
+globalForDashboardSummary.dashboardSummaryCache = dashboardSummaryCache;
+
 export async function GET(req: NextRequest) {
   try {
-    // Material: pipe findFirst→findMany inside Promise.all so it runs fully parallel
-    const materialPromise = prisma.materialData
-      .findFirst({ select: { importDate: true }, orderBy: { importDate: 'desc' } })
-      .then(latest =>
-        latest
-          ? prisma.materialData.findMany({
-              select: {
-                location: true,
-                materialId: true,
-                stokAwalSelisih: true,
-                produksiSelisih: true,
-                rilisSelisih: true,
-                stokAkhirSelisih: true,
-              },
-              where: { importDate: latest.importDate },
-            })
-          : Promise.resolve([]),
-      );
+    const now = Date.now();
+    if (dashboardSummaryCache.payload && dashboardSummaryCache.expiresAt > now) {
+      const cachedResponse = NextResponse.json(dashboardSummaryCache.payload);
+      cachedResponse.headers.set('Cache-Control', 'public, s-maxage=90, stale-while-revalidate=180');
+      cachedResponse.headers.set('X-Dashboard-Cache', 'HIT');
+      return cachedResponse;
+    }
 
-    // Fluktuasi: use DB aggregations instead of loading every row
-    const fluktuasiPeriodePromise = prisma.fluktuasiAkunPeriode.groupBy({
+    if (dashboardSummaryCache.inFlight) {
+      const sharedPayload = await dashboardSummaryCache.inFlight;
+      const sharedResponse = NextResponse.json(sharedPayload);
+      sharedResponse.headers.set('Cache-Control', 'public, s-maxage=90, stale-while-revalidate=180');
+      sharedResponse.headers.set('X-Dashboard-Cache', 'SHARED');
+      return sharedResponse;
+    }
+
+    const loadSummary = async (): Promise<DashboardSummaryPayload> => {
+    // Use sequential fetches to prevent exhausting DB connections under concurrent traffic.
+    const latestMaterial = await prisma.materialData.findFirst({
+      select: { importDate: true },
+      orderBy: { importDate: 'desc' },
+    });
+
+    const materialData = latestMaterial
+      ? await prisma.materialData.findMany({
+          select: {
+            location: true,
+            materialId: true,
+            stokAwalSelisih: true,
+            produksiSelisih: true,
+            rilisSelisih: true,
+            stokAkhirSelisih: true,
+          },
+          where: { importDate: latestMaterial.importDate },
+        })
+      : [];
+
+    const prepaidData = await prisma.prepaid.findMany({
+      select: {
+        namaAkun: true,
+        alokasi: true,
+        klasifikasi: true,
+        totalAmount: true,
+        remaining: true,
+        periodes: { select: { isAmortized: true } },
+      },
+    });
+
+    const accrualData = await prisma.accrual.findMany({
+      select: {
+        vendor: true,
+        klasifikasi: true,
+        totalAmount: true,
+        saldoAwal: true,
+        pembagianType: true,
+        periodes: {
+          select: {
+            bulan: true,
+            tahun: true,
+            amountAccrual: true,
+            realisasis: { select: { amount: true } },
+          },
+        },
+      },
+    });
+
+    const fluktuasiPeriodeGroups = await prisma.fluktuasiAkunPeriode.groupBy({
       by: ['periode'],
       _sum: { amount: true },
       orderBy: { periode: 'asc' },
     });
-    const fluktuasiAggPromise = prisma.fluktuasiAkunPeriode.aggregate({
+
+    const fluktuasiAgg = await prisma.fluktuasiAkunPeriode.aggregate({
       _count: { id: true },
-      _sum:   { amount: true },
-    });
-    // Klasifikasi still needs per-row data (multi-value split by ';')
-    const fluktuasiKlasifPromise = prisma.fluktuasiAkunPeriode.findMany({
-      select: { amount: true, klasifikasi: true },
+      _sum: { amount: true },
     });
 
-    // All queries fully parallel
-    const [
-      materialData,
-      prepaidData,
-      accrualData,
-      fluktuasiPeriodeGroups,
-      fluktuasiAgg,
-      fluktuasiKlasif,
-    ] = await Promise.all([
-      materialPromise,
-      // Prepaid - only needed fields
-      prisma.prepaid.findMany({
-        select: {
-          namaAkun: true,
-          alokasi: true,
-          klasifikasi: true,
-          totalAmount: true,
-          remaining: true,
-          periodes: { select: { isAmortized: true } },
-        },
-      }),
-      // Accrual - only needed fields
-      prisma.accrual.findMany({
-        select: {
-          vendor: true,
-          klasifikasi: true,
-          totalAmount: true,
-          saldoAwal: true,
-          pembagianType: true,
-          periodes: {
-            select: {
-              bulan: true,
-              tahun: true,
-              amountAccrual: true,
-              realisasis: { select: { amount: true } },
-            },
-          },
-        },
-      }),
-      fluktuasiPeriodePromise,
-      fluktuasiAggPromise,
-      fluktuasiKlasifPromise,
-    ]);
+    const fluktuasiKlasif = await prisma.fluktuasiAkunPeriode.findMany({
+      select: { amount: true, klasifikasi: true },
+    });
 
     // Group by location with selisih calculation
     const materialByLocation = materialData.reduce((acc: Record<string, { totalSelisih: number; countSelisih: number; countClear: number }>, item) => {
@@ -304,7 +357,7 @@ export async function GET(req: NextRequest) {
       ? (momChange / Math.abs(last6Periodes[last6Periodes.length - 2].value)) * 100
       : 0;
 
-    const res = NextResponse.json({
+    return {
       material: {
         summary: materialSummary,
         byType: materialTypeData,
@@ -340,9 +393,18 @@ export async function GET(req: NextRequest) {
         topByKlasifikasi: topFluktuasiByKlasifikasi,
         last6Periodes,
       },
-    });
+    };
+    };
+
+    dashboardSummaryCache.inFlight = loadSummary();
+    const payload = await dashboardSummaryCache.inFlight;
+    dashboardSummaryCache.payload = payload;
+    dashboardSummaryCache.expiresAt = Date.now() + DASHBOARD_SUMMARY_TTL_MS;
+
+    const res = NextResponse.json(payload);
     // Cache for 90 s on CDN/proxy; serve stale for up to 3 min while revalidating
     res.headers.set('Cache-Control', 'public, s-maxage=90, stale-while-revalidate=180');
+    res.headers.set('X-Dashboard-Cache', 'MISS');
     return res;
   } catch (error) {
     console.error('Dashboard summary error:', error);
@@ -350,5 +412,7 @@ export async function GET(req: NextRequest) {
       { error: 'Gagal mengambil ringkasan data' },
       { status: 500 }
     );
+  } finally {
+    dashboardSummaryCache.inFlight = null;
   }
 }

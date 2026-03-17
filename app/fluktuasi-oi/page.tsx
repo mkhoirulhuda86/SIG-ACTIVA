@@ -876,6 +876,23 @@ type Keyword = {
   sourceColumn: string;  // column header name to match against; empty = default description col
 };
 
+const FALLBACK_KEYWORDS: Keyword[] = [
+  { id: -1, keyword: 'Sindikasi SLL', type: 'klasifikasi', result: 'Sindikasi SLL', priority: 10, accountCodes: '', sourceColumn: '' },
+  { id: -2, keyword: 'KI Maybank Syariah', type: 'klasifikasi', result: 'KI Maybank Syariah', priority: 10, accountCodes: '', sourceColumn: '' },
+  { id: -3, keyword: 'KI BSI', type: 'klasifikasi', result: 'KI BSI', priority: 10, accountCodes: '', sourceColumn: '' },
+  { id: -4, keyword: 'Accrue', type: 'klasifikasi', result: 'Beban Akrual', priority: 8, accountCodes: '', sourceColumn: '' },
+  { id: -5, keyword: 'Akru', type: 'klasifikasi', result: 'Beban Akrual', priority: 8, accountCodes: '', sourceColumn: '' },
+  { id: -6, keyword: 'Amortisasi', type: 'klasifikasi', result: 'Beban Amortisasi', priority: 8, accountCodes: '', sourceColumn: '' },
+  { id: -7, keyword: 'Bunga', type: 'klasifikasi', result: 'Beban Bunga', priority: 7, accountCodes: '', sourceColumn: '' },
+  { id: -8, keyword: 'Interest', type: 'klasifikasi', result: 'Beban Bunga', priority: 7, accountCodes: '', sourceColumn: '' },
+  { id: -9, keyword: 'Bank', type: 'remark', result: 'Transaksi Bank', priority: 5, accountCodes: '', sourceColumn: '' },
+  { id: -10, keyword: 'Vendor', type: 'remark', result: 'Pembayaran Vendor', priority: 5, accountCodes: '', sourceColumn: '' },
+  { id: -11, keyword: 'Supplier', type: 'remark', result: 'Pembayaran Supplier', priority: 5, accountCodes: '', sourceColumn: '' },
+  { id: -12, keyword: 'Invoice', type: 'remark', result: 'Faktur', priority: 4, accountCodes: '', sourceColumn: '' },
+];
+
+const isDbPlanLimitError = (message?: string) => /planlimitreached|limit paket prisma/i.test(message ?? '');
+
 // --- AI Chatbot -------------------------------------------------------------
 type ChatMsg  = { role: 'user' | 'assistant'; content: string };
 type ChatPanel = {
@@ -993,6 +1010,7 @@ export default function FluktuasiOIPage() {
   const [colHeader, setColHeader] = useState('');
   const [colPattern, setColPattern] = useState('');
   const [isReapplying, setIsReapplying] = useState(false);
+  const [keywordReadOnlyMode, setKeywordReadOnlyMode] = useState(false);
 
   // -- DB Akun Periode States -------------------------------------------------
   const [dbAkunPeriodes,  setDbAkunPeriodes]  = useState<AkunPeriodeRecord[]>([]);
@@ -1093,11 +1111,46 @@ export default function FluktuasiOIPage() {
       if (res.ok) {
         const result = await res.json();
         if (result.success) {
-          setKeywords(result.data);
+          const normalized = Array.isArray(result.data)
+            ? result.data.map((kw: any) => ({
+                ...kw,
+                keyword: kw?.keyword ?? '',
+                result: kw?.result ?? '',
+                accountCodes: kw?.accountCodes ?? '',
+                sourceColumn: kw?.sourceColumn ?? '',
+              }))
+            : [];
+          setKeywords(normalized);
+          setKeywordReadOnlyMode(false);
+        } else {
+          const errMsg = String(result.error ?? 'Gagal memuat master keyword');
+          if (isDbPlanLimitError(errMsg)) {
+            setKeywords(FALLBACK_KEYWORDS);
+            setKeywordReadOnlyMode(true);
+            toast.info('DB sedang limit. Master Keywords ditampilkan dalam mode read-only (contoh).');
+          } else {
+            setKeywords([]);
+            setKeywordReadOnlyMode(false);
+            toast.error(errMsg);
+          }
         }
+      } else {
+        setKeywords([]);
+        setKeywordReadOnlyMode(false);
+        toast.error('Gagal memuat master keyword');
       }
     } catch (error) {
       console.error('Error loading keywords:', error);
+      const errMsg = error instanceof Error ? error.message : String(error ?? 'Gagal memuat master keyword');
+      if (isDbPlanLimitError(errMsg)) {
+        setKeywords(FALLBACK_KEYWORDS);
+        setKeywordReadOnlyMode(true);
+        toast.info('DB sedang limit. Master Keywords ditampilkan dalam mode read-only (contoh).');
+      } else {
+        setKeywords([]);
+        setKeywordReadOnlyMode(false);
+        toast.error('Gagal memuat master keyword');
+      }
     }
   }, []);
 
@@ -1135,6 +1188,10 @@ export default function FluktuasiOIPage() {
 
   // -- Save/Update Keyword ----------------------------------------------------
   const handleSaveKeyword = async (formOverride?: any) => {
+    if (keywordReadOnlyMode) {
+      toast.info('Mode read-only aktif karena DB limit. Simpan keyword akan tersedia lagi setelah koneksi DB normal.');
+      return;
+    }
     try {
       const formToUse = formOverride || keywordForm;
       
@@ -1185,6 +1242,10 @@ export default function FluktuasiOIPage() {
 
   // -- Delete Keyword ---------------------------------------------------------
   const handleDeleteKeyword = async (id: number) => {
+    if (keywordReadOnlyMode) {
+      toast.info('Mode read-only aktif karena DB limit. Hapus keyword dinonaktifkan sementara.');
+      return;
+    }
     if (!confirm('Yakin hapus keyword ini?')) return;
     try {
       const res = await fetch(`/api/fluktuasi/keywords?id=${id}`, { method: 'DELETE' });
@@ -1198,6 +1259,10 @@ export default function FluktuasiOIPage() {
   };
 
   const handleDeleteAllKeywords = async () => {
+    if (keywordReadOnlyMode) {
+      toast.info('Mode read-only aktif karena DB limit. Hapus semua keyword dinonaktifkan sementara.');
+      return;
+    }
     if (!confirm(`Yakin hapus SEMUA ${keywords.length} keyword? Tindakan ini tidak dapat dibatalkan.`)) return;
     try {
       const res = await fetch('/api/fluktuasi/keywords?all=true', { method: 'DELETE' });
@@ -1215,6 +1280,10 @@ export default function FluktuasiOIPage() {
   };
 
   const handleReapplyKeywords = async () => {
+    if (keywordReadOnlyMode) {
+      toast.info('Mode read-only aktif karena DB limit. Re-terapkan ke DB dinonaktifkan sementara.');
+      return;
+    }
     if (!confirm(`Re-terapkan ${keywords.length} keyword ke seluruh data yang tersimpan? Proses ini akan memperbarui klasifikasi semua record di database.`)) return;
     setIsReapplying(true);
     try {
@@ -2489,12 +2558,12 @@ export default function FluktuasiOIPage() {
       .filter(kw => {
         if (!keywordSearch) return true;
         const search = keywordSearch.toLowerCase();
-        return kw.keyword.toLowerCase().includes(search) || kw.result.toLowerCase().includes(search);
+        return (kw.keyword ?? '').toLowerCase().includes(search) || (kw.result ?? '').toLowerCase().includes(search);
       })
       .filter(kw => {
         if (!keywordAkunSearch) return true;
         const akunSearch = keywordAkunSearch.toLowerCase();
-        return kw.accountCodes.toLowerCase().includes(akunSearch);
+        return (kw.accountCodes ?? '').toLowerCase().includes(akunSearch);
       })
       .sort((a, b) => b.id - a.id),
   [keywords, keywordFilter, keywordSearch, keywordAkunSearch]);
@@ -2590,6 +2659,7 @@ export default function FluktuasiOIPage() {
                   {keywords.length === 0 && (
                     <button
                       onClick={handleLoadExamples}
+                      disabled={keywordReadOnlyMode}
                       className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
                     >
                       <Download size={16} />
@@ -2600,7 +2670,7 @@ export default function FluktuasiOIPage() {
                     <>
                       <button
                         onClick={handleReapplyKeywords}
-                        disabled={isReapplying}
+                        disabled={isReapplying || keywordReadOnlyMode}
                         className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                         title="Re-proses klasifikasi seluruh data tersimpan menggunakan keyword saat ini"
                       >
@@ -2609,7 +2679,8 @@ export default function FluktuasiOIPage() {
                       </button>
                       <button
                         onClick={handleDeleteAllKeywords}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
+                        disabled={keywordReadOnlyMode}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         <Trash2 size={16} />
                         Hapus Semua
@@ -2627,13 +2698,20 @@ export default function FluktuasiOIPage() {
                       setNaturalInput('');
                       setShowKeywordModal(true);
                     }}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
+                    disabled={keywordReadOnlyMode}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <span className="text-lg">+</span>
                     Tambah Keyword
                   </button>
                 </div>
               </div>
+
+              {keywordReadOnlyMode && (
+                <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Database sedang limit (planLimitReached). Tabel menampilkan keyword contoh dalam mode read-only sementara.
+                </div>
+              )}
 
               {keywords.length > 0 && (
                 <>
@@ -2830,13 +2908,15 @@ export default function FluktuasiOIPage() {
                             <div className="flex items-center justify-center gap-2">
                               <button
                                 onClick={() => handleEditKeyword(kw)}
-                                className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-xs font-medium"
+                                disabled={keywordReadOnlyMode}
+                                className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-xs font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                               >
                                 Edit
                               </button>
                               <button
                                 onClick={() => handleDeleteKeyword(kw.id)}
-                                className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-xs font-medium"
+                                disabled={keywordReadOnlyMode}
+                                className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-xs font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                               >
                                 Hapus
                               </button>

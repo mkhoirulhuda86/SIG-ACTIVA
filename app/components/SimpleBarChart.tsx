@@ -46,6 +46,7 @@ function SimpleBarChart({ data, title, maxValue }: SimpleBarChartProps) {
   useEffect(() => {
     if (!listRef.current) return;
     const rows = listRef.current.querySelectorAll('.bar-row');
+    if (!rows.length) return;
     animate(rows, { opacity: [0, 1], translateY: [16, 0], duration: 400, delay: stagger(80), ease: 'outExpo' });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);

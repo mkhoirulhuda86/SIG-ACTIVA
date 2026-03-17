@@ -27,6 +27,10 @@ interface Notification {
   createdAt: string;
 }
 
+type WindowWithBeamsState = Window & {
+  __beamsRegistrationPromise?: Promise<void>;
+};
+
 const priorityVariant: Record<string, string> = {
   high:   'border-l-4 border-destructive bg-destructive/5',
   medium: 'border-l-4 border-yellow-400 bg-yellow-50',
@@ -168,23 +172,32 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
 
   const registerPushNotifications = async () => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
-      console.warn('[Beams] serviceWorker not supported');
       return;
     }
-    console.log('[Beams] instanceId:', process.env.NEXT_PUBLIC_BEAMS_INSTANCE_ID);
+
+    const instanceId = process.env.NEXT_PUBLIC_BEAMS_INSTANCE_ID;
+    if (!instanceId) return;
+
+    const beamsWindow = window as WindowWithBeamsState;
+    if (beamsWindow.__beamsRegistrationPromise) {
+      await beamsWindow.__beamsRegistrationPromise;
+      return;
+    }
+
     try {
-      const PusherPushNotifications = await import('@pusher/push-notifications-web');
-      const beamsClient = new PusherPushNotifications.Client({
-        instanceId: process.env.NEXT_PUBLIC_BEAMS_INSTANCE_ID!,
-      });
-      console.log('[Beams] starting client...');
-      await beamsClient.start();
-      console.log('[Beams] client started, adding interests...');
-      await beamsClient.addDeviceInterest('all-users');
-      await beamsClient.addDeviceInterest('hello');
-      const interests = await beamsClient.getDeviceInterests();
-      console.log('[Beams] registered OK, interests:', interests);
-    } catch (err) { console.error('[Beams] ERROR:', err); }
+      beamsWindow.__beamsRegistrationPromise = (async () => {
+        const PusherPushNotifications = await import('@pusher/push-notifications-web');
+        const beamsClient = new PusherPushNotifications.Client({ instanceId });
+        await beamsClient.start();
+        await beamsClient.addDeviceInterest('all-users');
+        await beamsClient.addDeviceInterest('hello');
+      })();
+
+      await beamsWindow.__beamsRegistrationPromise;
+    } catch (err) {
+      beamsWindow.__beamsRegistrationPromise = undefined;
+      console.error('[Beams] ERROR:', err);
+    }
   };
 
   useEffect(() => {
