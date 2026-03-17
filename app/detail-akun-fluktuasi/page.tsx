@@ -184,8 +184,6 @@ const ACCOUNT_NAMES: Record<string, string> = {
   '71620004': 'EXCHANGE RATE DIFFERENCE UTK PEMBELIAN',
 };
 
-const MAX_KLASIFIKASI_PER_ACCOUNT = 8;
-
 // Pre-built cache: code prefix → sub-group (O(1) lookup per code)
 const _subGroupCache = new Map<string, { prefix: string; label: string; color: string } | null>();
 const subGroupForCode = (code: string) => {
@@ -707,8 +705,7 @@ export default function DetailAkunFluktuasiPage() {
             curr: entry.mapA.get(klasifikasi) ?? 0,
           }))
           .filter((row) => row.prev !== 0 || row.curr !== 0)
-          .sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)))
-          .slice(0, MAX_KLASIFIKASI_PER_ACCOUNT);
+          .sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)));
 
         return { accountCode, rows };
       })
