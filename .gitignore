@@ -47,3 +47,6 @@ next-env.d.ts
 
 # large / generated
 .qodo.zip
+
+# npm lockfile (project uses pnpm)
+package-lock.json
