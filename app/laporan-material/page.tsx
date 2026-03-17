@@ -2,7 +2,7 @@
 
 import { toast } from 'sonner';
 import { useState, useMemo, useEffect, useRef, useCallback, startTransition } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
 import {
   Download, Search, AlertCircle, TrendingDown, Package,
   MapPin, Calculator, FolderOpen, Navigation, Clock,
@@ -571,7 +571,7 @@ export default function LaporanMaterialPage() {
                       </div>
                     </div>
                     <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={volumeSelisihPerKategori} layout="vertical" margin={{ left: 0, right: 10 }}>
+                      <BarChart data={volumeSelisihPerKategori} layout="vertical" margin={{ left: 0, right: 70 }}>
                         <defs>
                           <linearGradient id="redGrad" x1="0" y1="0" x2="1" y2="0">
                             <stop offset="0%" stopColor="#DC2626" /><stop offset="100%" stopColor="#F97316" />
@@ -580,7 +580,9 @@ export default function LaporanMaterialPage() {
                         <XAxis type="number" hide />
                         <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 11, fontWeight: 500 }} tickLine={false} axisLine={false} />
                         <Tooltip formatter={(value) => value ? (value as number).toLocaleString('id-ID') : '0'} contentStyle={{ fontSize: '11px', borderRadius: '10px', border: '1px solid #e5e7eb', boxShadow: '0 4px 16px rgb(0 0 0/.08)' }} />
-                        <Bar dataKey="value" fill="url(#redGrad)" radius={[0, 8, 8, 0]} />
+                        <Bar dataKey="value" fill="url(#redGrad)" radius={[0, 8, 8, 0]}>
+                          <LabelList dataKey="value" position="right" formatter={(v: unknown) => v ? (v as number).toLocaleString('id-ID') : '0'} style={{ fontSize: 10, fill: '#374151', fontWeight: 600 }} />
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -606,7 +608,7 @@ export default function LaporanMaterialPage() {
                     </div>
                     {volumeSelisihPerLokasi.length > 0 ? (
                       <ResponsiveContainer width="100%" height={Math.max(250, volumeSelisihPerLokasi.length * 30)}>
-                        <BarChart data={volumeSelisihPerLokasi} layout="vertical" margin={{ left: 0, right: 10 }}>
+                        <BarChart data={volumeSelisihPerLokasi} layout="vertical" margin={{ left: 0, right: 70 }}>
                           <defs>
                             <linearGradient id="redGrad2" x1="0" y1="0" x2="1" y2="0">
                               <stop offset="0%" stopColor="#DC2626" /><stop offset="100%" stopColor="#F97316" />
@@ -619,7 +621,9 @@ export default function LaporanMaterialPage() {
                             labelFormatter={(label) => { const item = volumeSelisihPerLokasi.find(i => i.name === label); return item?.fullName || label; }}
                             contentStyle={{ fontSize: '11px', borderRadius: '10px', border: '1px solid #e5e7eb', boxShadow: '0 4px 16px rgb(0 0 0/.08)' }}
                           />
-                          <Bar dataKey="value" fill="url(#redGrad2)" radius={[0, 8, 8, 0]} />
+                          <Bar dataKey="value" fill="url(#redGrad2)" radius={[0, 8, 8, 0]}>
+                            <LabelList dataKey="value" position="right" formatter={(v: unknown) => v ? (v as number).toLocaleString('id-ID') : '0'} style={{ fontSize: 10, fill: '#374151', fontWeight: 600 }} />
+                          </Bar>
                         </BarChart>
                       </ResponsiveContainer>
                     ) : (

@@ -5,7 +5,7 @@ import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import dynamic from 'next/dynamic';
 import { Activity, TrendingUp } from 'lucide-react';
 import { gsap } from 'gsap';
-import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LabelList } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Skeleton } from '../components/ui/skeleton';
 
@@ -556,7 +556,7 @@ export default function OverviewFluktuasiPage() {
                         <div className="h-full flex flex-col gap-0.5">
                           <div className="flex-1 min-h-[120px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={frame.rows} margin={{ top: 8, right: 8, left: 0, bottom: 22 }}>
+                              <BarChart data={frame.rows} margin={{ top: 20, right: 8, left: 0, bottom: 22 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                 <XAxis
                                   dataKey="klasifikasi"
@@ -575,8 +575,12 @@ export default function OverviewFluktuasiPage() {
                                   }}
                                   labelFormatter={(klasifikasi: string) => klasifikasi}
                                 />
-                                <Bar dataKey="prev" name={accountFramesByMode.labelB || accountFramesByMode.tagB} fill="#2563eb" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="curr" name={accountFramesByMode.labelA || accountFramesByMode.tagA} fill="#16a34a" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="prev" name={accountFramesByMode.labelB || accountFramesByMode.tagB} fill="#2563eb" radius={[4, 4, 0, 0]}>
+                                  <LabelList dataKey="prev" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 7, fill: '#2563eb', fontWeight: 700 }} />
+                                </Bar>
+                                <Bar dataKey="curr" name={accountFramesByMode.labelA || accountFramesByMode.tagA} fill="#16a34a" radius={[4, 4, 0, 0]}>
+                                  <LabelList dataKey="curr" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 7, fill: '#16a34a', fontWeight: 700 }} />
+                                </Bar>
                               </BarChart>
                             </ResponsiveContainer>
                           </div>

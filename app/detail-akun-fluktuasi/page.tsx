@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import { RotateCcw, Search, TrendingUp, Layers, Filter, List, BarChart3 } from 'lucide-react';
 import { gsap } from 'gsap';
 import { animate, stagger } from 'animejs';
-import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LabelList } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -974,7 +974,7 @@ export default function DetailAkunFluktuasiPage() {
                       ) : (
                         <div className="h-[250px] w-full">
                           <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={frame.rows} margin={{ top: 10, right: 10, left: 0, bottom: 36 }}>
+                            <BarChart data={frame.rows} margin={{ top: 22, right: 10, left: 0, bottom: 36 }}>
                               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                               <XAxis
                                 dataKey="klasifikasi"
@@ -993,8 +993,12 @@ export default function DetailAkunFluktuasiPage() {
                                 }}
                                 labelFormatter={(klasifikasi: string) => `Klasifikasi: ${klasifikasi}`}
                               />
-                              <Bar dataKey="prev" name={accountFramesByMode.labelB || 'Basis'} fill="#2563eb" radius={[4, 4, 0, 0]} />
-                              <Bar dataKey="curr" name={accountFramesByMode.labelA || 'Berjalan'} fill="#16a34a" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="prev" name={accountFramesByMode.labelB || 'Basis'} fill="#2563eb" radius={[4, 4, 0, 0]}>
+                                <LabelList dataKey="prev" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 8, fill: '#2563eb', fontWeight: 700 }} />
+                              </Bar>
+                              <Bar dataKey="curr" name={accountFramesByMode.labelA || 'Berjalan'} fill="#16a34a" radius={[4, 4, 0, 0]}>
+                                <LabelList dataKey="curr" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 8, fill: '#16a34a', fontWeight: 700 }} />
+                              </Bar>
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
