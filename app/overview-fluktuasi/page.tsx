@@ -6,7 +6,17 @@ import dynamic from 'next/dynamic';
 import { Activity, TrendingUp } from 'lucide-react';
 import { gsap } from 'gsap';
 import { animate, stagger } from 'animejs';
-import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LabelList } from 'recharts';
+import { Bar as ChartBar } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Tooltip as ChartTooltip,
+  Legend,
+  type ChartData,
+  type ChartOptions,
+} from 'chart.js';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -14,6 +24,8 @@ import { Skeleton } from '../components/ui/skeleton';
 
 const Sidebar  = dynamic(() => import('../components/Sidebar'),  { ssr: false });
 const Header   = dynamic(() => import('../components/Header'),   { ssr: false });
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, ChartTooltip, Legend);
 
 /* ─── Loading Skeleton ──────────────────────────────────────────────────────── */
 function PageSkeleton({ isMobileSidebarOpen, setMobileSidebar }: { isMobileSidebarOpen: boolean; setMobileSidebar: (v: boolean) => void }) {
@@ -254,6 +266,71 @@ const FRAME_DEFS: FrameDef[] = [
 ];
 
 const TOP_CLASSIFICATIONS_PER_FRAME = 5;
+
+const buildOverviewChartData = (
+  rows: { klasifikasi: string; prev: number; curr: number }[],
+  labelPrev: string,
+  labelCurr: string,
+): ChartData<'bar'> => ({
+  labels: rows.map((r) => r.klasifikasi),
+  datasets: [
+    {
+      label: labelPrev,
+      data: rows.map((r) => r.prev),
+      backgroundColor: '#2563eb',
+      borderRadius: 4,
+      borderSkipped: false,
+      maxBarThickness: 28,
+    },
+    {
+      label: labelCurr,
+      data: rows.map((r) => r.curr),
+      backgroundColor: '#16a34a',
+      borderRadius: 4,
+      borderSkipped: false,
+      maxBarThickness: 28,
+    },
+  ],
+});
+
+const buildOverviewChartOptions = (isCompact: boolean): ChartOptions<'bar'> => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      callbacks: {
+        label: (ctx) => `${ctx.dataset.label}: ${fmtCompact(Number(ctx.parsed.y ?? 0))}`,
+      },
+    },
+  },
+  scales: {
+    x: {
+      ticks: {
+        color: '#64748b',
+        font: { size: isCompact ? 7 : 8 },
+        maxRotation: isCompact ? 30 : 18,
+        minRotation: isCompact ? 30 : 18,
+        callback: function(value) {
+          const raw = typeof this.getLabelForValue === 'function' ? this.getLabelForValue(Number(value)) : value;
+          const label = String(raw ?? '');
+          const cap = isCompact ? 14 : 22;
+          return label.length > cap ? `${label.slice(0, cap)}...` : label;
+        },
+      },
+      grid: { color: '#e2e8f0' },
+    },
+    y: {
+      ticks: {
+        color: '#64748b',
+        font: { size: isCompact ? 8 : 9 },
+        callback: (value) => fmtCompact(Number(value ?? 0)),
+      },
+      grid: { color: '#e2e8f0' },
+    },
+  },
+});
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function OverviewFluktuasiPage() {
@@ -591,34 +668,14 @@ export default function OverviewFluktuasiPage() {
                       ) : (
                         <div className="h-full flex flex-col gap-0.5">
                           <div className="flex-1 min-h-[200px] sm:min-h-[120px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={frame.rows} margin={{ top: 20, right: isCompact ? 2 : 8, left: 0, bottom: isCompact ? 38 : 22 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                <XAxis
-                                  dataKey="klasifikasi"
-                                  interval={0}
-                                  angle={isCompact ? -30 : -18}
-                                  textAnchor="end"
-                                  height={isCompact ? 62 : 42}
-                                  tick={{ fontSize: isCompact ? 7 : 8, fill: '#64748b' }}
-                                  tickFormatter={(v: string) => (v.length > (isCompact ? 14 : 22) ? `${v.slice(0, isCompact ? 14 : 22)}...` : v)}
-                                />
-                                <YAxis width={isCompact ? 30 : 34} tick={{ fontSize: isCompact ? 8 : 9, fill: '#64748b' }} tickFormatter={fmtCompact} />
-                                <Tooltip
-                                  formatter={(value) => {
-                                    const normalized = typeof value === 'number' ? value : Number(value ?? 0);
-                                    return fmtCompact(Number.isFinite(normalized) ? normalized : 0);
-                                  }}
-                                  labelFormatter={(label) => String(label ?? '')}
-                                />
-                                <Bar dataKey="prev" name={accountFramesByMode.labelB || accountFramesByMode.tagB} fill="#2563eb" radius={[4, 4, 0, 0]}>
-                                  {!isCompact && <LabelList dataKey="prev" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 7, fill: '#2563eb', fontWeight: 700 }} />}
-                                </Bar>
-                                <Bar dataKey="curr" name={accountFramesByMode.labelA || accountFramesByMode.tagA} fill="#16a34a" radius={[4, 4, 0, 0]}>
-                                  {!isCompact && <LabelList dataKey="curr" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 7, fill: '#16a34a', fontWeight: 700 }} />}
-                                </Bar>
-                              </BarChart>
-                            </ResponsiveContainer>
+                            <ChartBar
+                              data={buildOverviewChartData(
+                                frame.rows,
+                                accountFramesByMode.labelB || accountFramesByMode.tagB,
+                                accountFramesByMode.labelA || accountFramesByMode.tagA,
+                              )}
+                              options={buildOverviewChartOptions(isCompact)}
+                            />
                           </div>
 
                           <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-0.5 flex-none">

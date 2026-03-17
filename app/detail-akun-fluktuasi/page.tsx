@@ -6,7 +6,17 @@ import dynamic from 'next/dynamic';
 import { RotateCcw, Search, TrendingUp, Layers, Filter, List, BarChart3 } from 'lucide-react';
 import { gsap } from 'gsap';
 import { animate, stagger } from 'animejs';
-import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LabelList } from 'recharts';
+import { Bar as ChartBar } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Tooltip as ChartTooltip,
+  Legend,
+  type ChartData,
+  type ChartOptions,
+} from 'chart.js';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -15,6 +25,8 @@ import { Skeleton } from '../components/ui/skeleton';
 
 const Sidebar = dynamic(() => import('../components/Sidebar'), { ssr: false });
 const Header  = dynamic(() => import('../components/Header'),  { ssr: false });
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, ChartTooltip, Legend);
 
 // --- Types -------------------------------------------------------------------
 type AkunPeriodeRecord = {
@@ -183,6 +195,71 @@ const ACCOUNT_NAMES: Record<string, string> = {
   '71620002': 'RUGI SELISIH KURS [UNREALISED]',
   '71620004': 'EXCHANGE RATE DIFFERENCE UTK PEMBELIAN',
 };
+
+const buildDetailChartData = (
+  rows: { klasifikasi: string; prev: number; curr: number }[],
+  labelPrev: string,
+  labelCurr: string,
+): ChartData<'bar'> => ({
+  labels: rows.map((r) => r.klasifikasi),
+  datasets: [
+    {
+      label: labelPrev,
+      data: rows.map((r) => r.prev),
+      backgroundColor: '#2563eb',
+      borderRadius: 4,
+      borderSkipped: false,
+      maxBarThickness: 30,
+    },
+    {
+      label: labelCurr,
+      data: rows.map((r) => r.curr),
+      backgroundColor: '#16a34a',
+      borderRadius: 4,
+      borderSkipped: false,
+      maxBarThickness: 30,
+    },
+  ],
+});
+
+const buildDetailChartOptions = (isCompact: boolean): ChartOptions<'bar'> => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      callbacks: {
+        label: (ctx) => `${ctx.dataset.label}: ${fmtCompact(Number(ctx.parsed.y ?? 0))}`,
+      },
+    },
+  },
+  scales: {
+    x: {
+      ticks: {
+        color: '#64748b',
+        font: { size: isCompact ? 7 : 8 },
+        maxRotation: isCompact ? 30 : 18,
+        minRotation: isCompact ? 30 : 18,
+        callback: function(value) {
+          const raw = typeof this.getLabelForValue === 'function' ? this.getLabelForValue(Number(value)) : value;
+          const label = String(raw ?? '');
+          const cap = isCompact ? 13 : 18;
+          return label.length > cap ? `${label.slice(0, cap)}...` : label;
+        },
+      },
+      grid: { color: '#e2e8f0' },
+    },
+    y: {
+      ticks: {
+        color: '#64748b',
+        font: { size: isCompact ? 8 : 9 },
+        callback: (value) => fmtCompact(Number(value ?? 0)),
+      },
+      grid: { color: '#e2e8f0' },
+    },
+  },
+});
 
 // Pre-built cache: code prefix → sub-group (O(1) lookup per code)
 const _subGroupCache = new Map<string, { prefix: string; label: string; color: string } | null>();
@@ -1017,34 +1094,14 @@ export default function DetailAkunFluktuasiPage() {
                         <p className="text-[11px] text-slate-400 text-center py-10">Tidak ada data untuk kode akun ini pada periode pembanding.</p>
                       ) : (
                         <div className="h-[280px] sm:h-[250px] w-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={frame.rows} margin={{ top: 22, right: isCompact ? 2 : 10, left: 0, bottom: isCompact ? 48 : 36 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                              <XAxis
-                                dataKey="klasifikasi"
-                                interval={0}
-                                angle={isCompact ? -30 : -18}
-                                textAnchor="end"
-                                height={isCompact ? 68 : 54}
-                                tick={{ fontSize: isCompact ? 7 : 8, fill: '#64748b' }}
-                                tickFormatter={(v: string) => (v.length > (isCompact ? 13 : 18) ? `${v.slice(0, isCompact ? 13 : 18)}...` : v)}
-                              />
-                              <YAxis width={isCompact ? 34 : 40} tick={{ fontSize: isCompact ? 8 : 9, fill: '#64748b' }} tickFormatter={fmtCompact} />
-                              <Tooltip
-                                formatter={(value) => {
-                                  const normalized = typeof value === 'number' ? value : Number(value ?? 0);
-                                  return fmtCompact(Number.isFinite(normalized) ? normalized : 0);
-                                }}
-                                labelFormatter={(label) => `Klasifikasi: ${String(label ?? '')}`}
-                              />
-                              <Bar dataKey="prev" name={accountFramesByMode.labelB || 'Basis'} fill="#2563eb" radius={[4, 4, 0, 0]}>
-                                {!isCompact && <LabelList dataKey="prev" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 8, fill: '#2563eb', fontWeight: 700 }} />}
-                              </Bar>
-                              <Bar dataKey="curr" name={accountFramesByMode.labelA || 'Berjalan'} fill="#16a34a" radius={[4, 4, 0, 0]}>
-                                {!isCompact && <LabelList dataKey="curr" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 8, fill: '#16a34a', fontWeight: 700 }} />}
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
+                          <ChartBar
+                            data={buildDetailChartData(
+                              frame.rows,
+                              accountFramesByMode.labelB || 'Basis',
+                              accountFramesByMode.labelA || 'Berjalan',
+                            )}
+                            options={buildDetailChartOptions(isCompact)}
+                          />
                         </div>
                       )}
                     </CardContent>
