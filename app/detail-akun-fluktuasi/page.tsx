@@ -148,6 +148,42 @@ const ACCOUNT_TAB_DEFS: AccountTabDef[] = [
   },
 ];
 
+const ACCOUNT_NAMES: Record<string, string> = {
+  '71510000': 'BEBAN BUNGA PINJAMAN',
+  '71510001': 'BEBAN BUNGA PINJAMAN INVESTASI',
+  '71510002': 'BEBAN BUNGA PINJAMAN MODAL KERJA',
+  '71510003': 'BEBAN BUNGA OBLIGASI',
+  '71510004': 'BEBAN BUNGA SEWA PEMBIAYAAN',
+  '71510005': 'DERIVATIVE INSTRUMENT INTEREST EXPENSES',
+  '71510098': 'BEBAN BUNGA (PSAK 57)',
+  '71510099': 'BEBAN BUNGA LAIN - LAIN',
+  '71400000': 'PENDAPATAN KLAIM',
+  '71410001': 'PENDAPATAN KLAIM ASURANSI',
+  '71410009': 'PENDAPATAN KLAIM LAINNYA',
+  '71421001': 'PENDAPATAN HASIL ANALISA',
+  '71421002': 'PENDAPATAN JASA PELABUHAN',
+  '71421009': 'PENDAPATAN JASA LAINNYA',
+  '71430001': 'PENDAPATAN SEWA TANAH',
+  '71430002': 'PENDAPATAN SEWA BANGUNAN',
+  '71440001': 'PENDAPATAN PENJUALAN AFVAL',
+  '71460001': 'PENDAPATAN PEMAKAIAN LISTRIK',
+  '71460002': 'PENDAPATAN PEMAKAIAN AIR',
+  '71460009': 'PENDAPATAN LAIN-LAIN',
+  '71560000': 'BEBAN LAIN-LAINNYA',
+  '71560001': 'BEBAN LAIN-LAINNYA',
+  '71300000': 'PENDAPATAN BUNGA',
+  '71310001': 'PENDAPATAN BUNGA DEPOSITO',
+  '71310002': 'PENDAPATAN JASA GIRO',
+  '71320001': 'PENDAPATAN CICILAN',
+  '71320002': 'PENDAPATAN BUNGA OBLIGASI',
+  '71600000': 'LABA (RUGI) SELISIH KURS',
+  '71610001': 'LABA SELISIH KURS [REALISED]',
+  '71610002': 'RUGI SELISIH KURS [REALISED]',
+  '71620001': 'LABA SELISIH KURS [UNREALISED]',
+  '71620002': 'RUGI SELISIH KURS [UNREALISED]',
+  '71620004': 'EXCHANGE RATE DIFFERENCE UTK PEMBELIAN',
+};
+
 const MAX_KLASIFIKASI_PER_ACCOUNT = 8;
 
 // Pre-built cache: code prefix → sub-group (O(1) lookup per code)
@@ -965,7 +1001,7 @@ export default function DetailAkunFluktuasiPage() {
                   <Card key={frame.accountCode} className="border border-slate-200 shadow-sm bg-white">
                     <CardHeader className="p-2 pb-1">
                       <CardTitle className="text-[11px] font-semibold uppercase tracking-wide text-red-600">
-                        Kode Akun {frame.accountCode}
+                        {(ACCOUNT_NAMES[frame.accountCode] ?? frame.accountCode) + ` (${frame.accountCode})`}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="p-2 pt-0">
