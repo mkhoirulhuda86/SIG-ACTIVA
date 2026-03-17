@@ -17,6 +17,7 @@ import {
   type ChartData,
   type ChartOptions,
 } from 'chart.js';
+import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -25,7 +26,7 @@ import { Skeleton } from '../components/ui/skeleton';
 const Sidebar  = dynamic(() => import('../components/Sidebar'),  { ssr: false });
 const Header   = dynamic(() => import('../components/Header'),   { ssr: false });
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, ChartTooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, ChartTooltip, Legend, ChartDataLabels);
 
 /* ─── Loading Skeleton ──────────────────────────────────────────────────────── */
 function PageSkeleton({ isMobileSidebarOpen, setMobileSidebar }: { isMobileSidebarOpen: boolean; setMobileSidebar: (v: boolean) => void }) {
@@ -299,6 +300,20 @@ const buildOverviewChartOptions = (isCompact: boolean): ChartOptions<'bar'> => (
   animation: false,
   plugins: {
     legend: { display: false },
+    datalabels: {
+      display: !isCompact,
+      anchor: 'end',
+      align: 'end',
+      offset: 2,
+      clamp: true,
+      clip: false,
+      font: {
+        size: 9,
+        weight: 700,
+      },
+      color: (ctx: any) => (ctx.datasetIndex === 0 ? '#1d4ed8' : '#15803d'),
+      formatter: (value: unknown) => fmtCompact(Number(value ?? 0)),
+    },
     tooltip: {
       callbacks: {
         label: (ctx) => `${ctx.dataset.label}: ${fmtCompact(Number(ctx.parsed.y ?? 0))}`,
@@ -678,16 +693,10 @@ export default function OverviewFluktuasiPage() {
                             />
                           </div>
 
-                          <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-0.5 flex-none">
-                            <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 mb-0.5">Reason Singkat</p>
-                            <p
-                              className="text-[9px] leading-3.5 text-slate-600"
-                              style={{
-                                maxHeight: '2.4em',
-                                overflow: 'hidden',
-                              }}
-                            >
-                              {frame.frameReason}
+                          <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-1.5 flex-none">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 mb-1">Reason Singkat</p>
+                            <p className="text-[10px] leading-4 text-slate-700 max-h-16 overflow-y-auto pr-1 whitespace-normal break-words">
+                              {frame.frameReason || '-'}
                             </p>
                           </div>
                         </div>

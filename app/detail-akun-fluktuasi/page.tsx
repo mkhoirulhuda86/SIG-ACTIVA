@@ -17,6 +17,7 @@ import {
   type ChartData,
   type ChartOptions,
 } from 'chart.js';
+import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -26,7 +27,7 @@ import { Skeleton } from '../components/ui/skeleton';
 const Sidebar = dynamic(() => import('../components/Sidebar'), { ssr: false });
 const Header  = dynamic(() => import('../components/Header'),  { ssr: false });
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, ChartTooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, ChartTooltip, Legend, ChartDataLabels);
 
 // --- Types -------------------------------------------------------------------
 type AkunPeriodeRecord = {
@@ -56,6 +57,34 @@ const fmtCompact = (n: number): string => {
 // Cached formatter — avoids allocating a new Intl instance on every call
 const _fmtFull = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 });
 const fmtFull = (n: number): string => _fmtFull.format(n);
+
+const summarizeAccountFrameReason = (
+  rows: { klasifikasi: string; prev: number; curr: number }[],
+  mode: 'mom' | 'yoy' | 'ytd',
+): string => {
+  if (rows.length === 0) return '-';
+
+  const movers = rows.map((row) => ({ ...row, delta: row.curr - row.prev }));
+  const nonZero = movers.filter((m) => m.delta !== 0);
+  if (nonZero.length === 0) {
+    return `Tidak ada perubahan ${mode.toUpperCase()} yang signifikan untuk akun ini.`;
+  }
+
+  const topNaik = nonZero
+    .filter((m) => m.delta > 0)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
+  const topTurun = nonZero
+    .filter((m) => m.delta < 0)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
+
+  const netDelta = nonZero.reduce((s, m) => s + m.delta, 0);
+  let summary = `${mode.toUpperCase()}: nilai akun ${netDelta >= 0 ? 'naik' : 'turun'} ${fmtCompact(Math.abs(netDelta))}.`;
+
+  if (topNaik) summary += ` Naik terbesar: ${topNaik.klasifikasi} ${fmtCompact(Math.abs(topNaik.delta))}.`;
+  if (topTurun) summary += ` Turun terbesar: ${topTurun.klasifikasi} ${fmtCompact(Math.abs(topTurun.delta))}.`;
+
+  return summary;
+};
 
 // Cached periode label map to avoid repeated string splits
 const _periodeCache = new Map<string, string>();
@@ -228,6 +257,20 @@ const buildDetailChartOptions = (isCompact: boolean): ChartOptions<'bar'> => ({
   animation: false,
   plugins: {
     legend: { display: false },
+    datalabels: {
+      display: !isCompact,
+      anchor: 'end',
+      align: 'end',
+      offset: 2,
+      clamp: true,
+      clip: false,
+      font: {
+        size: 9,
+        weight: 700,
+      },
+      color: (ctx: any) => (ctx.datasetIndex === 0 ? '#1d4ed8' : '#15803d'),
+      formatter: (value: unknown) => fmtCompact(Number(value ?? 0)),
+    },
     tooltip: {
       callbacks: {
         label: (ctx) => `${ctx.dataset.label}: ${fmtCompact(Number(ctx.parsed.y ?? 0))}`,
@@ -703,7 +746,7 @@ export default function DetailAkunFluktuasiPage() {
   const accountFramesByMode = useMemo(() => {
     if (!compPeriode) {
       return {
-        frames: [] as { accountCode: string; rows: { klasifikasi: string; prev: number; curr: number }[] }[],
+        frames: [] as { accountCode: string; rows: { klasifikasi: string; prev: number; curr: number }[]; frameReason: string }[],
         labelA: '',
         labelB: '',
       };
@@ -791,7 +834,11 @@ export default function DetailAkunFluktuasiPage() {
           .filter((row) => row.prev !== 0 || row.curr !== 0)
           .sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)));
 
-        return { accountCode, rows };
+        return {
+          accountCode,
+          rows,
+          frameReason: summarizeAccountFrameReason(rows, compMode),
+        };
       })
       .sort((a, b) => activeTabDef.accountCodes.indexOf(a.accountCode) - activeTabDef.accountCodes.indexOf(b.accountCode));
 
@@ -1093,15 +1140,24 @@ export default function DetailAkunFluktuasiPage() {
                       {frame.rows.length === 0 ? (
                         <p className="text-[11px] text-slate-400 text-center py-10">Tidak ada data untuk kode akun ini pada periode pembanding.</p>
                       ) : (
-                        <div className="h-[280px] sm:h-[250px] w-full">
-                          <ChartBar
-                            data={buildDetailChartData(
-                              frame.rows,
-                              accountFramesByMode.labelB || 'Basis',
-                              accountFramesByMode.labelA || 'Berjalan',
-                            )}
-                            options={buildDetailChartOptions(isCompact)}
-                          />
+                        <div className="flex flex-col gap-1.5">
+                          <div className="h-[280px] sm:h-[250px] w-full">
+                            <ChartBar
+                              data={buildDetailChartData(
+                                frame.rows,
+                                accountFramesByMode.labelB || 'Basis',
+                                accountFramesByMode.labelA || 'Berjalan',
+                              )}
+                              options={buildDetailChartOptions(isCompact)}
+                            />
+                          </div>
+
+                          <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-1.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 mb-1">Reason Singkat</p>
+                            <p className="text-[10px] leading-4 text-slate-700 max-h-16 overflow-y-auto pr-1 whitespace-normal break-words">
+                              {frame.frameReason || '-'}
+                            </p>
+                          </div>
                         </div>
                       )}
                     </CardContent>
