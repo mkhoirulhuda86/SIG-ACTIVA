@@ -260,6 +260,7 @@ export default function OverviewFluktuasiPage() {
   const [records, setRecords]                   = useState<ParsedRecord[]>([]);
   const [loading, setLoading]                   = useState(true);
   const [isMobileSidebarOpen, setMobileSidebar] = useState(false);
+  const [isCompact, setIsCompact]               = useState(false);
 
   const [compMode,       setCompMode]       = useState<'mom' | 'yoy' | 'ytd'>('yoy');
   const [compPeriodeRaw, setCompPeriodeRaw] = useState<string>('');
@@ -287,6 +288,12 @@ export default function OverviewFluktuasiPage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    const onResize = () => setIsCompact(window.innerWidth < 768);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const _fluktuasiDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   useRealtimeUpdates(['fluktuasi'], useCallback(() => {
     if (_fluktuasiDebounce.current) clearTimeout(_fluktuasiDebounce.current);
@@ -511,13 +518,13 @@ export default function OverviewFluktuasiPage() {
         />
 
         {/* Content */}
-        <div ref={contentRef} className="flex-1 overflow-hidden p-2 space-y-2 bg-gradient-to-b from-slate-50 to-[#edf3ff]">
+        <div ref={contentRef} className="flex-1 overflow-hidden p-1.5 sm:p-2 space-y-2 bg-gradient-to-b from-slate-50 to-[#edf3ff]">
 
           {/* 4 Frames: masing-masing 1 histogram gabungan */}
           <Card className="shadow-sm border border-blue-100/80 bg-white/90 backdrop-blur h-full flex flex-col">
             <CardHeader className="p-2 pb-1 border-b border-slate-100">
-              <div className="flex flex-wrap items-center gap-2">
-                <CardTitle className="text-xs font-semibold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <CardTitle className="text-[10px] sm:text-xs font-semibold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
                   <Activity size={12} className="text-rose-500" /> OVERVIEW 4 FRAME KODE AKUN
                 </CardTitle>
                 <Badge variant="outline" className="overview-chip h-5 text-[9px] border-blue-200 text-blue-700 bg-blue-50">
@@ -528,7 +535,7 @@ export default function OverviewFluktuasiPage() {
                 </Badge>
               </div>
 
-              <div ref={controlsRef} className="mt-2 flex flex-wrap items-center gap-2 text-[10px]">
+              <div ref={controlsRef} className="mt-2 flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px]">
                 <div className="overview-chip inline-flex items-center rounded-md border border-slate-200 bg-slate-50 p-0.5 gap-0.5">
                   {(['mom', 'yoy', 'ytd'] as const).map(m => (
                     <Button
@@ -556,13 +563,13 @@ export default function OverviewFluktuasiPage() {
                   </select>
                 </div>
 
-                <span className="overview-chip text-slate-500 ml-auto">
+                <span className="overview-chip text-slate-500 w-full sm:w-auto sm:ml-auto">
                   Basis: <strong className="text-slate-700">{accountFramesByMode.labelB}</strong> vs <strong className="text-slate-700">{accountFramesByMode.labelA}</strong>
                 </span>
               </div>
             </CardHeader>
             <CardContent className="p-1.5 pt-1 flex-1 min-h-0 flex flex-col">
-              <div className="mb-0.5 flex items-center justify-end gap-3 text-[10px] font-semibold text-slate-700">
+              <div className="mb-0.5 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[10px] font-semibold text-slate-700">
                 <div className="flex items-center gap-1.5">
                   <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#2563eb]" />
                   <span>{accountFramesByMode.labelB || accountFramesByMode.tagB}</span>
@@ -583,20 +590,20 @@ export default function OverviewFluktuasiPage() {
                         <p className="text-xs text-slate-400 text-center py-10">Tidak ada data akun pada periode ini</p>
                       ) : (
                         <div className="h-full flex flex-col gap-0.5">
-                          <div className="flex-1 min-h-[120px] w-full">
+                          <div className="flex-1 min-h-[200px] sm:min-h-[120px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={frame.rows} margin={{ top: 20, right: 8, left: 0, bottom: 22 }}>
+                              <BarChart data={frame.rows} margin={{ top: 20, right: isCompact ? 2 : 8, left: 0, bottom: isCompact ? 38 : 22 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                 <XAxis
                                   dataKey="klasifikasi"
                                   interval={0}
-                                  angle={-18}
+                                  angle={isCompact ? -30 : -18}
                                   textAnchor="end"
-                                  height={42}
-                                  tick={{ fontSize: 8, fill: '#64748b' }}
-                                  tickFormatter={(v: string) => (v.length > 22 ? `${v.slice(0, 22)}...` : v)}
+                                  height={isCompact ? 62 : 42}
+                                  tick={{ fontSize: isCompact ? 7 : 8, fill: '#64748b' }}
+                                  tickFormatter={(v: string) => (v.length > (isCompact ? 14 : 22) ? `${v.slice(0, isCompact ? 14 : 22)}...` : v)}
                                 />
-                                <YAxis width={34} tick={{ fontSize: 9, fill: '#64748b' }} tickFormatter={fmtCompact} />
+                                <YAxis width={isCompact ? 30 : 34} tick={{ fontSize: isCompact ? 8 : 9, fill: '#64748b' }} tickFormatter={fmtCompact} />
                                 <Tooltip
                                   formatter={(value) => {
                                     const normalized = typeof value === 'number' ? value : Number(value ?? 0);
@@ -605,10 +612,10 @@ export default function OverviewFluktuasiPage() {
                                   labelFormatter={(label) => String(label ?? '')}
                                 />
                                 <Bar dataKey="prev" name={accountFramesByMode.labelB || accountFramesByMode.tagB} fill="#2563eb" radius={[4, 4, 0, 0]}>
-                                  <LabelList dataKey="prev" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 7, fill: '#2563eb', fontWeight: 700 }} />
+                                  {!isCompact && <LabelList dataKey="prev" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 7, fill: '#2563eb', fontWeight: 700 }} />}
                                 </Bar>
                                 <Bar dataKey="curr" name={accountFramesByMode.labelA || accountFramesByMode.tagA} fill="#16a34a" radius={[4, 4, 0, 0]}>
-                                  <LabelList dataKey="curr" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 7, fill: '#16a34a', fontWeight: 700 }} />
+                                  {!isCompact && <LabelList dataKey="curr" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 7, fill: '#16a34a', fontWeight: 700 }} />}
                                 </Bar>
                               </BarChart>
                             </ResponsiveContainer>

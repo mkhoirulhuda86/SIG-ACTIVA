@@ -444,6 +444,7 @@ export default function DetailAkunFluktuasiPage() {
   const [records, setRecords]                   = useState<ProcessedRecord[]>([]);
   const [loading, setLoading]                   = useState(true);
   const [isMobileSidebarOpen, setMobileSidebar] = useState(false);
+  const [isCompact, setIsCompact]               = useState(false);
   const [compMode, setCompMode]                 = useState<'mom' | 'yoy' | 'ytd'>('yoy');
   const [compPeriodeRaw, setCompPeriodeRaw]     = useState('');
   const [activeAccountTab, setActiveAccountTab] = useState<AccountTabDef['key']>('beban-bunga');
@@ -512,6 +513,12 @@ export default function DetailAkunFluktuasiPage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    const onResize = () => setIsCompact(window.innerWidth < 768);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const _fluktuasiDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   useRealtimeUpdates(['fluktuasi'], useCallback(() => {
     if (_fluktuasiDebounce.current) clearTimeout(_fluktuasiDebounce.current);
@@ -930,11 +937,11 @@ export default function DetailAkunFluktuasiPage() {
   return shell(
     <div className="flex-1 overflow-y-auto">
 
-      <div className="px-4 pt-3 pb-1">
+      <div className="px-3 sm:px-4 pt-3 pb-1">
         <Card className="border border-blue-100/80 bg-white/90 backdrop-blur shadow-sm">
           <CardHeader ref={pillsRef} className="p-2 pb-1 border-b border-slate-100">
-            <div className="flex flex-wrap items-center gap-2">
-              <CardTitle className="text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <CardTitle className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wide text-slate-700">
                 Dashboard Detail Per Akun
               </CardTitle>
               <Badge variant="outline" className="h-5 text-[9px] border-blue-200 text-blue-700 bg-blue-50">
@@ -958,7 +965,7 @@ export default function DetailAkunFluktuasiPage() {
               </div>
             </div>
 
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px]">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2 text-[9px]">
               <span className="text-slate-500 font-semibold uppercase">Periode:</span>
               <select
                 value={compPeriode}
@@ -969,7 +976,7 @@ export default function DetailAkunFluktuasiPage() {
                   <option key={p} value={p}>{periodeToLabel(p)}</option>
                 ))}
               </select>
-              <span className="text-slate-500 ml-auto">
+              <span className="text-slate-500 w-full sm:w-auto sm:ml-auto">
                 Basis: <strong className="text-slate-600">{accountFramesByMode.labelB || '-'}</strong> vs <strong className="text-slate-600">{accountFramesByMode.labelA || '-'}</strong>
               </span>
             </div>
@@ -1001,7 +1008,7 @@ export default function DetailAkunFluktuasiPage() {
                 {accountFramesByMode.frames.map((frame) => (
                   <Card key={frame.accountCode} className="border border-slate-200 shadow-sm bg-white">
                     <CardHeader className="p-2 pb-1">
-                      <CardTitle className="text-[11px] font-semibold uppercase tracking-wide text-red-600">
+                      <CardTitle className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide text-red-600">
                         {(ACCOUNT_NAMES[frame.accountCode] ?? frame.accountCode) + ` (${frame.accountCode})`}
                       </CardTitle>
                     </CardHeader>
@@ -1009,20 +1016,20 @@ export default function DetailAkunFluktuasiPage() {
                       {frame.rows.length === 0 ? (
                         <p className="text-[11px] text-slate-400 text-center py-10">Tidak ada data untuk kode akun ini pada periode pembanding.</p>
                       ) : (
-                        <div className="h-[250px] w-full">
+                        <div className="h-[280px] sm:h-[250px] w-full">
                           <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={frame.rows} margin={{ top: 22, right: 10, left: 0, bottom: 36 }}>
+                            <BarChart data={frame.rows} margin={{ top: 22, right: isCompact ? 2 : 10, left: 0, bottom: isCompact ? 48 : 36 }}>
                               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                               <XAxis
                                 dataKey="klasifikasi"
                                 interval={0}
-                                angle={-18}
+                                angle={isCompact ? -30 : -18}
                                 textAnchor="end"
-                                height={54}
-                                tick={{ fontSize: 8, fill: '#64748b' }}
-                                tickFormatter={(v: string) => (v.length > 18 ? `${v.slice(0, 18)}...` : v)}
+                                height={isCompact ? 68 : 54}
+                                tick={{ fontSize: isCompact ? 7 : 8, fill: '#64748b' }}
+                                tickFormatter={(v: string) => (v.length > (isCompact ? 13 : 18) ? `${v.slice(0, isCompact ? 13 : 18)}...` : v)}
                               />
-                              <YAxis width={40} tick={{ fontSize: 9, fill: '#64748b' }} tickFormatter={fmtCompact} />
+                              <YAxis width={isCompact ? 34 : 40} tick={{ fontSize: isCompact ? 8 : 9, fill: '#64748b' }} tickFormatter={fmtCompact} />
                               <Tooltip
                                 formatter={(value) => {
                                   const normalized = typeof value === 'number' ? value : Number(value ?? 0);
@@ -1031,10 +1038,10 @@ export default function DetailAkunFluktuasiPage() {
                                 labelFormatter={(label) => `Klasifikasi: ${String(label ?? '')}`}
                               />
                               <Bar dataKey="prev" name={accountFramesByMode.labelB || 'Basis'} fill="#2563eb" radius={[4, 4, 0, 0]}>
-                                <LabelList dataKey="prev" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 8, fill: '#2563eb', fontWeight: 700 }} />
+                                {!isCompact && <LabelList dataKey="prev" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 8, fill: '#2563eb', fontWeight: 700 }} />}
                               </Bar>
                               <Bar dataKey="curr" name={accountFramesByMode.labelA || 'Berjalan'} fill="#16a34a" radius={[4, 4, 0, 0]}>
-                                <LabelList dataKey="curr" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 8, fill: '#16a34a', fontWeight: 700 }} />
+                                {!isCompact && <LabelList dataKey="curr" position="top" formatter={(v: unknown) => fmtCompact(Number(v ?? 0))} style={{ fontSize: 8, fill: '#16a34a', fontWeight: 700 }} />}
                               </Bar>
                             </BarChart>
                           </ResponsiveContainer>
