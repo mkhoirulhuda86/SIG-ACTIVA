@@ -931,22 +931,29 @@ export default function DetailAkunFluktuasiPage() {
     <div className="flex-1 overflow-y-auto">
 
       <div className="px-4 pt-3 pb-1">
-        <Card className="border border-blue-100 bg-[#eef5ff] shadow-sm">
-          <CardHeader className="p-2 pb-1">
+        <Card className="border border-blue-100/80 bg-white/90 backdrop-blur shadow-sm">
+          <CardHeader ref={pillsRef} className="p-2 pb-1 border-b border-slate-100">
             <div className="flex flex-wrap items-center gap-2">
-              <CardTitle className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+              <CardTitle className="text-[10px] font-semibold uppercase tracking-wide text-slate-700">
                 Dashboard Detail Per Akun
               </CardTitle>
+              <Badge variant="outline" className="h-5 text-[9px] border-blue-200 text-blue-700 bg-blue-50">
+                {records.length.toLocaleString('id-ID')} records
+              </Badge>
+              <Badge variant="outline" className="h-5 text-[9px] border-emerald-200 text-emerald-700 bg-emerald-50">
+                {accountFramesByMode.labelB || '-'} vs {accountFramesByMode.labelA || '-'}
+              </Badge>
               <div className="ml-auto flex gap-1">
                 {(['mom', 'yoy', 'ytd'] as const).map(mode => (
-                  <button
+                  <Button
                     key={mode}
                     onClick={() => setCompMode(mode)}
-                    className="px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all duration-200 hover:scale-105 active:scale-95"
-                    style={{ backgroundColor: compMode === mode ? '#dc2626' : '#dbeafe', color: compMode === mode ? 'white' : '#1e3a8a' }}
+                    size="sm"
+                    variant={compMode === mode ? 'default' : 'outline'}
+                    className={`h-6 px-2 text-[9px] font-bold uppercase ${compMode === mode ? 'bg-red-500 hover:bg-red-500 text-white border-red-500' : 'text-slate-600 border-blue-200 hover:bg-blue-50'}`}
                   >
                     {mode}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -969,18 +976,15 @@ export default function DetailAkunFluktuasiPage() {
 
             <div className="mt-2 flex flex-wrap gap-1.5">
               {ACCOUNT_TAB_DEFS.map(tab => (
-                <button
+                <Button
                   key={tab.key}
                   onClick={() => setActiveAccountTab(tab.key)}
-                  className="px-2.5 py-1 rounded-md text-[10px] font-bold transition-all duration-200"
-                  style={{
-                    backgroundColor: activeAccountTab === tab.key ? '#fee2e2' : '#ffffff',
-                    color: '#dc2626',
-                    border: activeAccountTab === tab.key ? '1px solid #fca5a5' : '1px solid #fecaca',
-                  }}
+                  size="sm"
+                  variant={activeAccountTab === tab.key ? 'default' : 'outline'}
+                  className={`h-7 px-2.5 text-[10px] font-bold ${activeAccountTab === tab.key ? 'bg-red-500 hover:bg-red-500 text-white border-red-500' : 'text-red-600 border-red-200 hover:bg-red-50'}`}
                 >
                   {tab.title}
-                </button>
+                </Button>
               ))}
             </div>
           </CardHeader>

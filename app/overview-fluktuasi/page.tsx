@@ -5,8 +5,11 @@ import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import dynamic from 'next/dynamic';
 import { Activity, TrendingUp } from 'lucide-react';
 import { gsap } from 'gsap';
+import { animate, stagger } from 'animejs';
 import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LabelList } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
 import { Skeleton } from '../components/ui/skeleton';
 
 const Sidebar  = dynamic(() => import('../components/Sidebar'),  { ssr: false });
@@ -434,6 +437,7 @@ export default function OverviewFluktuasiPage() {
 
   // ── Refs for GSAP page animations ─────────────────────────────────────────
   const contentRef = useRef<HTMLDivElement>(null);
+  const controlsRef = useRef<HTMLDivElement>(null);
 
   // Page-enter GSAP animations (runs whenever data loads)
   useEffect(() => {
@@ -446,6 +450,19 @@ export default function OverviewFluktuasiPage() {
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records, loading]);
+
+  useEffect(() => {
+    if (!controlsRef.current) return;
+    const chips = Array.from(controlsRef.current.querySelectorAll('.overview-chip'));
+    if (!chips.length) return;
+    animate(chips, {
+      opacity: [0, 1],
+      translateY: [6, 0],
+      duration: 260,
+      delay: stagger(36),
+      ease: 'easeOutQuad',
+    });
+  }, [compMode, compPeriode]);
 
   // Table rows: simple CSS fade (no JS stagger on filter change — too expensive)
   // The initial page-entry GSAP timeline already handles first-render animation.
@@ -494,41 +511,53 @@ export default function OverviewFluktuasiPage() {
         />
 
         {/* Content */}
-        <div ref={contentRef} className="flex-1 overflow-hidden p-1.5 space-y-1.5 bg-white">
+        <div ref={contentRef} className="flex-1 overflow-hidden p-2 space-y-2 bg-gradient-to-b from-slate-50 to-[#edf3ff]">
 
           {/* 4 Frames: masing-masing 1 histogram gabungan */}
-          <Card className="shadow-sm border border-blue-100 bg-[#eef5ff] h-full flex flex-col">
-            <CardHeader className="p-1.5 pb-1">
+          <Card className="shadow-sm border border-blue-100/80 bg-white/90 backdrop-blur h-full flex flex-col">
+            <CardHeader className="p-2 pb-1 border-b border-slate-100">
               <div className="flex flex-wrap items-center gap-2">
-                <CardTitle className="text-xs font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
-                  <Activity size={12} className="text-red-500" /> OVERVIEW 4 FRAME KODE AKUN
+                <CardTitle className="text-xs font-semibold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                  <Activity size={12} className="text-rose-500" /> OVERVIEW 4 FRAME KODE AKUN
                 </CardTitle>
-                <div className="flex gap-1 ml-auto">
+                <Badge variant="outline" className="overview-chip h-5 text-[9px] border-blue-200 text-blue-700 bg-blue-50">
+                  {records.length.toLocaleString('id-ID')} records
+                </Badge>
+                <Badge variant="outline" className="overview-chip h-5 text-[9px] border-emerald-200 text-emerald-700 bg-emerald-50">
+                  {accountFramesByMode.labelB || '-'} vs {accountFramesByMode.labelA || '-'}
+                </Badge>
+              </div>
+
+              <div ref={controlsRef} className="mt-2 flex flex-wrap items-center gap-2 text-[10px]">
+                <div className="overview-chip inline-flex items-center rounded-md border border-slate-200 bg-slate-50 p-0.5 gap-0.5">
                   {(['mom', 'yoy', 'ytd'] as const).map(m => (
-                    <button
+                    <Button
                       key={m}
+                      size="sm"
+                      variant={compMode === m ? 'default' : 'ghost'}
                       onClick={() => setCompMode(m)}
-                      className="px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all duration-200 hover:scale-105 active:scale-95"
-                      style={{ backgroundColor: compMode === m ? '#dc2626' : '#dbeafe', color: compMode === m ? 'white' : '#1e3a8a' }}
+                      className={`h-6 px-2 text-[9px] font-bold uppercase ${compMode === m ? 'bg-red-500 hover:bg-red-500 text-white' : 'text-slate-600 hover:bg-slate-200'}`}
                     >
                       {m}
-                    </button>
+                    </Button>
                   ))}
                 </div>
-              </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[9px]">
-                <span className="text-slate-500 font-semibold uppercase">Periode:</span>
-                <select
-                  value={compPeriode}
-                  onChange={e => setCompPeriodeRaw(e.target.value)}
-                  className="text-[9px] font-mono font-semibold border border-blue-200 rounded px-1.5 py-0.5 bg-[#f8fbff] text-slate-700 focus:outline-none focus:border-blue-400 transition-colors"
-                >
-                  {allPeriodes.map(p => (
-                    <option key={p} value={p}>{periodeToLabel(p)}</option>
-                  ))}
-                </select>
-                <span className="text-slate-500 ml-auto">
-                  Basis: <strong className="text-slate-600">{accountFramesByMode.labelB}</strong> vs <strong className="text-slate-600">{accountFramesByMode.labelA}</strong>
+
+                <div className="overview-chip inline-flex items-center gap-1.5 rounded-md border border-blue-100 bg-[#f4f8ff] px-2 py-1">
+                  <span className="text-slate-500 font-semibold uppercase">Periode</span>
+                  <select
+                    value={compPeriode}
+                    onChange={e => setCompPeriodeRaw(e.target.value)}
+                    className="text-[10px] font-semibold border border-blue-200 rounded px-1.5 py-0.5 bg-white text-slate-700 focus:outline-none focus:border-blue-400 transition-colors"
+                  >
+                    {allPeriodes.map(p => (
+                      <option key={p} value={p}>{periodeToLabel(p)}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <span className="overview-chip text-slate-500 ml-auto">
+                  Basis: <strong className="text-slate-700">{accountFramesByMode.labelB}</strong> vs <strong className="text-slate-700">{accountFramesByMode.labelA}</strong>
                 </span>
               </div>
             </CardHeader>
