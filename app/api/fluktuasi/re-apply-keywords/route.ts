@@ -1,6 +1,20 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+const dbErrorMessage = (error: unknown, fallback: string): string => {
+  const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+  if (/maxclientsinsessionmode|max clients reached|pool_size/i.test(message)) {
+    return 'Koneksi database penuh: jumlah koneksi aktif melebihi batas paket saat ini (max clients).';
+  }
+  if (/planLimitReached/i.test(message)) {
+    return 'Koneksi database ditolak: limit paket Prisma sudah tercapai (planLimitReached).';
+  }
+  if (/P1001|Can\'t reach database server/i.test(message)) {
+    return 'Koneksi database gagal (P1001): server database tidak terjangkau.';
+  }
+  return fallback;
+};
+
 // ─── Inline keyword matching (mirrors client-side matchKeywords) ──────────────
 type KW = {
   keyword:      string;
@@ -189,21 +203,19 @@ export async function POST() {
       return NextResponse.json({ success: true, message: 'Tidak ada record untuk diperbarui.', updatedRecords: 0 });
     }
 
-    // 4. Fire all updates concurrently (Prisma connection pool handles concurrency)
-    const BATCH = 50; // chunk size to avoid overwhelming the pool
+    // 4. Apply updates in small sequential chunks to minimize DB connection pressure
+    const BATCH = 10;
     let updatedRecords = 0;
 
     for (let i = 0; i < updates.length; i += BATCH) {
       const chunk = updates.slice(i, i + BATCH);
-      const results = await Promise.all(
-        chunk.map(u =>
-          prisma.fluktuasiAkunPeriode.updateMany({
-            where: { accountCode: u.accountCode, periode: u.periode },
-            data:  { klasifikasi: u.klasifikasi },
-          })
-        )
-      );
-      updatedRecords += results.reduce((s, r) => s + r.count, 0);
+      for (const u of chunk) {
+        const r = await prisma.fluktuasiAkunPeriode.updateMany({
+          where: { accountCode: u.accountCode, periode: u.periode },
+          data: { klasifikasi: u.klasifikasi },
+        });
+        updatedRecords += r.count;
+      }
     }
 
     return NextResponse.json({
@@ -214,9 +226,11 @@ export async function POST() {
     });
   } catch (error) {
     console.error('Error re-applying keywords:', error);
+    const message = dbErrorMessage(error, 'Gagal memperbarui klasifikasi');
+    const status = /max clients|planLimitReached|P1001/i.test(String(error instanceof Error ? error.message : error ?? '')) ? 503 : 500;
     return NextResponse.json(
-      { success: false, error: 'Gagal memperbarui klasifikasi: ' + (error as Error).message },
-      { status: 500 },
+      { success: false, error: message },
+      { status },
     );
   }
 }

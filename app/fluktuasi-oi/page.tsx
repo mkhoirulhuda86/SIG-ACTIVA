@@ -911,7 +911,7 @@ const FALLBACK_KEYWORDS: Keyword[] = [
   { id: -12, keyword: 'Invoice', type: 'remark', result: 'Faktur', priority: 4, accountCodes: '', sourceColumn: '' },
 ];
 
-const isDbPlanLimitError = (message?: string) => /planlimitreached|limit paket prisma/i.test(message ?? '');
+const isDbPlanLimitError = (message?: string) => /planlimitreached|limit paket prisma|maxclientsinsessionmode|max clients reached|pool_size|koneksi database penuh/i.test(message ?? '');
 
 // --- AI Chatbot -------------------------------------------------------------
 type ChatMsg  = { role: 'user' | 'assistant'; content: string };
@@ -1335,11 +1335,21 @@ export default function FluktuasiOIPage() {
         toast.success(result.message);
         loadDbStats();
       } else {
-        toast.error(result.error ?? 'Gagal re-terapkan keyword');
+        const msg = String(result.error ?? 'Gagal re-terapkan keyword');
+        if (isDbPlanLimitError(msg)) {
+          toast.info(msg);
+        } else {
+          toast.error(msg);
+        }
       }
     } catch (error) {
       console.error('Error re-applying keywords:', error);
-      toast.error('Gagal re-terapkan keyword');
+      const msg = error instanceof Error ? error.message : 'Gagal re-terapkan keyword';
+      if (isDbPlanLimitError(msg)) {
+        toast.info(msg);
+      } else {
+        toast.error('Gagal re-terapkan keyword');
+      }
     } finally {
       setIsReapplying(false);
     }
