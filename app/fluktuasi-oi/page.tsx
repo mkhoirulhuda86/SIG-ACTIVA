@@ -2168,6 +2168,8 @@ export default function FluktuasiOIPage() {
         gapYoY: number;
         pctYoY: number;
         reasonYoY: string;
+        ytdCurrV: number;
+        ytdPrevV: number;
         gapYtD: number;
         pctYtD: number;
         reasonYtD: string;
@@ -2197,6 +2199,8 @@ export default function FluktuasiOIPage() {
             reasonYoY: override.yoy !== undefined
               ? override.yoy
               : (template?.yoy ?? row.reasonYoY ?? ''),
+            ytdCurrV: row.ytdCurrV,
+            ytdPrevV: row.ytdPrevV,
             gapYtD: row.gapYtD,
             pctYtD: row.pctYtD,
             reasonYtD: override.ytd !== undefined
@@ -2206,13 +2210,89 @@ export default function FluktuasiOIPage() {
         });
       }
 
-      // Keep request body small for Vercel limits; server will hydrate rows from DB.
-      const sheetDataListForExport = sheetDataList.map(({ rows: _rows, ...meta }) => ({ ...meta, rows: [] }));
+      let persistedAccountCodes = new Set<string>();
+      try {
+        const rowsMetaRes = await fetch('/api/fluktuasi/sheet-rows');
+        const rowsMeta = await rowsMetaRes.json();
+        if (rowsMeta?.success && Array.isArray(rowsMeta.data)) {
+          persistedAccountCodes = new Set(
+            rowsMeta.data
+              .map((r: any) => String(r.accountCode ?? '').trim())
+              .filter(Boolean)
+          );
+        }
+      } catch {
+        // Fallback: if metadata lookup fails, keep payload small and rely on server-side DB hydration.
+      }
+
+      // Keep request body small for Vercel limits, but include local rows for accounts
+      // that are not yet persisted in DB to avoid empty account sheets in export.
+      const sheetDataListForExport = sheetDataList.map((sd) => {
+        const key = String(sd.sheetName ?? '').trim();
+        const numericKey = key.match(/^(\d{5,})/)?.[1] ?? key;
+        const hasPersistedRows = persistedAccountCodes.has(key) || persistedAccountCodes.has(numericKey);
+        if (hasPersistedRows) {
+          const { rows: _rows, ...meta } = sd;
+          return { ...meta, rows: [] };
+        }
+        return sd;
+      });
+
+      const amountCols = rekapSheetData?.amountCols ?? [];
+      const amountColSet = new Set(amountCols.map((ac) => ac.colIdx));
+      const firstAmtIdx = amountCols.length > 0 ? Math.min(...amountCols.map(ac => ac.colIdx)) : Infinity;
+      const descColIdxList = (rekapSheetData?.headers ?? [])
+        .map((_, ci) => ci)
+        .filter(ci => {
+          if (!rekapSheetData) return false;
+          if (ci === rekapSheetData.accountColIdx || amountColSet.has(ci) || ci >= firstAmtIdx) return false;
+          return rekapSheetData.rows.some(r => String(r.values?.[ci] ?? '').trim() !== '');
+        });
+
+      const defaultVisibleAmountColIdxs = amountCols
+        .map((ac, i) => (!ac.isCumulative ? i : -1))
+        .filter(i => i >= 0);
+      const visibleAmountColIdxs = visibleAmtColIdxs === null
+        ? defaultVisibleAmountColIdxs
+        : [...visibleAmtColIdxs].sort((a, b) => a - b);
+
+      const ytdCurrFallback = (rekapSheetData?.ytdCurrColIdxs?.length ?? 0) > 0
+        ? rekapSheetData!.ytdCurrColIdxs[rekapSheetData!.ytdCurrColIdxs.length - 1]
+        : (momSel?.curr ?? rekapSheetData?.momCurrIdx ?? 0);
+      const ytdPrevFallback = (rekapSheetData?.ytdPrevColIdxs?.length ?? 0) > 0
+        ? rekapSheetData!.ytdPrevColIdxs[rekapSheetData!.ytdPrevColIdxs.length - 1]
+        : (yoySel?.prev ?? rekapSheetData?.yoyPrevIdx ?? 0);
+      const ytdCurrColIdx = ytdSel?.curr ?? ytdCurrFallback;
+      const ytdPrevColIdx = ytdSel?.prev ?? ytdPrevFallback;
+
+      const ytdCurrCol = amountCols[ytdCurrColIdx];
+      const ytdPrevCol = amountCols[ytdPrevColIdx];
+      const ytdCurrLabel = ytdCurrCol
+        ? `${ytdCurrCol.yearLabel ? `${ytdCurrCol.yearLabel} ` : ''}${ytdCurrCol.dateLabel}`.trim()
+        : 'YtD Curr';
+      const ytdPrevLabel = ytdPrevCol
+        ? `${ytdPrevCol.yearLabel ? `${ytdPrevCol.yearLabel} ` : ''}${ytdPrevCol.dateLabel}`.trim()
+        : 'YtD Prev';
+
+      const rekapExportConfig = rekapSheetData ? {
+        descColIdxList,
+        visibleAmountColIdxs,
+        ytdCurrColIdx,
+        ytdPrevColIdx,
+        ytdCurrLabel,
+        ytdPrevLabel,
+      } : null;
 
       const res = await fetch('/api/fluktuasi/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName, sheetDataList: sheetDataListForExport, rekapSheetData, rekapRowOverrides }),
+        body: JSON.stringify({
+          fileName,
+          sheetDataList: sheetDataListForExport,
+          rekapSheetData,
+          rekapRowOverrides,
+          rekapExportConfig,
+        }),
       });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const blob = await res.blob();

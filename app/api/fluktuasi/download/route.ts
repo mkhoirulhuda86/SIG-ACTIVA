@@ -46,7 +46,7 @@ function parseNum(val: any): number {
 // ─── POST handler ────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { fileName, sheetDataList, rekapSheetData, rekapRowOverrides } = body as {
+  const { fileName, sheetDataList, rekapSheetData, rekapRowOverrides, rekapExportConfig } = body as {
     fileName: string;
     sheetDataList: any[];
     rekapSheetData: any | null;
@@ -57,10 +57,20 @@ export async function POST(req: NextRequest) {
       gapYoY?: number;
       pctYoY?: number;
       reasonYoY?: string;
+      ytdCurrV?: number;
+      ytdPrevV?: number;
       gapYtD?: number;
       pctYtD?: number;
       reasonYtD?: string;
     }>;
+    rekapExportConfig?: {
+      descColIdxList?: number[];
+      visibleAmountColIdxs?: number[];
+      ytdCurrColIdx?: number;
+      ytdPrevColIdx?: number;
+      ytdCurrLabel?: string;
+      ytdPrevLabel?: string;
+    };
   };
 
   const wb = new ExcelJS.Workbook();
@@ -70,7 +80,12 @@ export async function POST(req: NextRequest) {
   const sheetRowsByCode = new Map<string, Record<string, any>[]>();
   const codesNeedingRows = (sheetDataList ?? [])
     .filter((sd: any) => !Array.isArray(sd?.rows) || sd.rows.length === 0)
-    .map((sd: any) => String(sd?.sheetName ?? '').trim())
+    .flatMap((sd: any) => {
+      const key = String(sd?.sheetName ?? '').trim();
+      if (!key) return [];
+      const numeric = key.match(/^(\d{5,})/)?.[1];
+      return numeric && numeric !== key ? [key, numeric] : [key];
+    })
     .filter(Boolean);
 
   if (codesNeedingRows.length > 0) {
@@ -108,9 +123,11 @@ export async function POST(req: NextRequest) {
     });
 
     // ── Data rows ──
+    const sheetKey = String(sd.sheetName ?? '').trim();
+    const numericSheetKey = sheetKey.match(/^(\d{5,})/)?.[1] ?? sheetKey;
     const rows: any[] = Array.isArray(sd.rows) && sd.rows.length > 0
       ? sd.rows
-      : (sheetRowsByCode.get(String(sd.sheetName ?? '').trim()) ?? []);
+      : (sheetRowsByCode.get(sheetKey) ?? sheetRowsByCode.get(numericSheetKey) ?? []);
     rows.forEach((row, ri) => {
       const values = [
         ...origCols.map((h: string) => row[h] ?? ''),
@@ -159,7 +176,7 @@ export async function POST(req: NextRequest) {
 
     const amountCols: any[] = rekapSheetData.amountCols ?? [];
     const origHeaders: string[] = rekapSheetData.headers ?? [];
-    const totalOrigCols = origHeaders.length;
+    const accountColIdx = Number(rekapSheetData.accountColIdx ?? 0);
 
     // system col definitions
     const sysCols = [
@@ -174,7 +191,66 @@ export async function POST(req: NextRequest) {
       { label: 'Reason YtD', sub: 'Reason YtD',   type: 'reason' },
     ];
 
-    const totalCols = totalOrigCols + sysCols.length;
+    const amountColSet = new Set(amountCols.map((ac: any) => ac.colIdx));
+    const defaultDescColIdxList = origHeaders
+      .map((_: string, ci: number) => ci)
+      .filter((ci: number) => ci !== accountColIdx && !amountColSet.has(ci));
+
+    const descColIdxList = Array.isArray(rekapExportConfig?.descColIdxList)
+      ? rekapExportConfig!.descColIdxList.filter((ci) => Number.isInteger(ci) && ci >= 0 && ci < origHeaders.length && ci !== accountColIdx && !amountColSet.has(ci))
+      : defaultDescColIdxList;
+
+    const defaultVisibleAmountIdxs = amountCols
+      .map((ac: any, i: number) => (!ac.isCumulative ? i : -1))
+      .filter((i: number) => i >= 0);
+    const visibleAmountIdxs = Array.isArray(rekapExportConfig?.visibleAmountColIdxs) && rekapExportConfig!.visibleAmountColIdxs.length > 0
+      ? rekapExportConfig!.visibleAmountColIdxs.filter((i) => Number.isInteger(i) && i >= 0 && i < amountCols.length)
+      : defaultVisibleAmountIdxs;
+    const visibleAmountCols = visibleAmountIdxs.map((i) => amountCols[i]).filter(Boolean);
+
+    const ytdCurrDefault = Array.isArray(rekapSheetData.ytdCurrColIdxs) && rekapSheetData.ytdCurrColIdxs.length > 0
+      ? rekapSheetData.ytdCurrColIdxs[rekapSheetData.ytdCurrColIdxs.length - 1]
+      : Number(rekapSheetData.momCurrIdx ?? 0);
+    const ytdPrevDefault = Array.isArray(rekapSheetData.ytdPrevColIdxs) && rekapSheetData.ytdPrevColIdxs.length > 0
+      ? rekapSheetData.ytdPrevColIdxs[rekapSheetData.ytdPrevColIdxs.length - 1]
+      : Number(rekapSheetData.yoyPrevIdx ?? 0);
+    const ytdCurrColIdx = Number.isInteger(rekapExportConfig?.ytdCurrColIdx)
+      ? Number(rekapExportConfig!.ytdCurrColIdx)
+      : ytdCurrDefault;
+    const ytdPrevColIdx = Number.isInteger(rekapExportConfig?.ytdPrevColIdx)
+      ? Number(rekapExportConfig!.ytdPrevColIdx)
+      : ytdPrevDefault;
+    const ytdCurrCol = amountCols[ytdCurrColIdx];
+    const ytdPrevCol = amountCols[ytdPrevColIdx];
+
+    const baseCols: Array<
+      | { kind: 'account'; label: string; yearLabel: string; colIdx: number }
+      | { kind: 'desc'; label: string; yearLabel: string; colIdx: number }
+      | { kind: 'amount'; label: string; yearLabel: string; colIdx: number; ac: any }
+      | { kind: 'ytdval'; label: string; yearLabel: string; valueKey: 'ytdCurrV' | 'ytdPrevV' }
+    > = [
+      { kind: 'account', label: 'Account', yearLabel: '', colIdx: accountColIdx },
+      ...descColIdxList.map((ci) => ({ kind: 'desc' as const, label: origHeaders[ci] ?? `Col_${ci + 1}`, yearLabel: '', colIdx: ci })),
+      ...visibleAmountCols.map((ac) => ({
+        kind: 'amount' as const,
+        label: ac.dateLabel || ac.label || origHeaders[ac.colIdx] || `Col_${ac.colIdx + 1}`,
+        yearLabel: ac.yearLabel || '',
+        colIdx: ac.colIdx,
+        ac,
+      })),
+      {
+        kind: 'ytdval',
+        label: rekapExportConfig?.ytdCurrLabel || `YtD ${ytdCurrCol?.dateLabel || ytdCurrCol?.label || 'Curr'}`,
+        yearLabel: ytdCurrCol?.yearLabel || 'YtD',
+        valueKey: 'ytdCurrV',
+      },
+      {
+        kind: 'ytdval',
+        label: rekapExportConfig?.ytdPrevLabel || `YtD ${ytdPrevCol?.dateLabel || ytdPrevCol?.label || 'Prev'}`,
+        yearLabel: ytdPrevCol?.yearLabel || 'YtD',
+        valueKey: 'ytdPrevV',
+      },
+    ];
 
     // helper: get color for an amount column
     const amtColBgArgb = (ac: any): string => {
@@ -185,10 +261,7 @@ export async function POST(req: NextRequest) {
     };
 
     // ── Header Row 1 (year group labels) ──
-    const hdr1Values: any[] = origHeaders.map((_, i) => {
-      const ac = amountCols.find((a: any) => a.colIdx === i);
-      return ac ? ac.yearLabel : '';
-    });
+    const hdr1Values: any[] = baseCols.map((c) => c.yearLabel);
     sysCols.forEach((sc) => {
       hdr1Values.push(sc.type === 'reason' ? '' : sc.label.split('\n')[0]);
     });
@@ -198,38 +271,26 @@ export async function POST(req: NextRequest) {
     hdr1Row.eachCell((cell, colNumber) => {
       const ci = colNumber - 1;
       let bg: string;
-      if (ci < totalOrigCols) {
-        const ac = amountCols.find((a: any) => a.colIdx === ci);
-        bg = ac ? amtColBgArgb(ac) : C.navy;
+      if (ci < baseCols.length) {
+        const base = baseCols[ci];
+        if (base.kind === 'amount') bg = amtColBgArgb(base.ac);
+        else if (base.kind === 'ytdval') bg = C.yellow;
+        else bg = C.navy;
       } else {
-        const sc = sysCols[ci - totalOrigCols];
+        const sc = sysCols[ci - baseCols.length];
         bg = sc.type === 'reason' ? C.navy : sc.type === 'gap' ? C.yellow : C.yellow;
       }
       cell.fill = fill(bg);
-      const isYellow = sysCols[ci - totalOrigCols]?.type === 'gap' || sysCols[ci - totalOrigCols]?.type === 'pct';
+      const baseIsYellow = ci < baseCols.length && baseCols[ci].kind === 'ytdval';
+      const sysIsYellow = ci >= baseCols.length && (sysCols[ci - baseCols.length]?.type === 'gap' || sysCols[ci - baseCols.length]?.type === 'pct');
+      const isYellow = baseIsYellow || sysIsYellow;
       cell.font = font({ bold: true, color: { argb: isYellow ? 'FF000000' : C.white }, size: 9 });
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
       cell.border = allBorders('33FFFFFF');
     });
 
-    // Merge consecutive identical year labels in orig col section
-    let mergeStart = 0;
-    for (let c = 1; c <= totalOrigCols; c++) {
-      const prev = hdr1Values[c - 1];
-      const curr = c < totalOrigCols ? hdr1Values[c] : null;
-      if (curr !== prev || c === totalOrigCols) {
-        if (c - 1 > mergeStart) {
-          try { ws.mergeCells(1, mergeStart + 1, 1, c); } catch {}
-        }
-        mergeStart = c;
-      }
-    }
-
     // ── Header Row 2 (date labels) ──
-    const hdr2Values: any[] = origHeaders.map((h, i) => {
-      const ac = amountCols.find((a: any) => a.colIdx === i);
-      return ac ? ac.dateLabel : h;
-    });
+    const hdr2Values: any[] = baseCols.map((c) => c.label);
     sysCols.forEach((sc) => hdr2Values.push(sc.sub));
 
     const hdr2Row = ws.addRow(hdr2Values);
@@ -237,15 +298,19 @@ export async function POST(req: NextRequest) {
     hdr2Row.eachCell((cell, colNumber) => {
       const ci = colNumber - 1;
       let bg: string;
-      if (ci < totalOrigCols) {
-        const ac = amountCols.find((a: any) => a.colIdx === ci);
-        bg = ac ? amtColBgArgb(ac) : C.blueDark;
+      if (ci < baseCols.length) {
+        const base = baseCols[ci];
+        if (base.kind === 'amount') bg = amtColBgArgb(base.ac);
+        else if (base.kind === 'ytdval') bg = C.yellow;
+        else bg = C.blueDark;
       } else {
-        const sc = sysCols[ci - totalOrigCols];
+        const sc = sysCols[ci - baseCols.length];
         bg = sc.type === 'reason' ? C.navy : C.yellow;
       }
       cell.fill = fill(bg);
-      const isYellow = ci >= totalOrigCols && sysCols[ci - totalOrigCols]?.type !== 'reason';
+      const baseIsYellow = ci < baseCols.length && baseCols[ci].kind === 'ytdval';
+      const sysIsYellow = ci >= baseCols.length && sysCols[ci - baseCols.length]?.type !== 'reason';
+      const isYellow = baseIsYellow || sysIsYellow;
       cell.font = font({ bold: true, color: { argb: isYellow ? 'FF000000' : C.white }, size: 9 });
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
       cell.border = allBorders('33FFFFFF');
@@ -265,15 +330,17 @@ export async function POST(req: NextRequest) {
       const gapYoY = hasOverride('gapYoY') ? Number(rowOverride.gapYoY ?? 0) : Number(row.gapYoY ?? 0);
       const pctYoY = hasOverride('pctYoY') ? Number(rowOverride.pctYoY ?? 0) : Number(row.pctYoY ?? 0);
       const reasonYoY = hasOverride('reasonYoY') ? String(rowOverride.reasonYoY ?? '') : String(row.reasonYoY ?? '');
+      const ytdCurrV = hasOverride('ytdCurrV') ? Number(rowOverride.ytdCurrV ?? 0) : Number(row.ytdCurrV ?? 0);
+      const ytdPrevV = hasOverride('ytdPrevV') ? Number(rowOverride.ytdPrevV ?? 0) : Number(row.ytdPrevV ?? 0);
       const gapYtD = hasOverride('gapYtD') ? Number(rowOverride.gapYtD ?? 0) : Number(row.gapYtD ?? 0);
       const pctYtD = hasOverride('pctYtD') ? Number(rowOverride.pctYtD ?? 0) : Number(row.pctYtD ?? 0);
       const reasonYtD = hasOverride('reasonYtD') ? String(rowOverride.reasonYtD ?? '') : String(row.reasonYtD ?? '');
 
       const values: any[] = [
-        ...origHeaders.map((_: string, i: number) => {
-          const ac = amountCols.find((a: any) => a.colIdx === i);
-          const rawVal = row.values?.[i] ?? '';
-          return ac ? parseNum(rawVal) : rawVal;
+        ...baseCols.map((c) => {
+          if (c.kind === 'ytdval') return c.valueKey === 'ytdCurrV' ? ytdCurrV : ytdPrevV;
+          const rawVal = row.values?.[c.colIdx] ?? '';
+          return c.kind === 'amount' ? parseNum(rawVal) : rawVal;
         }),
         gapMoM,
         pctMoM / 100,     // store as decimal for Excel % format
@@ -302,8 +369,15 @@ export async function POST(req: NextRequest) {
         // Background
         let cellBg = rowBg;
         if (!isSpecial) {
-          if (ci >= totalOrigCols) {
-            const sc = sysCols[ci - totalOrigCols];
+          if (ci < baseCols.length) {
+            const base = baseCols[ci];
+            if (base.kind === 'ytdval') {
+              cellBg = ri % 2 === 0 ? C.yellowLight : C.yellowLight2;
+            } else if (base.kind === 'amount') {
+              cellBg = ri % 2 === 0 ? C.white : C.rowAlt;
+            }
+          } else {
+            const sc = sysCols[ci - baseCols.length];
             if (sc.type === 'reason') {
               cellBg = ri % 2 === 0 ? C.purpleLight : C.purpleLight2;
             } else {
@@ -315,8 +389,8 @@ export async function POST(req: NextRequest) {
 
         // Font
         const fontColor = isSpecial ? C.white : (() => {
-          if (ci >= totalOrigCols) {
-            const sc = sysCols[ci - totalOrigCols];
+          if (ci >= baseCols.length) {
+            const sc = sysCols[ci - baseCols.length];
             if (sc.type === 'gap' || sc.type === 'pct') {
               const v = typeof cell.value === 'number' ? cell.value : 0;
               return v < 0 ? 'FFB91C1C' : v > 0 ? 'FF15803D' : 'FF374151';
@@ -336,8 +410,8 @@ export async function POST(req: NextRequest) {
         // Number formats
         if (typeof cell.value === 'number') {
           const ci0 = colNumber - 1;
-          if (ci0 >= totalOrigCols) {
-            const sc = sysCols[ci0 - totalOrigCols];
+          if (ci0 >= baseCols.length) {
+            const sc = sysCols[ci0 - baseCols.length];
             if (sc.type === 'pct') {
               cell.numFmt = '0.00%';
               cell.alignment = { ...cell.alignment, horizontal: 'right' };
@@ -346,8 +420,16 @@ export async function POST(req: NextRequest) {
               cell.alignment = { ...cell.alignment, horizontal: 'right' };
             }
           } else {
-            cell.numFmt = '#,##0';
-            cell.alignment = { ...cell.alignment, horizontal: 'right' };
+            const base = baseCols[ci0];
+            if (base.kind === 'amount' || base.kind === 'ytdval') {
+              cell.numFmt = '#,##0';
+              cell.alignment = { ...cell.alignment, horizontal: 'right' };
+            }
+          }
+        } else if (ci < baseCols.length) {
+          const base = baseCols[ci];
+          if (base.kind === 'account' || base.kind === 'desc') {
+            cell.alignment = { ...cell.alignment, horizontal: 'left' };
           }
         }
       });
@@ -355,11 +437,14 @@ export async function POST(req: NextRequest) {
 
     // ── Column widths ──
     ws.columns.forEach((col, i) => {
-      if (i < totalOrigCols) {
-        const ac = amountCols.find((a: any) => a.colIdx === i);
-        col.width = ac ? 16 : 22;
+      if (i < baseCols.length) {
+        const base = baseCols[i];
+        if (base.kind === 'account') col.width = 16;
+        else if (base.kind === 'desc') col.width = 28;
+        else if (base.kind === 'amount') col.width = 16;
+        else col.width = 18;
       } else {
-        const sc = sysCols[i - totalOrigCols];
+        const sc = sysCols[i - baseCols.length];
         col.width = sc.type === 'reason' ? 40 : 14;
       }
     });
