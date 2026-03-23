@@ -1079,6 +1079,9 @@ export default function FluktuasiOIPage() {
   const [kwMode, setKwMode] = useState<'normal' | 'regex' | 'not' | 'docno' | 'col'>('normal');
   const [colHeader, setColHeader] = useState('');
   const [colPattern, setColPattern] = useState('');
+  const [regexAnchor, setRegexAnchor] = useState('');
+  const [regexWordCount, setRegexWordCount] = useState(2);
+  const [regexMoreThan, setRegexMoreThan] = useState(false);
   const [isReapplying, setIsReapplying] = useState(false);
   const [keywordReadOnlyMode, setKeywordReadOnlyMode] = useState(false);
 
@@ -1329,6 +1332,9 @@ export default function FluktuasiOIPage() {
         setKwMode('normal');
         setColHeader('');
         setColPattern('');
+        setRegexAnchor('');
+        setRegexWordCount(2);
+        setRegexMoreThan(false);
       } else {
         toast.error(result.error);
       }
@@ -4486,6 +4492,15 @@ export default function FluktuasiOIPage() {
               {/* Advanced Manual Input */}
               {(inputMode === 'advanced' || editingKeyword) && (
                 <>
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                    <p className="text-xs font-semibold text-slate-700 mb-1">Cara cepat (Input Detail):</p>
+                    <ul className="text-xs text-slate-600 space-y-0.5">
+                      <li>1. Pilih mode (umumnya: Teks Biasa atau Regex/Pola)</li>
+                      <li>2. Isi keyword/pola dan pilih kolom sumber (opsional)</li>
+                      <li>3. Isi hasil output, lalu Simpan</li>
+                    </ul>
+                  </div>
+
                   {/* -- Mode Selector --------------------------------------- */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Mode Matching</label>
@@ -4607,7 +4622,7 @@ export default function FluktuasiOIPage() {
                             }}
                             placeholder={
                               kwMode === 'normal' ? 'Contoh: Sindikasi SLL, Beban Bunga'
-                              : kwMode === 'regex' ? 'Contoh: RoU \d+  atau  ^Bunga\s+(\w+)'
+                              : kwMode === 'regex' ? 'Contoh: RoU \\d+ (atau pakai pembuat pola di bawah)'
                               : kwMode === 'not'   ? 'Contoh: K3,SLA  atau  K3|SLA'
                               : 'Contoh: 18  (diawali 18)  atau  100005'
                             }
@@ -4625,12 +4640,52 @@ export default function FluktuasiOIPage() {
                         )}
                         {kwMode === 'regex' && (
                           <div className="mt-2 p-2.5 bg-indigo-50 border border-indigo-200 rounded-lg">
-                            <p className="text-xs text-indigo-700 font-semibold mb-1">Regex — cocok terhadap kolom teks (Header Text)</p>
-                            <ul className="text-xs text-indigo-600 space-y-0.5">
-                              <li>• <code>\d+</code> = satu atau lebih angka &nbsp;|&nbsp; <code>\d&#123;8&#125;</code> = tepat 8 angka</li>
-                              <li>• <code>(RoU \d+)</code> = capture group ? gunakan <code>&#123;1&#125;</code> di Result</li>
-                              <li>• Kosongkan Result ? otomatis pakai teks yang cocok</li>
-                            </ul>
+                            <p className="text-xs text-indigo-700 font-semibold mb-2">Bantuan cepat Regex</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <input
+                                type="text"
+                                value={regexAnchor}
+                                onChange={(e) => setRegexAnchor(e.target.value)}
+                                placeholder="Kata awal (contoh: RoU)"
+                                className="sm:col-span-2 px-2.5 py-1.5 text-xs border border-indigo-300 rounded bg-white"
+                              />
+                              <input
+                                type="number"
+                                min={1}
+                                max={12}
+                                value={regexWordCount}
+                                onChange={(e) => setRegexWordCount(Math.max(1, Math.min(12, parseInt(e.target.value || '1', 10))))}
+                                className="px-2.5 py-1.5 text-xs border border-indigo-300 rounded bg-white"
+                              />
+                            </div>
+                            <label className="mt-2 inline-flex items-center gap-1.5 text-xs text-indigo-700">
+                              <input
+                                type="checkbox"
+                                checked={regexMoreThan}
+                                onChange={(e) => setRegexMoreThan(e.target.checked)}
+                              />
+                              Lebih dari jumlah kata di atas
+                            </label>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const a = regexAnchor.trim();
+                                  if (!a) return;
+                                  const n = Math.max(1, regexWordCount || 1);
+                                  const pattern = regexMoreThan
+                                    ? `${a}(?:\\s+\\S+){${n + 1},}`
+                                    : `${a}(?:\\s+\\S+){1,${n}}`;
+                                  setKeywordForm({ ...keywordForm, keyword: `regex:${pattern}` });
+                                }}
+                                className="px-2.5 py-1.5 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-700"
+                              >
+                                Pakai Pola Ini
+                              </button>
+                              <span className="text-[11px] text-indigo-600 self-center">
+                                Tip: Result dikosongkan = ambil teks hasil match otomatis.
+                              </span>
+                            </div>
                           </div>
                         )}
                         {kwMode === 'not' && (
@@ -4802,6 +4857,12 @@ export default function FluktuasiOIPage() {
                   setKwMode('normal');
                   setColHeader('');
                   setColPattern('');
+                      setRegexAnchor('');
+                      setRegexWordCount(2);
+                      setRegexMoreThan(false);
+                  setRegexAnchor('');
+                  setRegexWordCount(2);
+                  setRegexMoreThan(false);
                 }}
                 className="flex-1 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition"
               >
