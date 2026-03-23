@@ -57,6 +57,17 @@ function matchKeywords(
   const resolveRowKey = (sourceCol: string): string | null => {
     if (!rowData) return null;
     const keys = Object.keys(rowData);
+    const dataKeys = keys.filter(k => !k.startsWith('__'));
+
+    // 0) Excel-style column letters (A, B, ..., Z, AA, AB, ...)
+    if (/^[A-Za-z]+$/.test(sourceCol.trim())) {
+      const letters = sourceCol.trim().toUpperCase();
+      let colIndex = 0;
+      for (const ch of letters) colIndex = (colIndex * 26) + (ch.charCodeAt(0) - 64);
+      const idx0 = colIndex - 1;
+      if (idx0 >= 0 && idx0 < dataKeys.length) return dataKeys[idx0];
+    }
+
     const exact = keys.find(k => k === sourceCol);
     if (exact) return exact;
     const ci = keys.find(k => k.toLowerCase() === sourceCol.toLowerCase());

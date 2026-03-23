@@ -183,7 +183,13 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     // Anchor word = first quoted token that looks like a word prefix (not a column name or result)
     // Skip if it's a known column reference like 'Text', 'P', 'AD'
     const skipTokens = ['text', 'p', 'ad', 'ae', 'kolom', 'klasifikasi', 'remark'];
-    const anchor = allQuoted.find(w => !skipTokens.includes(w.toLowerCase()));
+    let anchor = allQuoted.find(w => !skipTokens.includes(w.toLowerCase()));
+    // Support plain phrase without quotes, e.g.:
+    // "by kolom M, diambil dari kalimat setelah kata RoU"
+    if (!anchor) {
+      const afterWord = original.match(/(?:setelah\s+kata|after\s+word)\s+["']?([A-Za-z][\w\-\/.]*)["']?/i);
+      if (afterWord) anchor = afterWord[1].trim();
+    }
     if (anchor) {
       const hasNumber = /(?:nomor|angka|kode|aset|number|digit|\d)/.test(text);
       const hasFraction = /(?:karakter|huruf|kata|word|\\w)/.test(text);
@@ -263,6 +269,17 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
   const resolveRowKey = (sourceCol: string): string | null => {
     if (!rowData) return null;
     const keys = Object.keys(rowData);
+    const dataKeys = keys.filter(k => !k.startsWith('__'));
+
+    // 0) Excel-style column letters (A, B, ..., Z, AA, AB, ...)
+    if (/^[A-Za-z]+$/.test(sourceCol.trim())) {
+      const letters = sourceCol.trim().toUpperCase();
+      let colIndex = 0;
+      for (const ch of letters) colIndex = (colIndex * 26) + (ch.charCodeAt(0) - 64);
+      const idx0 = colIndex - 1;
+      if (idx0 >= 0 && idx0 < dataKeys.length) return dataKeys[idx0];
+    }
+
     // 1) exact
     const exact = keys.find(k => k === sourceCol);
     if (exact) return exact;
