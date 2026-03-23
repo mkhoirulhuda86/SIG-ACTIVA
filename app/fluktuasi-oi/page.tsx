@@ -1244,7 +1244,7 @@ export default function FluktuasiOIPage() {
       const result = await res.json();
       if (result.success) {
         toast.info(result.message);
-        loadKeywords();
+        await loadKeywords();
         setShowKeywordModal(false);
         setEditingKeyword(null);
         setKeywordForm({ keyword: '', type: 'klasifikasi', result: '', priority: 0, accountCodes: '', sourceColumn: '' });
@@ -2422,6 +2422,13 @@ export default function FluktuasiOIPage() {
       const code = sd.sheetName.trim();
       // Extract just the numeric part if sheetName has description appended
       const numCode = code.match(/^(\d{5,})/)?.[1] ?? code;
+      const hdrs = sd.headers ?? [];
+      const kColIdx = sd.klasifikasiColIdx ??
+        findColIdx(hdrs, ['Document Header Text','Header Text','Doc. Header Text','DocHeaderText',
+          'Header Dokumen','Deskripsi Header','Description','Keterangan','Uraian','Narasi','Nama Akun']);
+      const dColIdx = sd.docnoColIdx ??
+        findColIdx(hdrs, ['Document No.','Doc. No.','DocNo','Document Number','Belegnummer','Belnr',
+          'No. Dokumen','Nomor Dokumen']);
       // Only use keywords that either have no accountCodes restriction, or include this code
       const scopedKw = keywords.filter(kw => {
         const ac = (kw.accountCodes ?? '').trim();
@@ -2431,9 +2438,11 @@ export default function FluktuasiOIPage() {
       const kSet = new Set<string>();
       const rSet = new Set<string>();
       for (const row of sd.rows) {
-        const rawK  = String(row['__klasifikasi_raw'] ?? row['__klasifikasi'] ?? '');
-        const rawR  = String(row['__remark_raw']      ?? rawK); // same source as klasifikasi
-        const docno = String(row['__docno_raw']        ?? '');
+        const rawK  = String(row['__klasifikasi_raw'] ?? '') ||
+          (kColIdx >= 0 ? String(row[hdrs[kColIdx]] ?? '') : String(row['__klasifikasi'] ?? ''));
+        const rawR  = String(row['__remark_raw']      ?? '') || rawK; // same source as klasifikasi
+        const docno = String(row['__docno_raw']       ?? '') ||
+          (dColIdx >= 0 ? String(row[hdrs[dColIdx]] ?? '') : '');
         const k = matchKeywords(rawK, scopedKw, 'klasifikasi', docno, row);
         const r = matchKeywords(rawR, scopedKw, 'remark',       docno, row);
         if (k) kSet.add(k);
