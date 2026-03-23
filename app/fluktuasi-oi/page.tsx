@@ -264,14 +264,29 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
   }
 
   // -- Normal text mode: "jika ada text/teks/kata 'X' maka berisi 'Y'"
+  // Support slash-separated variants: "kata 'Adjustmen / Koreksi / Adj'" -> regex:(Adjustmen|Koreksi|Adj)
   let keywordMatch = original.match(/(?:jika\s+ada\s+(?:text|teks|kata)|text|teks|kata|keyword)\s*["']([^"']+)["']/i);
   if (!keywordMatch) keywordMatch = original.match(/(?:jika\s+ada\s+(?:text|teks|kata)|text|teks|kata)\s+([\w\s]+?)\s+(?:maka|then)/i);
 
-  if (keywordMatch && resultMatch) {
-    return { keyword: keywordMatch[1].trim(), type, result: resultMatch[1].trim(), priority, accountCodes, sourceColumn };
-  }
   if (keywordMatch) {
-    return { keyword: keywordMatch[1].trim(), type, result: keywordMatch[1].trim(), priority, accountCodes, sourceColumn };
+    const rawKeyword = keywordMatch[1].trim();
+    // Check if keyword contains slash-separated variants
+    if (rawKeyword.includes('/')) {
+      const variants = rawKeyword.split('/').map(v => v.trim()).filter(Boolean);
+      if (variants.length > 1) {
+        // Convert to regex pattern: (Variant1|Variant2|Variant3)
+        const regexPattern = `(${variants.map(v => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`;
+        if (resultMatch) {
+          return { keyword: `regex:${regexPattern}`, type, result: resultMatch[1].trim(), priority, accountCodes, sourceColumn };
+        }
+        return { keyword: `regex:${regexPattern}`, type, result: rawKeyword, priority, accountCodes, sourceColumn };
+      }
+    }
+    // Normal text keyword (no slash variants)
+    if (resultMatch) {
+      return { keyword: rawKeyword, type, result: resultMatch[1].trim(), priority, accountCodes, sourceColumn };
+    }
+    return { keyword: rawKeyword, type, result: rawKeyword, priority, accountCodes, sourceColumn };
   }
 
   return null;
@@ -4422,7 +4437,7 @@ export default function FluktuasiOIPage() {
                   <textarea
                     value={naturalInput}
                     onChange={(e) => setNaturalInput(e.target.value)}
-                    placeholder={'Contoh cepat:\n1) kata "KI BNI" maka klasifikasi berisi "KI BNI"\n2) by kolom M, ambil 3 kata setelah kata RoU\n3) by kolom Text, lebih dari 2 kata setelah kata RoU\n4) nomor dokumen diawali 18 maka remark berisi "Tagihan"'}
+                    placeholder={'Contoh cepat:\n1) kata "KI BNI" maka klasifikasi berisi "KI BNI"\n2) kata "Adjustmen / Koreksi / Adj / Balik" maka klasifikasi berisi "Koreksi RoU"\n3) by kolom M, ambil 3 kata setelah kata RoU\n4) nomor dokumen diawali 18 maka remark berisi "Tagihan"'}
                     rows={4}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition font-mono text-sm"
                   />
@@ -4430,6 +4445,7 @@ export default function FluktuasiOIPage() {
                     <p className="text-xs text-blue-700 font-semibold mb-1">Petunjuk Singkat:</p>
                     <ul className="text-xs text-blue-600 space-y-0.5">
                       <li>• Format umum: kata/text &quot;X&quot; maka klasifikasi/remark berisi &quot;Y&quot;</li>
+                      <li>• Varian (OR): kata &quot;A / B / C&quot; akan match salah satu dari A atau B atau C</li>
                       <li>• Ambil kata otomatis: by kolom M, ambil 3 kata setelah kata RoU</li>
                       <li>• Ambil lebih panjang: by kolom Text, lebih dari 2 kata setelah kata RoU</li>
                       <li>• Tambahan opsional: priority 10, di akun 71510001</li>
