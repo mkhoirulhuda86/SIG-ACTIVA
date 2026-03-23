@@ -1035,7 +1035,13 @@ export default function FluktuasiOIPage() {
   const [keywordAkunSearch, setKeywordAkunSearch] = useState('');
   const [keywordPage, setKeywordPage] = useState(0);
   const KEYWORD_PAGE_SIZE = 10;
-  const [showReapplyConfirm, setShowReapplyConfirm] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmText?: string;
+    confirmTone?: 'primary' | 'danger';
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
   const [kwMode, setKwMode] = useState<'normal' | 'regex' | 'not' | 'docno' | 'col'>('normal');
   const [colHeader, setColHeader] = useState('');
   const [colPattern, setColPattern] = useState('');
@@ -1208,22 +1214,28 @@ export default function FluktuasiOIPage() {
 
   // -- Load example keywords --------------------------------------------------
   const handleLoadExamples = async () => {
-    if (!confirm('Load contoh keywords? (Data existing tidak akan terhapus)')) return;
-    try {
-      const res = await fetch('/api/fluktuasi/keywords/seed', {
-        method: 'POST',
-      });
-      const result = await res.json();
-      if (result.success) {
-        toast.info(result.message);
-        loadKeywords();
-      } else {
-        toast.error(result.error);
-      }
-    } catch (error) {
-      console.error('Error loading examples:', error);
-      toast.error('Gagal load contoh keywords');
-    }
+    setConfirmDialog({
+      title: 'Load Contoh Keywords',
+      message: 'Load contoh keywords? Data existing tidak akan terhapus.',
+      confirmText: 'Load',
+      onConfirm: async () => {
+        try {
+          const res = await fetch('/api/fluktuasi/keywords/seed', {
+            method: 'POST',
+          });
+          const result = await res.json();
+          if (result.success) {
+            toast.info(result.message);
+            loadKeywords();
+          } else {
+            toast.error(result.error);
+          }
+        } catch (error) {
+          console.error('Error loading examples:', error);
+          toast.error('Gagal load contoh keywords');
+        }
+      },
+    });
   };
 
   // -- Check Duplicate Keyword ------------------------------------------------
@@ -1298,16 +1310,23 @@ export default function FluktuasiOIPage() {
       toast.info('Mode read-only aktif karena DB limit. Hapus keyword dinonaktifkan sementara.');
       return;
     }
-    if (!confirm('Yakin hapus keyword ini?')) return;
-    try {
-      const res = await fetch(`/api/fluktuasi/keywords?id=${id}`, { method: 'DELETE' });
-      const result = await res.json();
-      if (result.success) { loadKeywords(); }
-      else { toast.error(result.error); }
-    } catch (error) {
-      console.error('Error deleting keyword:', error);
-      toast.error('Gagal menghapus keyword');
-    }
+    setConfirmDialog({
+      title: 'Hapus Keyword',
+      message: 'Yakin hapus keyword ini?',
+      confirmText: 'Hapus',
+      confirmTone: 'danger',
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`/api/fluktuasi/keywords?id=${id}`, { method: 'DELETE' });
+          const result = await res.json();
+          if (result.success) { loadKeywords(); }
+          else { toast.error(result.error); }
+        } catch (error) {
+          console.error('Error deleting keyword:', error);
+          toast.error('Gagal menghapus keyword');
+        }
+      },
+    });
   };
 
   const handleDeleteAllKeywords = async () => {
@@ -1315,20 +1334,27 @@ export default function FluktuasiOIPage() {
       toast.info('Mode read-only aktif karena DB limit. Hapus semua keyword dinonaktifkan sementara.');
       return;
     }
-    if (!confirm(`Yakin hapus SEMUA ${keywords.length} keyword? Tindakan ini tidak dapat dibatalkan.`)) return;
-    try {
-      const res = await fetch('/api/fluktuasi/keywords?all=true', { method: 'DELETE' });
-      const result = await res.json();
-      if (result.success) {
-        toast.info(result.message);
-        loadKeywords();
-      } else {
-        toast.error(result.error);
-      }
-    } catch (error) {
-      console.error('Error deleting all keywords:', error);
-      toast.error('Gagal menghapus semua keyword');
-    }
+    setConfirmDialog({
+      title: 'Hapus Semua Keyword',
+      message: `Yakin hapus SEMUA ${keywords.length} keyword? Tindakan ini tidak dapat dibatalkan.`,
+      confirmText: 'Hapus Semua',
+      confirmTone: 'danger',
+      onConfirm: async () => {
+        try {
+          const res = await fetch('/api/fluktuasi/keywords?all=true', { method: 'DELETE' });
+          const result = await res.json();
+          if (result.success) {
+            toast.info(result.message);
+            loadKeywords();
+          } else {
+            toast.error(result.error);
+          }
+        } catch (error) {
+          console.error('Error deleting all keywords:', error);
+          toast.error('Gagal menghapus semua keyword');
+        }
+      },
+    });
   };
 
   const runReapplyKeywords = async () => {
@@ -1369,7 +1395,12 @@ export default function FluktuasiOIPage() {
       toast.info('Mode read-only aktif karena DB limit. Re-terapkan ke DB dinonaktifkan sementara.');
       return;
     }
-    setShowReapplyConfirm(true);
+    setConfirmDialog({
+      title: 'Konfirmasi Re-terapkan',
+      message: `Re-terapkan ${keywords.length} keyword ke seluruh data yang tersimpan? Proses ini akan memperbarui klasifikasi semua record di database.`,
+      confirmText: 'Lanjutkan',
+      onConfirm: runReapplyKeywords,
+    });
   };
 
   // -- DB Akun Periode helpers ------------------------------------------------
@@ -1403,20 +1434,27 @@ export default function FluktuasiOIPage() {
     const label = toDelete.length === 1
       ? `periode ${formatPeriodeLabel(toDelete[0])}`
       : `${toDelete.length} periode terpilih`;
-    if (!confirm(`Hapus ${label} dari database? Tindakan ini tidak dapat dibatalkan.`)) return;
-    setLoadingDbRekap(true);
-    try {
-      await Promise.all(
-        toDelete.map(p => fetch(`/api/fluktuasi/akun-periodes?periode=${encodeURIComponent(p)}`, { method: 'DELETE' }))
-      );
-      setRekapSheetData(null);
-      toast.success(`${label} berhasil dihapus.`);
-      await loadDbStats();
-    } catch {
-      toast.error('Gagal menghapus periode terpilih');
-    } finally {
-      setLoadingDbRekap(false);
-    }
+    setConfirmDialog({
+      title: 'Hapus Periode',
+      message: `Hapus ${label} dari database? Tindakan ini tidak dapat dibatalkan.`,
+      confirmText: 'Hapus',
+      confirmTone: 'danger',
+      onConfirm: async () => {
+        setLoadingDbRekap(true);
+        try {
+          await Promise.all(
+            toDelete.map(p => fetch(`/api/fluktuasi/akun-periodes?periode=${encodeURIComponent(p)}`, { method: 'DELETE' }))
+          );
+          setRekapSheetData(null);
+          toast.success(`${label} berhasil dihapus.`);
+          await loadDbStats();
+        } catch {
+          toast.error('Gagal menghapus periode terpilih');
+        } finally {
+          setLoadingDbRekap(false);
+        }
+      },
+    });
   };
 
   const loadDbStats = useCallback(async () => {
@@ -1477,27 +1515,34 @@ export default function FluktuasiOIPage() {
   };
 
   const clearDbData = async () => {
-    if (!confirm('Hapus semua data akun-periode yang tersimpan di DB? Tindakan ini tidak dapat dibatalkan.')) return;
-    try {
-      const [res1, res2] = await Promise.all([
-        fetch('/api/fluktuasi/akun-periodes', { method: 'DELETE' }),
-        fetch('/api/fluktuasi?uploadedBy=system&keepLast=0', { method: 'DELETE' }),
-      ]);
-      const data = await res1.json();
-      if (data.success) {
-        setDbAkunPeriodes([]);
-        setDbPeriodeStats(null);
-        setSheetDataList([]);
-        setRekapSheetData(null);
-        setFileName('');
-        _sheetCache = null;
-        idbClearSheets();
-        fetch('/api/fluktuasi/sheet-rows', { method: 'DELETE' }).catch(() => {});
-        toast.info(data.message);
-      }
-    } catch (e) {
-      toast.error('Gagal menghapus data DB');
-    }
+    setConfirmDialog({
+      title: 'Hapus Semua Data DB',
+      message: 'Hapus semua data akun-periode yang tersimpan di DB? Tindakan ini tidak dapat dibatalkan.',
+      confirmText: 'Hapus Semua',
+      confirmTone: 'danger',
+      onConfirm: async () => {
+        try {
+          const [res1, res2] = await Promise.all([
+            fetch('/api/fluktuasi/akun-periodes', { method: 'DELETE' }),
+            fetch('/api/fluktuasi?uploadedBy=system&keepLast=0', { method: 'DELETE' }),
+          ]);
+          const data = await res1.json();
+          if (data.success) {
+            setDbAkunPeriodes([]);
+            setDbPeriodeStats(null);
+            setSheetDataList([]);
+            setRekapSheetData(null);
+            setFileName('');
+            _sheetCache = null;
+            idbClearSheets();
+            fetch('/api/fluktuasi/sheet-rows', { method: 'DELETE' }).catch(() => {});
+            toast.info(data.message);
+          }
+        } catch (e) {
+          toast.error('Gagal menghapus data DB');
+        }
+      },
+    });
   };
 
   // -- Open Edit Modal --------------------------------------------------------
@@ -4771,32 +4816,36 @@ export default function FluktuasiOIPage() {
         </div>
       )}
 
-      {showReapplyConfirm && (
+      {confirmDialog && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full border border-gray-200">
             <div className="p-5 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-800">Konfirmasi Re-terapkan</h3>
+              <h3 className="text-lg font-semibold text-gray-800">{confirmDialog.title}</h3>
               <p className="text-sm text-gray-600 mt-2">
-                Re-terapkan {keywords.length} keyword ke seluruh data yang tersimpan?
-                Proses ini akan memperbarui klasifikasi semua record di database.
+                {confirmDialog.message}
               </p>
             </div>
             <div className="p-4 bg-gray-50 rounded-b-xl flex gap-3">
               <button
-                onClick={() => setShowReapplyConfirm(false)}
+                onClick={() => setConfirmDialog(null)}
                 className="flex-1 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition"
               >
                 Batal
               </button>
               <button
                 onClick={async () => {
-                  setShowReapplyConfirm(false);
-                  await runReapplyKeywords();
+                  const action = confirmDialog.onConfirm;
+                  setConfirmDialog(null);
+                  await action();
                 }}
-                disabled={isReapplying}
-                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition disabled:opacity-60"
+                disabled={isReapplying || loadingDbRekap}
+                className={`flex-1 px-4 py-2.5 text-white rounded-lg font-medium transition disabled:opacity-60 ${
+                  confirmDialog.confirmTone === 'danger'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
-                Lanjutkan
+                {confirmDialog.confirmText || 'Lanjutkan'}
               </button>
             </div>
           </div>
