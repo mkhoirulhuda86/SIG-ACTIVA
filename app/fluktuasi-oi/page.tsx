@@ -2421,7 +2421,8 @@ export default function FluktuasiOIPage() {
     // Use stored index; fallback to header-name detection for old DB-loaded data
     const kColIdx = activeSheet?.klasifikasiColIdx ??
       findColIdx(hdrs, ['Document Header Text','Header Text','Doc. Header Text','DocHeaderText',
-        'Header Dokumen','Deskripsi Header','Description','Keterangan','Uraian','Narasi','Nama Akun']);
+        'Header Dokumen','Deskripsi Header','Description','Keterangan','Uraian','Narasi','Nama Akun',
+        'Text','Item Text','Reference','Ref. Doc.']);
     const dColIdx = activeSheet?.docnoColIdx ??
       findColIdx(hdrs, ['Document No.','Doc. No.','DocNo','Document Number','Belegnummer','Belnr',
         'No. Dokumen','Nomor Dokumen']);
@@ -2480,7 +2481,8 @@ export default function FluktuasiOIPage() {
       const hdrs = sd.headers ?? [];
       const kColIdx = sd.klasifikasiColIdx ??
         findColIdx(hdrs, ['Document Header Text','Header Text','Doc. Header Text','DocHeaderText',
-          'Header Dokumen','Deskripsi Header','Description','Keterangan','Uraian','Narasi','Nama Akun']);
+          'Header Dokumen','Deskripsi Header','Description','Keterangan','Uraian','Narasi','Nama Akun',
+          'Text','Item Text','Reference','Ref. Doc.']);
       const dColIdx = sd.docnoColIdx ??
         findColIdx(hdrs, ['Document No.','Doc. No.','DocNo','Document Number','Belegnummer','Belnr',
           'No. Dokumen','Nomor Dokumen']);

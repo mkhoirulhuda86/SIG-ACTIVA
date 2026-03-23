@@ -203,19 +203,25 @@ export async function POST() {
       return NextResponse.json({ success: true, message: 'Tidak ada record untuk diperbarui.', updatedRecords: 0 });
     }
 
-    // 4. Apply updates in small sequential chunks to minimize DB connection pressure
-    const BATCH = 10;
+    // 4. Apply updates in transactional chunks to reduce round-trips while
+    // keeping connection pressure low.
+    const BATCH = 100;
     let updatedRecords = 0;
 
     for (let i = 0; i < updates.length; i += BATCH) {
       const chunk = updates.slice(i, i + BATCH);
-      for (const u of chunk) {
-        const r = await prisma.fluktuasiAkunPeriode.updateMany({
-          where: { accountCode: u.accountCode, periode: u.periode },
+      const tx = chunk.map((u) =>
+        prisma.fluktuasiAkunPeriode.updateMany({
+          where: {
+            accountCode: u.accountCode,
+            periode: u.periode,
+            NOT: { klasifikasi: u.klasifikasi },
+          },
           data: { klasifikasi: u.klasifikasi },
-        });
-        updatedRecords += r.count;
-      }
+        })
+      );
+      const results = await prisma.$transaction(tx);
+      updatedRecords += results.reduce((sum, r) => sum + r.count, 0);
     }
 
     return NextResponse.json({
