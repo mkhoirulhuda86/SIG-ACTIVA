@@ -4644,7 +4644,7 @@ export default function FluktuasiOIPage() {
                               setKeywordForm({ ...keywordForm, keyword: (prefix[kwMode] || '') + e.target.value });
                             }}
                             placeholder={
-                              kwMode === 'normal' ? 'Contoh: Sindikasi SLL, Beban Bunga'
+                              kwMode === 'normal' ? 'Contoh: KI BNI  atau  Adjustmen / Koreksi / Adj  (slash = OR)'
                               : kwMode === 'regex' ? 'Contoh: RoU \\d+ (atau pakai pembuat pola di bawah)'
                               : kwMode === 'not'   ? 'Contoh: K3,SLA  atau  K3|SLA'
                               : 'Contoh: 18  (diawali 18)  atau  100005'
@@ -4755,7 +4755,10 @@ export default function FluktuasiOIPage() {
                           </div>
                         )}
                         {kwMode === 'normal' && !keywordForm.keyword && (
-                          <p className="text-xs text-gray-500 mt-1.5">Cocok jika kolom teks <strong>mengandung</strong> keyword ini (case insensitive)</p>
+                          <div className="text-xs text-gray-600 mt-1.5 space-y-1">
+                            <p>Cocok jika kolom teks <strong>mengandung</strong> keyword ini (case insensitive)</p>
+                            <p className="text-gray-500">Tip: Gunakan slash (/) untuk varian OR — contoh: &quot;Adjustmen / Koreksi / Adj&quot; akan match salah satu</p>
+                          </div>
                         )}
                       </>
                     )}
