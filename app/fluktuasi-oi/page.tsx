@@ -1966,23 +1966,41 @@ export default function FluktuasiOIPage() {
       idbSaveSheets(_sheetCache); // fire-and-forget
 
       // -- Save rows per-account to DB (so other users can view without re-uploading) -
-      for (const sd of result) {
-        fetch('/api/fluktuasi/sheet-rows', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            accountCode:       sd.sheetName,
-            headers:           sd.headers,
-            originalHeaders:   sd.originalHeaders,
-            klasifikasiColIdx: sd.klasifikasiColIdx ?? null,
-            docnoColIdx:       sd.docnoColIdx ?? null,
-            rows:              sd.rows,
-            fileName:          file.name,
-          }),
-        })
-          .then(r => r.json())
-          .then((r) => {
-            if (!r?.success) return;
+      // Run in background and stop early if DB is unavailable to avoid 500 spam.
+      void (async () => {
+        let shouldStop = false;
+        let warned = false;
+        for (const sd of result) {
+          if (shouldStop) break;
+          try {
+            const resp = await fetch('/api/fluktuasi/sheet-rows', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                accountCode:       sd.sheetName,
+                headers:           sd.headers,
+                originalHeaders:   sd.originalHeaders,
+                klasifikasiColIdx: sd.klasifikasiColIdx ?? null,
+                docnoColIdx:       sd.docnoColIdx ?? null,
+                rows:              sd.rows,
+                fileName:          file.name,
+              }),
+            });
+
+            const payload = await resp.json().catch(() => null);
+            const ok = resp.ok && payload?.success;
+            if (!ok) {
+              const msg = String(payload?.error ?? `HTTP ${resp.status}`);
+              if (isDbPlanLimitError(msg) || /P1001|planLimitReached/i.test(msg)) {
+                shouldStop = true;
+                if (!warned) {
+                  warned = true;
+                  toast.info('Sinkronisasi detail per akun ke DB dihentikan sementara karena koneksi/limit DB. Data sesi ini tetap bisa dipakai.');
+                }
+              }
+              continue;
+            }
+
             const code = String(sd.sheetName ?? '').trim();
             const numeric = code.match(/^(\d{5,})/)?.[1];
             setPersistedSheetRowCodes(prev => {
@@ -1991,9 +2009,16 @@ export default function FluktuasiOIPage() {
               if (numeric) next.add(numeric);
               return next;
             });
-          })
-          .catch(e => console.warn('Failed to save sheet rows to DB', e));
-      }
+          } catch (e) {
+            console.warn('Failed to save sheet rows to DB', e);
+            shouldStop = true;
+            if (!warned) {
+              warned = true;
+              toast.info('Sinkronisasi detail per akun ke DB dihentikan sementara. Data sesi ini tetap bisa dipakai.');
+            }
+          }
+        }
+      })();
 
     } catch (err: any) {
       console.error(err);

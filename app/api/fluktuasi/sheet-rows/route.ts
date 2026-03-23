@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
+const dbErrorMessage = (error: unknown, fallback: string): string => {
+  const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+  if (/planLimitReached/i.test(message)) {
+    return 'Koneksi database ditolak: limit paket Prisma sudah tercapai (planLimitReached).';
+  }
+  if (/P1001|Can\'t reach database server/i.test(message)) {
+    return 'Koneksi database gagal (P1001): server database tidak terjangkau.';
+  }
+  return fallback;
+};
+
 // ─── GET: fetch rows for one or all accounts ─────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
@@ -35,7 +46,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('Error fetching sheet rows:', error);
     return NextResponse.json(
-      { success: false, error: 'Gagal mengambil data sheet rows' },
+      { success: false, error: dbErrorMessage(error, 'Gagal mengambil data sheet rows') },
       { status: 500 },
     );
   }
@@ -95,7 +106,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Error upserting sheet rows:', error);
     return NextResponse.json(
-      { success: false, error: 'Gagal menyimpan sheet rows' },
+      { success: false, error: dbErrorMessage(error, 'Gagal menyimpan sheet rows') },
       { status: 500 },
     );
   }
@@ -109,7 +120,7 @@ export async function DELETE() {
   } catch (error) {
     console.error('Error deleting sheet rows:', error);
     return NextResponse.json(
-      { success: false, error: 'Gagal menghapus sheet rows' },
+      { success: false, error: dbErrorMessage(error, 'Gagal menghapus sheet rows') },
       { status: 500 },
     );
   }
