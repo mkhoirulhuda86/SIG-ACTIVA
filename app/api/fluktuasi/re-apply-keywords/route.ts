@@ -41,7 +41,9 @@ function matchKeywords(
   const textStr   = String(text  ?? '').trim();
   const textLower = textStr.toLowerCase();
   const docnoStr  = String(docno ?? '').trim();
-  const collectAll = type === 'klasifikasi';
+  // First-match wins (priority-sorted) for both klasifikasi and remark.
+  // Prevents overlapping keywords from creating merged labels per row.
+  const collectAll = false;
 
   const relevant  = kws.filter(k => k.type === type).sort((a, b) => b.priority - a.priority);
   const positive  = relevant.filter(k => !k.keyword.toLowerCase().startsWith('not:'));
@@ -100,7 +102,7 @@ function matchKeywords(
     const v = (r ?? '').trim();
     if (!v) return false;
     collected.add(v);
-    return !collectAll; // stop early only for remark
+    return !collectAll; // stop early after first match
   };
 
   for (const kw of positive) {

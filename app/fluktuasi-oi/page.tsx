@@ -332,9 +332,9 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
     return norm ?? null;
   };
 
-  // For klasifikasi: collect ALL matching results (deduplicated, ordered by priority)
-  // For remark: return only first match (legacy behaviour)
-  const collectAll = type === 'klasifikasi';
+  // Use first-match wins for both klasifikasi and remark (priority-sorted),
+  // so overlapping keywords do not produce merged labels in a single row.
+  const collectAll = false;
 
   // Filter by type and sort by priority (highest first)
   const relevantKeywords = keywords
@@ -371,7 +371,7 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
     const r = (result ?? '').trim();
     if (!r) return false;
     collected.add(r);
-    // For remark (single result), signal to stop after first match
+    // Stop after first successful match (highest priority first)
     return !collectAll;
   };
 
