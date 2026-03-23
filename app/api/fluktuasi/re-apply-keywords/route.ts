@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 const dbErrorMessage = (error: unknown, fallback: string): string => {
-  const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+  const errObj = error as { message?: string; cause?: { message?: string } } | undefined;
+  const message = [
+    errObj?.message,
+    errObj?.cause?.message,
+    error instanceof Error ? error.message : undefined,
+    String(error ?? 'Unknown error'),
+  ].filter(Boolean).join(' | ');
   if (/maxclientsinsessionmode|max clients reached|pool_size/i.test(message)) {
     return 'Koneksi database penuh: jumlah koneksi aktif melebihi batas paket saat ini (max clients).';
   }
@@ -171,33 +177,61 @@ function matchKeywords(
 // klasifikasi on all FluktuasiAkunPeriode records.
 export async function POST() {
   try {
-    // 1. Fetch keywords + all sheet rows in parallel (2 queries total)
-    const [keywords, allSheets] = await Promise.all([
+    // 1. Fetch keywords + account list first (avoid loading huge rows JSON at once)
+    const [keywords, sheetAccounts] = await Promise.all([
       prisma.fluktuasiKeyword.findMany({
         orderBy: [{ priority: 'desc' }, { keyword: 'asc' }],
       }) as Promise<KW[]>,
-      prisma.fluktuasiSheetRows.findMany({
-        select: { accountCode: true, rows: true },
-      }),
+      prisma.fluktuasiSheetRows.findMany({ select: { accountCode: true } }),
     ]);
 
     if (!keywords.length) {
       return NextResponse.json({ success: false, error: 'Belum ada keyword tersimpan.' }, { status: 400 });
     }
-    if (!allSheets.length) {
+    if (!sheetAccounts.length) {
       return NextResponse.json({ success: false, error: 'Tidak ada data baris tersimpan. Upload file terlebih dahulu.' }, { status: 400 });
     }
 
     // 2. Pre-filter keywords once (avoids repeated filter inside matchKeywords)
     const klasKws = (keywords as KW[]).filter(k => k.type === 'klasifikasi').sort((a, b) => b.priority - a.priority);
 
-    // 3. Process all sheets in memory → build update map: accountCode+periode → klasifikasi
+    // 3. Process sheets one-by-one to keep memory footprint small.
     type UpdateItem = { accountCode: string; periode: string; klasifikasi: string };
-    const updates: UpdateItem[] = [];
+    let updatedRecords = 0;
+    let accountsProcessed = 0;
 
-    for (const sheet of allSheets) {
+    const applyUpdates = async (updates: UpdateItem[]) => {
+      if (!updates.length) return 0;
+      const BATCH = 100;
+      let updated = 0;
+      for (let i = 0; i < updates.length; i += BATCH) {
+        const chunk = updates.slice(i, i + BATCH);
+        const tx = chunk.map((u) =>
+          prisma.fluktuasiAkunPeriode.updateMany({
+            where: {
+              accountCode: u.accountCode,
+              periode: u.periode,
+              NOT: { klasifikasi: u.klasifikasi },
+            },
+            data: { klasifikasi: u.klasifikasi },
+          })
+        );
+        const results = await prisma.$transaction(tx);
+        updated += results.reduce((sum, r) => sum + r.count, 0);
+      }
+      return updated;
+    };
+
+    for (const acc of sheetAccounts) {
+      const sheet = await prisma.fluktuasiSheetRows.findUnique({
+        where: { accountCode: acc.accountCode },
+        select: { accountCode: true, rows: true },
+      });
+      if (!sheet) continue;
       const rows = sheet.rows as Record<string, unknown>[];
       if (!rows?.length) continue;
+
+      accountsProcessed++;
 
       const periodeMap = new Map<string, Set<string>>();
 
@@ -217,6 +251,7 @@ export async function POST() {
         }
       }
 
+      const updates: UpdateItem[] = [];
       for (const [periode, klasSet] of periodeMap.entries()) {
         updates.push({
           accountCode:  sheet.accountCode,
@@ -224,43 +259,20 @@ export async function POST() {
           klasifikasi: [...klasSet].join('; '),
         });
       }
-    }
 
-    if (!updates.length) {
-      return NextResponse.json({ success: true, message: 'Tidak ada record untuk diperbarui.', updatedRecords: 0 });
-    }
-
-    // 4. Apply updates in transactional chunks to reduce round-trips while
-    // keeping connection pressure low.
-    const BATCH = 100;
-    let updatedRecords = 0;
-
-    for (let i = 0; i < updates.length; i += BATCH) {
-      const chunk = updates.slice(i, i + BATCH);
-      const tx = chunk.map((u) =>
-        prisma.fluktuasiAkunPeriode.updateMany({
-          where: {
-            accountCode: u.accountCode,
-            periode: u.periode,
-            NOT: { klasifikasi: u.klasifikasi },
-          },
-          data: { klasifikasi: u.klasifikasi },
-        })
-      );
-      const results = await prisma.$transaction(tx);
-      updatedRecords += results.reduce((sum, r) => sum + r.count, 0);
+      updatedRecords += await applyUpdates(updates);
     }
 
     return NextResponse.json({
       success: true,
-      message: `Klasifikasi berhasil diperbarui untuk ${updatedRecords} record dari ${allSheets.length} akun.`,
+      message: `Klasifikasi berhasil diperbarui untuk ${updatedRecords} record dari ${accountsProcessed} akun.`,
       updatedRecords,
-      accountsProcessed: allSheets.length,
+      accountsProcessed,
     });
   } catch (error) {
     console.error('Error re-applying keywords:', error);
     const message = dbErrorMessage(error, 'Gagal memperbarui klasifikasi');
-    const status = /max clients|planLimitReached|P1001/i.test(String(error instanceof Error ? error.message : error ?? '')) ? 503 : 500;
+    const status = /max clients|maxclientsinsessionmode|planLimitReached|P1001|pool_size/i.test(String((error as any)?.message ?? error ?? '')) ? 503 : 500;
     return NextResponse.json(
       { success: false, error: message },
       { status },
