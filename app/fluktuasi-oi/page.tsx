@@ -118,10 +118,17 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
   // Distinct from col: mode — this just overrides which column the keyword text is matched against
   let sourceColumn = '';
   const srcColM = original.match(
-    /(?:by\s+kolom|cek\s+(?:di\s+)?kolom|check\s+(?:in\s+)?column)\s+["']?([^\s"',;:!?\n]+)["']?/i
+    /(?:by\s+kolom|cek\s+(?:di\s+)?kolom|check\s+(?:in\s+)?column)\s+(?:"([^"]+)"|'([^']+)'|(.+?))(?=\s*(?:,|jika|maka|ambil|diambil|lebih\s+dari|$))/i
   );
   if (srcColM) {
-    sourceColumn = srcColM[1].trim();
+    const rawSourceColumn = (srcColM[1] ?? srcColM[2] ?? srcColM[3] ?? '').trim();
+    if (rawSourceColumn.includes('/')) {
+      const aliases = rawSourceColumn.split('/').map(s => s.trim()).filter(Boolean);
+      const excelLetterAlias = aliases.find(a => /^[A-Za-z]{1,3}$/.test(a));
+      sourceColumn = (excelLetterAlias ?? aliases[aliases.length - 1] ?? '').trim();
+    } else {
+      sourceColumn = rawSourceColumn;
+    }
   }
 
   // -- Extract accountCodes: "di akun '12345'" / "di akun 12345,67890" / "berlaku akun 62301 62302"
@@ -256,9 +263,9 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
     }
   }
 
-  // -- Normal text mode: "jika ada text 'X' maka berisi 'Y'"
-  let keywordMatch = original.match(/(?:jika ada text|text|keyword)\s*["']([^"']+)["']/i);
-  if (!keywordMatch) keywordMatch = original.match(/(?:jika ada text|text)\s+([\w\s]+?)\s+(?:maka|then)/i);
+  // -- Normal text mode: "jika ada text/teks/kata 'X' maka berisi 'Y'"
+  let keywordMatch = original.match(/(?:jika\s+ada\s+(?:text|teks|kata)|text|teks|kata|keyword)\s*["']([^"']+)["']/i);
+  if (!keywordMatch) keywordMatch = original.match(/(?:jika\s+ada\s+(?:text|teks|kata)|text|teks|kata)\s+([\w\s]+?)\s+(?:maka|then)/i);
 
   if (keywordMatch && resultMatch) {
     return { keyword: keywordMatch[1].trim(), type, result: resultMatch[1].trim(), priority, accountCodes, sourceColumn };
@@ -4415,14 +4422,14 @@ export default function FluktuasiOIPage() {
                   <textarea
                     value={naturalInput}
                     onChange={(e) => setNaturalInput(e.target.value)}
-                    placeholder={'Contoh cepat:\n1) text "KI BNI" maka klasifikasi berisi "KI BNI"\n2) by kolom M, ambil 3 kata setelah kata RoU\n3) by kolom Text, lebih dari 2 kata setelah kata RoU\n4) nomor dokumen diawali 18 maka remark berisi "Tagihan"'}
+                    placeholder={'Contoh cepat:\n1) kata "KI BNI" maka klasifikasi berisi "KI BNI"\n2) by kolom M, ambil 3 kata setelah kata RoU\n3) by kolom Text, lebih dari 2 kata setelah kata RoU\n4) nomor dokumen diawali 18 maka remark berisi "Tagihan"'}
                     rows={4}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition font-mono text-sm"
                   />
                   <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-xs text-blue-700 font-semibold mb-1">Petunjuk Singkat:</p>
                     <ul className="text-xs text-blue-600 space-y-0.5">
-                      <li>• Format umum: text &quot;X&quot; maka klasifikasi/remark berisi &quot;Y&quot;</li>
+                      <li>• Format umum: kata/text &quot;X&quot; maka klasifikasi/remark berisi &quot;Y&quot;</li>
                       <li>• Ambil kata otomatis: by kolom M, ambil 3 kata setelah kata RoU</li>
                       <li>• Ambil lebih panjang: by kolom Text, lebih dari 2 kata setelah kata RoU</li>
                       <li>• Tambahan opsional: priority 10, di akun 71510001</li>
