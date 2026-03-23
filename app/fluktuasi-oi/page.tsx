@@ -2206,10 +2206,13 @@ export default function FluktuasiOIPage() {
         });
       }
 
+      // Keep request body small for Vercel limits; server will hydrate rows from DB.
+      const sheetDataListForExport = sheetDataList.map(({ rows: _rows, ...meta }) => ({ ...meta, rows: [] }));
+
       const res = await fetch('/api/fluktuasi/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName, sheetDataList, rekapSheetData, rekapRowOverrides }),
+        body: JSON.stringify({ fileName, sheetDataList: sheetDataListForExport, rekapSheetData, rekapRowOverrides }),
       });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const blob = await res.blob();

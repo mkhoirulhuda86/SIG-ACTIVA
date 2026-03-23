@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
+import { prisma } from '@/lib/prisma';
 
 // ─── Colour palette (matches UI) ────────────────────────────────────────────
 const C = {
@@ -66,6 +67,24 @@ export async function POST(req: NextRequest) {
   wb.creator = 'SIG Activa';
   wb.created = new Date();
 
+  const sheetRowsByCode = new Map<string, Record<string, any>[]>();
+  const codesNeedingRows = (sheetDataList ?? [])
+    .filter((sd: any) => !Array.isArray(sd?.rows) || sd.rows.length === 0)
+    .map((sd: any) => String(sd?.sheetName ?? '').trim())
+    .filter(Boolean);
+
+  if (codesNeedingRows.length > 0) {
+    const uniqCodes = [...new Set(codesNeedingRows)];
+    const records = await prisma.fluktuasiSheetRows.findMany({
+      where: { accountCode: { in: uniqCodes } },
+      select: { accountCode: true, rows: true },
+    });
+    for (const rec of records) {
+      const rows = Array.isArray(rec.rows) ? (rec.rows as Record<string, any>[]) : [];
+      sheetRowsByCode.set(rec.accountCode, rows);
+    }
+  }
+
   // ──────────────────────────────────────────────────────────────────────────
   // 1. Kode Akun Sheets
   // ──────────────────────────────────────────────────────────────────────────
@@ -89,7 +108,9 @@ export async function POST(req: NextRequest) {
     });
 
     // ── Data rows ──
-    const rows: any[] = sd.rows ?? [];
+    const rows: any[] = Array.isArray(sd.rows) && sd.rows.length > 0
+      ? sd.rows
+      : (sheetRowsByCode.get(String(sd.sheetName ?? '').trim()) ?? []);
     rows.forEach((row, ri) => {
       const values = [
         ...origCols.map((h: string) => row[h] ?? ''),
