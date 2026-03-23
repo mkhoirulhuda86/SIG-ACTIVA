@@ -45,10 +45,21 @@ function parseNum(val: any): number {
 // ─── POST handler ────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { fileName, sheetDataList, rekapSheetData } = body as {
+  const { fileName, sheetDataList, rekapSheetData, rekapRowOverrides } = body as {
     fileName: string;
     sheetDataList: any[];
     rekapSheetData: any | null;
+    rekapRowOverrides?: Record<string, {
+      gapMoM?: number;
+      pctMoM?: number;
+      reasonMoM?: string;
+      gapYoY?: number;
+      pctYoY?: number;
+      reasonYoY?: string;
+      gapYtD?: number;
+      pctYtD?: number;
+      reasonYtD?: string;
+    }>;
   };
 
   const wb = new ExcelJS.Workbook();
@@ -137,6 +148,9 @@ export async function POST(req: NextRequest) {
       { label: 'GAP YoY',    sub: 'GAP\nYoY',     type: 'gap'    },
       { label: 'YoY %',      sub: 'YoY\n%',       type: 'pct'    },
       { label: 'Reason YoY', sub: 'Reason YoY',   type: 'reason' },
+      { label: 'GAP YtD',    sub: 'GAP\nYtD',     type: 'gap'    },
+      { label: 'YtD %',      sub: 'YtD\n%',       type: 'pct'    },
+      { label: 'Reason YtD', sub: 'Reason YtD',   type: 'reason' },
     ];
 
     const totalCols = totalOrigCols + sysCols.length;
@@ -221,18 +235,34 @@ export async function POST(req: NextRequest) {
     rekapRows.forEach((row: any, ri: number) => {
       if (row.type === 'empty') return;
 
+      const rowOverride = rekapRowOverrides?.[String(ri)] ?? {};
+      const hasOverride = (key: string) => Object.prototype.hasOwnProperty.call(rowOverride, key);
+
+      const gapMoM = hasOverride('gapMoM') ? Number(rowOverride.gapMoM ?? 0) : Number(row.gapMoM ?? 0);
+      const pctMoM = hasOverride('pctMoM') ? Number(rowOverride.pctMoM ?? 0) : Number(row.pctMoM ?? 0);
+      const reasonMoM = hasOverride('reasonMoM') ? String(rowOverride.reasonMoM ?? '') : String(row.reasonMoM ?? '');
+      const gapYoY = hasOverride('gapYoY') ? Number(rowOverride.gapYoY ?? 0) : Number(row.gapYoY ?? 0);
+      const pctYoY = hasOverride('pctYoY') ? Number(rowOverride.pctYoY ?? 0) : Number(row.pctYoY ?? 0);
+      const reasonYoY = hasOverride('reasonYoY') ? String(rowOverride.reasonYoY ?? '') : String(row.reasonYoY ?? '');
+      const gapYtD = hasOverride('gapYtD') ? Number(rowOverride.gapYtD ?? 0) : Number(row.gapYtD ?? 0);
+      const pctYtD = hasOverride('pctYtD') ? Number(rowOverride.pctYtD ?? 0) : Number(row.pctYtD ?? 0);
+      const reasonYtD = hasOverride('reasonYtD') ? String(rowOverride.reasonYtD ?? '') : String(row.reasonYtD ?? '');
+
       const values: any[] = [
         ...origHeaders.map((_: string, i: number) => {
           const ac = amountCols.find((a: any) => a.colIdx === i);
           const rawVal = row.values?.[i] ?? '';
           return ac ? parseNum(rawVal) : rawVal;
         }),
-        row.gapMoM,
-        row.pctMoM / 100,     // store as decimal for Excel % format
-        row.reasonMoM ?? '',
-        row.gapYoY,
-        row.pctYoY / 100,
-        row.reasonYoY ?? '',
+        gapMoM,
+        pctMoM / 100,     // store as decimal for Excel % format
+        reasonMoM,
+        gapYoY,
+        pctYoY / 100,
+        reasonYoY,
+        gapYtD,
+        pctYtD / 100,
+        reasonYtD,
       ];
 
       const dataRow = ws.addRow(values);

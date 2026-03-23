@@ -2161,10 +2161,55 @@ export default function FluktuasiOIPage() {
     }
     setIsDownloading(true);
     try {
+      const rekapRowOverrides: Record<number, {
+        gapMoM: number;
+        pctMoM: number;
+        reasonMoM: string;
+        gapYoY: number;
+        pctYoY: number;
+        reasonYoY: string;
+        gapYtD: number;
+        pctYtD: number;
+        reasonYtD: string;
+      }> = {};
+
+      if (rekapSheetData) {
+        const originalVisibleRowIndexes = rekapSheetData.rows
+          .map((row, idx) => ({ row, idx }))
+          .filter(({ row }) => row.type !== 'empty')
+          .map(({ idx }) => idx);
+
+        rekapDisplayRowsLive.forEach((row, globalRi) => {
+          const originalIdx = originalVisibleRowIndexes[globalRi];
+          if (originalIdx === undefined) return;
+
+          const override = aiReasons[globalRi] ?? {};
+          const template = rekapTemplateReasons.get(globalRi);
+
+          rekapRowOverrides[originalIdx] = {
+            gapMoM: row.gapMoM,
+            pctMoM: row.pctMoM,
+            reasonMoM: override.mom !== undefined
+              ? override.mom
+              : (template?.mom ?? row.reasonMoM ?? ''),
+            gapYoY: row.gapYoY,
+            pctYoY: row.pctYoY,
+            reasonYoY: override.yoy !== undefined
+              ? override.yoy
+              : (template?.yoy ?? row.reasonYoY ?? ''),
+            gapYtD: row.gapYtD,
+            pctYtD: row.pctYtD,
+            reasonYtD: override.ytd !== undefined
+              ? override.ytd
+              : (template?.ytd ?? row.reasonYtD ?? ''),
+          };
+        });
+      }
+
       const res = await fetch('/api/fluktuasi/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName, sheetDataList, rekapSheetData }),
+        body: JSON.stringify({ fileName, sheetDataList, rekapSheetData, rekapRowOverrides }),
       });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const blob = await res.blob();
