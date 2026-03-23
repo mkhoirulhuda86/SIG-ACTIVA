@@ -253,6 +253,29 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
   const textLower = textStr.toLowerCase();
   const docnoStr = String(docno ?? '').trim();
 
+  const normalizeColName = (v: string): string =>
+    String(v ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/_\d+$/g, '')
+      .replace(/[^a-z0-9]/g, '');
+
+  const resolveRowKey = (sourceCol: string): string | null => {
+    if (!rowData) return null;
+    const keys = Object.keys(rowData);
+    // 1) exact
+    const exact = keys.find(k => k === sourceCol);
+    if (exact) return exact;
+    // 2) case-insensitive
+    const ci = keys.find(k => k.toLowerCase() === sourceCol.toLowerCase());
+    if (ci) return ci;
+    // 3) normalized match (handles Text vs Text_1, punctuation, spaces)
+    const targetNorm = normalizeColName(sourceCol);
+    if (!targetNorm) return null;
+    const norm = keys.find(k => normalizeColName(k) === targetNorm);
+    return norm ?? null;
+  };
+
   // For klasifikasi: collect ALL matching results (deduplicated, ordered by priority)
   // For remark: return only first match (legacy behaviour)
   const collectAll = type === 'klasifikasi';
@@ -270,9 +293,8 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
   const getEffText = (kw: Keyword): { str: string; lower: string } => {
     const sc = (kw.sourceColumn ?? '').trim();
     if (sc && rowData) {
-      const exactKey = Object.keys(rowData).find(k => k === sc);
-      const ciKey    = exactKey ?? Object.keys(rowData).find(k => k.toLowerCase() === sc.toLowerCase());
-      const val = ciKey ? String(rowData[ciKey] ?? '').trim() : '';
+      const key = resolveRowKey(sc);
+      const val = key ? String(rowData[key] ?? '').trim() : '';
       if (val !== '') return { str: val, lower: val.toLowerCase() };
     }
     return { str: textStr, lower: textLower };
@@ -301,10 +323,8 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
       const colName = withoutPrefix.slice(0, colonIdx).trim();
       const pattern  = withoutPrefix.slice(colonIdx + 1).trim();
       const colValue = (() => {
-        const exactKey = Object.keys(rowData).find(k => k === colName);
-        if (exactKey !== undefined) return String(rowData[exactKey] ?? '').trim();
-        const ciKey = Object.keys(rowData).find(k => k.toLowerCase() === colName.toLowerCase());
-        return ciKey ? String(rowData[ciKey] ?? '').trim() : '';
+        const key = resolveRowKey(colName);
+        return key ? String(rowData[key] ?? '').trim() : '';
       })();
       if (!colValue) continue;
       let matched = false;
