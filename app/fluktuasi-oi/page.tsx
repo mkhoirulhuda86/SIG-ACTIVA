@@ -191,6 +191,23 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
       if (afterWord) anchor = afterWord[1].trim();
     }
     if (anchor) {
+      // Support natural phrase: "ambil 3 kata setelah kata RoU"
+      const nWordsM = original.match(/(?:ambil|diambil|ekstrak|extract)\s+(\d+)\s+kata\s+setelah\s+kata\s+["']?([A-Za-z][\w\-\/.]*)["']?/i)
+        ?? original.match(/(\d+)\s+kata\s+setelah\s+kata\s+["']?([A-Za-z][\w\-\/.]*)["']?/i);
+      if (nWordsM) {
+        const n = Math.max(1, parseInt(nWordsM[1], 10) || 1);
+        const a = nWordsM[2].trim();
+        return { keyword: `regex:${a}(?:\\s+\\S+){1,${n}}`, type, result: '', priority, accountCodes, sourceColumn };
+      }
+
+      // Support natural phrase: "lebih dari 2 kata setelah kata RoU"
+      const moreWordsM = original.match(/lebih\s+dari\s+(\d+)\s+kata\s+setelah\s+kata\s+["']?([A-Za-z][\w\-\/.]*)["']?/i);
+      if (moreWordsM) {
+        const minN = Math.max(1, (parseInt(moreWordsM[1], 10) || 1) + 1);
+        const a = moreWordsM[2].trim();
+        return { keyword: `regex:${a}(?:\\s+\\S+){${minN},}`, type, result: '', priority, accountCodes, sourceColumn };
+      }
+
       const hasNumber = /(?:nomor|angka|kode|aset|number|digit|\d)/.test(text);
       const hasFraction = /(?:karakter|huruf|kata|word|\\w)/.test(text);
       const suffix = hasNumber ? '\\d+' : hasFraction ? '\\w+' : '\\S+';
@@ -4392,22 +4409,17 @@ export default function FluktuasiOIPage() {
                   <textarea
                     value={naturalInput}
                     onChange={(e) => setNaturalInput(e.target.value)}
-                    placeholder={'Contoh teks biasa:\nJika ada text "Sindikasi SLL" maka klasifikasi berisi "Sindikasi SLL"\n\nContoh NOT (negatif):\nJika tidak ada kata "K3" atau "SLA" maka klasifikasi berisi "Denda Keterlambatan"\n\nContoh regex (pola tetap):\nJika teks cocok pola "RoU \\d+" maka klasifikasi berisi "RoU Aset"\n\nContoh regex (ekstrak otomatis):\nBy kolom Text, diambil dari kata "RoU" dan nomor aset\n  ? hasil otomatis diambil dari Excel, misal: RoU 380000000077\n\nContoh nomor dokumen:\nJika nomor dokumen diawali 18 maka klasifikasi berisi "Tag. Klaim Asuransi"\n\nContoh kolom bebas:\nJika kolom Cost Center diawali 0001 maka klasifikasi berisi "Biaya"\n\nTambah remark / priority 5 sesuai kebutuhan'}
+                    placeholder={'Contoh cepat:\n1) text "KI BNI" maka klasifikasi berisi "KI BNI"\n2) by kolom M, ambil 3 kata setelah kata RoU\n3) by kolom Text, lebih dari 2 kata setelah kata RoU\n4) nomor dokumen diawali 18 maka remark berisi "Tagihan"'}
                     rows={4}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition font-mono text-sm"
                   />
                   <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <p className="text-xs text-blue-700 font-semibold mb-1">Tip Format:</p>
+                    <p className="text-xs text-blue-700 font-semibold mb-1">Petunjuk Singkat:</p>
                     <ul className="text-xs text-blue-600 space-y-0.5">
-                      <li>• Teks: jika ada text &quot;X&quot; maka klasifikasi berisi &quot;Y&quot;</li>
-                      <li>• NOT: jika tidak ada kata &quot;K3&quot; atau &quot;SLA&quot; maka berisi &quot;Y&quot;</li>
-                      <li>• Regex pola: jika teks cocok pola &quot;RoU \d+&quot; maka berisi &quot;RoU Aset&quot;</li>
-                      <li>• Ekstrak otomatis: diambil dari kata &quot;RoU&quot; dan nomor aset ? hasil dari Excel</li>
-                      <li>• Nomor dok: jika nomor dokumen diawali 18 maka berisi &quot;Y&quot;</li>
-                      <li>• Kolom bebas: jika kolom Account diawali 18 maka berisi &quot;Y&quot;</li>
-                      <li>• Tambah: remark / priority 10</li>
-                      <li>• Akun tertentu: ... di akun 62301 / di akun &apos;62301,62401&apos;</li>
-                      <li>• Kolom sumber: by kolom &quot;Document Header Text&quot;, text &quot;SLL&quot; berisi &quot;Sindikasi SLL&quot;</li>
+                      <li>• Format umum: text &quot;X&quot; maka klasifikasi/remark berisi &quot;Y&quot;</li>
+                      <li>• Ambil kata otomatis: by kolom M, ambil 3 kata setelah kata RoU</li>
+                      <li>• Ambil lebih panjang: by kolom Text, lebih dari 2 kata setelah kata RoU</li>
+                      <li>• Tambahan opsional: priority 10, di akun 71510001</li>
                     </ul>
                   </div>
                   
