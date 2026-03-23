@@ -190,6 +190,9 @@ export async function POST(req: NextRequest) {
       { label: 'YtD %',      sub: 'YtD\n%',       type: 'pct'    },
       { label: 'Reason YtD', sub: 'Reason YtD',   type: 'reason' },
     ];
+    const reasonSysIndexes = sysCols
+      .map((sc, idx) => (sc.type === 'reason' ? idx : -1))
+      .filter((idx) => idx >= 0);
 
     const amountColSet = new Set(amountCols.map((ac: any) => ac.colIdx));
     const defaultDescColIdxList = origHeaders
@@ -356,6 +359,17 @@ export async function POST(req: NextRequest) {
       const dataRow = ws.addRow(values);
       dataRow.height = row.type === 'category' ? 18 : 15;
 
+      if (row.type === 'detail') {
+        const reasonTexts = reasonSysIndexes
+          .map((sysIdx) => String(values[baseCols.length + sysIdx] ?? ''))
+          .filter(Boolean);
+        if (reasonTexts.length > 0) {
+          const longest = Math.max(...reasonTexts.map((txt) => txt.length));
+          const estimatedLines = Math.min(6, Math.max(1, Math.ceil(longest / 46)));
+          dataRow.height = Math.max(15, 12 + estimatedLines * 12);
+        }
+      }
+
       // Row-level bg
       let rowBg: string;
       if (row.type === 'category') rowBg = C.navy;
@@ -430,6 +444,11 @@ export async function POST(req: NextRequest) {
           const base = baseCols[ci];
           if (base.kind === 'account' || base.kind === 'desc') {
             cell.alignment = { ...cell.alignment, horizontal: 'left' };
+          }
+        } else {
+          const sys = sysCols[ci - baseCols.length];
+          if (sys?.type === 'reason') {
+            cell.alignment = { ...cell.alignment, horizontal: 'left', wrapText: true, vertical: 'top' };
           }
         }
       });

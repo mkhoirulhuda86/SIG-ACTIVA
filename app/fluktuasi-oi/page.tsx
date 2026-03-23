@@ -2210,33 +2210,8 @@ export default function FluktuasiOIPage() {
         });
       }
 
-      let persistedAccountCodes = new Set<string>();
-      try {
-        const rowsMetaRes = await fetch('/api/fluktuasi/sheet-rows');
-        const rowsMeta = await rowsMetaRes.json();
-        if (rowsMeta?.success && Array.isArray(rowsMeta.data)) {
-          persistedAccountCodes = new Set(
-            rowsMeta.data
-              .map((r: any) => String(r.accountCode ?? '').trim())
-              .filter(Boolean)
-          );
-        }
-      } catch {
-        // Fallback: if metadata lookup fails, keep payload small and rely on server-side DB hydration.
-      }
-
-      // Keep request body small for Vercel limits, but include local rows for accounts
-      // that are not yet persisted in DB to avoid empty account sheets in export.
-      const sheetDataListForExport = sheetDataList.map((sd) => {
-        const key = String(sd.sheetName ?? '').trim();
-        const numericKey = key.match(/^(\d{5,})/)?.[1] ?? key;
-        const hasPersistedRows = persistedAccountCodes.has(key) || persistedAccountCodes.has(numericKey);
-        if (hasPersistedRows) {
-          const { rows: _rows, ...meta } = sd;
-          return { ...meta, rows: [] };
-        }
-        return sd;
-      });
+      // Keep request body small for Vercel limits; server hydrates rows from DB.
+      const sheetDataListForExport = sheetDataList.map(({ rows: _rows, ...meta }) => ({ ...meta, rows: [] }));
 
       const amountCols = rekapSheetData?.amountCols ?? [];
       const amountColSet = new Set(amountCols.map((ac) => ac.colIdx));
