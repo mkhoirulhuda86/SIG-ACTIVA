@@ -296,6 +296,15 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
       const key = resolveRowKey(sc);
       const val = key ? String(rowData[key] ?? '').trim() : '';
       if (val !== '') return { str: val, lower: val.toLowerCase() };
+      // If sourceColumn exists but is empty/missing in this row, fallback to a
+      // combined text snapshot of row columns so keywords can still match.
+      const combined = Object.entries(rowData)
+        .filter(([k]) => !k.startsWith('__'))
+        .map(([, v]) => String(v ?? '').trim())
+        .filter(Boolean)
+        .join(' | ')
+        .trim();
+      if (combined) return { str: combined, lower: combined.toLowerCase() };
     }
     return { str: textStr, lower: textLower };
   };

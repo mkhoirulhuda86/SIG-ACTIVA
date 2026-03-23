@@ -41,12 +41,39 @@ function matchKeywords(
   const positive  = relevant.filter(k => !k.keyword.toLowerCase().startsWith('not:'));
   const negative  = relevant.filter(k =>  k.keyword.toLowerCase().startsWith('not:'));
 
+  const normalizeColName = (v: string): string =>
+    String(v ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/_\d+$/g, '')
+      .replace(/[^a-z0-9]/g, '');
+
+  const resolveRowKey = (sourceCol: string): string | null => {
+    if (!rowData) return null;
+    const keys = Object.keys(rowData);
+    const exact = keys.find(k => k === sourceCol);
+    if (exact) return exact;
+    const ci = keys.find(k => k.toLowerCase() === sourceCol.toLowerCase());
+    if (ci) return ci;
+    const targetNorm = normalizeColName(sourceCol);
+    if (!targetNorm) return null;
+    const norm = keys.find(k => normalizeColName(k) === targetNorm);
+    return norm ?? null;
+  };
+
   const getEffText = (kw: KW): { str: string; lower: string } => {
     const sc = (kw.sourceColumn ?? '').trim();
     if (sc && rowData) {
-      const key = Object.keys(rowData).find(k => k.toLowerCase() === sc.toLowerCase());
+      const key = resolveRowKey(sc);
       const val = key ? String(rowData[key] ?? '').trim() : '';
       if (val) return { str: val, lower: val.toLowerCase() };
+      const combined = Object.entries(rowData)
+        .filter(([k]) => !k.startsWith('__'))
+        .map(([, v]) => String(v ?? '').trim())
+        .filter(Boolean)
+        .join(' | ')
+        .trim();
+      if (combined) return { str: combined, lower: combined.toLowerCase() };
     }
     return { str: textStr, lower: textLower };
   };
@@ -70,7 +97,7 @@ function matchKeywords(
       if (ci < 0) continue;
       const colName   = rest.slice(0, ci).trim();
       const pattern   = rest.slice(ci + 1).trim();
-      const key       = Object.keys(rowData).find(k => k.toLowerCase() === colName.toLowerCase());
+      const key       = resolveRowKey(colName);
       const colVal    = key ? String(rowData[key] ?? '').trim() : '';
       if (!colVal) continue;
       const pl = pattern.toLowerCase();
