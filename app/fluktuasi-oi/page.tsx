@@ -4670,6 +4670,30 @@ export default function FluktuasiOIPage() {
                               <button
                                 type="button"
                                 onClick={() => {
+                                  setRegexAnchor('RoU');
+                                  setRegexWordCount(3);
+                                  setRegexMoreThan(false);
+                                  setKeywordForm({ ...keywordForm, keyword: 'regex:RoU(?:\\s+\\S+){1,3}' });
+                                }}
+                                className="px-2.5 py-1.5 text-xs rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                              >
+                                Preset: RoU + 3 kata
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRegexAnchor('RoU');
+                                  setRegexWordCount(2);
+                                  setRegexMoreThan(true);
+                                  setKeywordForm({ ...keywordForm, keyword: 'regex:RoU(?:\\s+\\S+){3,}' });
+                                }}
+                                className="px-2.5 py-1.5 text-xs rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                              >
+                                Preset: RoU &gt; 2 kata
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
                                   const a = regexAnchor.trim();
                                   if (!a) return;
                                   const n = Math.max(1, regexWordCount || 1);
