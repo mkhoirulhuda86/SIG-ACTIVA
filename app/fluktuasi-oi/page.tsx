@@ -1017,6 +1017,7 @@ export default function FluktuasiOIPage() {
   const [loadingDbRekap,  setLoadingDbRekap]  = useState(false);
   const [dbPeriodeStats,  setDbPeriodeStats]  = useState<{ periodes: string[]; accounts: number } | null>(null);
   const [selectedPeriodes, setSelectedPeriodes] = useState<Set<string>>(new Set());
+  const [persistedSheetRowCodes, setPersistedSheetRowCodes] = useState<Set<string>>(new Set());
 
   // -- Animation refs --------------------------------------------------------
   const pageContentRef   = useRef<HTMLDivElement>(null);
@@ -1054,6 +1055,26 @@ export default function FluktuasiOIPage() {
       console.warn('hydrateSheetRows failed', e);
     } finally {
       fetchingAccountsRef.current.delete(accountCode);
+    }
+  }, []);
+
+  const loadPersistedSheetRowCodes = useCallback(async () => {
+    try {
+      const res = await fetch('/api/fluktuasi/sheet-rows');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.success || !Array.isArray(data.data)) return;
+      const next = new Set<string>();
+      for (const rec of data.data) {
+        const code = String(rec?.accountCode ?? '').trim();
+        if (!code) continue;
+        next.add(code);
+        const numeric = code.match(/^(\d{5,})/)?.[1];
+        if (numeric) next.add(numeric);
+      }
+      setPersistedSheetRowCodes(next);
+    } catch {
+      // best-effort only
     }
   }, []);
 
@@ -1103,6 +1124,7 @@ export default function FluktuasiOIPage() {
     loadData();
     loadKeywords();
     loadDbStats();
+    loadPersistedSheetRowCodes();
   }, []);
   // -- Load keywords ----------------------------------------------------------
   const loadKeywords = useCallback(async () => {
@@ -1957,7 +1979,20 @@ export default function FluktuasiOIPage() {
             rows:              sd.rows,
             fileName:          file.name,
           }),
-        }).catch(e => console.warn('Failed to save sheet rows to DB', e));
+        })
+          .then(r => r.json())
+          .then((r) => {
+            if (!r?.success) return;
+            const code = String(sd.sheetName ?? '').trim();
+            const numeric = code.match(/^(\d{5,})/)?.[1];
+            setPersistedSheetRowCodes(prev => {
+              const next = new Set(prev);
+              if (code) next.add(code);
+              if (numeric) next.add(numeric);
+              return next;
+            });
+          })
+          .catch(e => console.warn('Failed to save sheet rows to DB', e));
       }
 
     } catch (err: any) {
@@ -2210,8 +2245,18 @@ export default function FluktuasiOIPage() {
         });
       }
 
-      // Keep request body small for Vercel limits; server hydrates rows from DB.
-      const sheetDataListForExport = sheetDataList.map(({ rows: _rows, ...meta }) => ({ ...meta, rows: [] }));
+      // Keep request body small for Vercel limits. For accounts that are not
+      // yet persisted in DB, include local rows so export doesn't produce empty sheets.
+      const sheetDataListForExport = sheetDataList.map((sd) => {
+        const code = String(sd.sheetName ?? '').trim();
+        const numeric = code.match(/^(\d{5,})/)?.[1] ?? code;
+        const isPersisted = persistedSheetRowCodes.has(code) || persistedSheetRowCodes.has(numeric);
+        if (isPersisted) {
+          const { rows: _rows, ...meta } = sd;
+          return { ...meta, rows: [] };
+        }
+        return sd;
+      });
 
       const amountCols = rekapSheetData?.amountCols ?? [];
       const amountColSet = new Set(amountCols.map((ac) => ac.colIdx));
