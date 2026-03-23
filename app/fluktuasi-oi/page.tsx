@@ -1035,6 +1035,7 @@ export default function FluktuasiOIPage() {
   const [keywordAkunSearch, setKeywordAkunSearch] = useState('');
   const [keywordPage, setKeywordPage] = useState(0);
   const KEYWORD_PAGE_SIZE = 10;
+  const [showReapplyConfirm, setShowReapplyConfirm] = useState(false);
   const [kwMode, setKwMode] = useState<'normal' | 'regex' | 'not' | 'docno' | 'col'>('normal');
   const [colHeader, setColHeader] = useState('');
   const [colPattern, setColPattern] = useState('');
@@ -1330,12 +1331,11 @@ export default function FluktuasiOIPage() {
     }
   };
 
-  const handleReapplyKeywords = async () => {
+  const runReapplyKeywords = async () => {
     if (keywordReadOnlyMode) {
       toast.info('Mode read-only aktif karena DB limit. Re-terapkan ke DB dinonaktifkan sementara.');
       return;
     }
-    if (!confirm(`Re-terapkan ${keywords.length} keyword ke seluruh data yang tersimpan? Proses ini akan memperbarui klasifikasi semua record di database.`)) return;
     setIsReapplying(true);
     try {
       const res    = await fetch('/api/fluktuasi/re-apply-keywords', { method: 'POST' });
@@ -1362,6 +1362,14 @@ export default function FluktuasiOIPage() {
     } finally {
       setIsReapplying(false);
     }
+  };
+
+  const handleReapplyKeywords = () => {
+    if (keywordReadOnlyMode) {
+      toast.info('Mode read-only aktif karena DB limit. Re-terapkan ke DB dinonaktifkan sementara.');
+      return;
+    }
+    setShowReapplyConfirm(true);
   };
 
   // -- DB Akun Periode helpers ------------------------------------------------
@@ -4757,6 +4765,38 @@ export default function FluktuasiOIPage() {
                 className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {editingKeyword ? 'Update' : 'Simpan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showReapplyConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full border border-gray-200">
+            <div className="p-5 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-800">Konfirmasi Re-terapkan</h3>
+              <p className="text-sm text-gray-600 mt-2">
+                Re-terapkan {keywords.length} keyword ke seluruh data yang tersimpan?
+                Proses ini akan memperbarui klasifikasi semua record di database.
+              </p>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-b-xl flex gap-3">
+              <button
+                onClick={() => setShowReapplyConfirm(false)}
+                className="flex-1 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition"
+              >
+                Batal
+              </button>
+              <button
+                onClick={async () => {
+                  setShowReapplyConfirm(false);
+                  await runReapplyKeywords();
+                }}
+                disabled={isReapplying}
+                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition disabled:opacity-60"
+              >
+                Lanjutkan
               </button>
             </div>
           </div>
