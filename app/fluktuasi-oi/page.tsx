@@ -106,6 +106,17 @@ const extractKlasifikasi = (text: string): string => {
   return cleaned || s;
 };
 
+const parseSourceColumns = (raw: string): string[] => {
+  return [...new Set(
+    String(raw ?? '')
+      .split(/[,|/]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+  )];
+};
+
+const normalizeSourceColumns = (raw: string): string => parseSourceColumns(raw).join(', ');
+
 // Match text with keywords from database
 // Parse natural language keyword input
 const parseNaturalKeyword = (input: string): { keyword: string; type: string; result: string; priority: number; accountCodes: string; sourceColumn: string } | null => {
@@ -122,13 +133,7 @@ const parseNaturalKeyword = (input: string): { keyword: string; type: string; re
   );
   if (srcColM) {
     const rawSourceColumn = (srcColM[1] ?? srcColM[2] ?? srcColM[3] ?? '').trim();
-    if (rawSourceColumn.includes('/')) {
-      const aliases = rawSourceColumn.split('/').map(s => s.trim()).filter(Boolean);
-      const excelLetterAlias = aliases.find(a => /^[A-Za-z]{1,3}$/.test(a));
-      sourceColumn = (excelLetterAlias ?? aliases[aliases.length - 1] ?? '').trim();
-    } else {
-      sourceColumn = rawSourceColumn;
-    }
+    sourceColumn = normalizeSourceColumns(rawSourceColumn);
   }
 
   // -- Extract accountCodes: "di akun '12345'" / "di akun 12345,67890" / "berlaku akun 62301 62302"
@@ -345,13 +350,20 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
   const positiveKeywords = relevantKeywords.filter(kw => !kw.keyword.toLowerCase().startsWith('not:'));
   const notKeywords = relevantKeywords.filter(kw => kw.keyword.toLowerCase().startsWith('not:'));
 
-  // -- Helper: resolve effective text for a keyword (sourceColumn overrides default text)
+  // -- Helper: resolve effective text for a keyword (sourceColumn can target multiple columns)
   const getEffText = (kw: Keyword): { str: string; lower: string } => {
-    const sc = (kw.sourceColumn ?? '').trim();
-    if (sc && rowData) {
-      const key = resolveRowKey(sc);
-      const val = key ? String(rowData[key] ?? '').trim() : '';
-      if (val !== '') return { str: val, lower: val.toLowerCase() };
+    const sourceCols = parseSourceColumns(kw.sourceColumn ?? '');
+    if (sourceCols.length > 0 && rowData) {
+      const values = sourceCols
+        .map((col) => {
+          const key = resolveRowKey(col);
+          return key ? String(rowData[key] ?? '').trim() : '';
+        })
+        .filter(Boolean);
+      if (values.length > 0) {
+        const combinedFromColumns = values.join(' | ');
+        return { str: combinedFromColumns, lower: combinedFromColumns.toLowerCase() };
+      }
       // If sourceColumn exists but is empty/missing in this row, fallback to a
       // combined text snapshot of row columns so keywords can still match.
       const combined = Object.entries(rowData)
@@ -958,7 +970,7 @@ type Keyword = {
   result: string;
   priority: number;
   accountCodes: string;  // comma-separated; empty = berlaku untuk semua
-  sourceColumn: string;  // column header name to match against; empty = default description col
+  sourceColumn: string;  // comma-separated column names/letters to match against; empty = default description col
 };
 
 const FALLBACK_KEYWORDS: Keyword[] = [
@@ -1316,7 +1328,10 @@ export default function FluktuasiOIPage() {
       return;
     }
     try {
-      const formToUse = formOverride || keywordForm;
+      const formToUse = {
+        ...(formOverride || keywordForm),
+        sourceColumn: normalizeSourceColumns((formOverride || keywordForm)?.sourceColumn ?? ''),
+      };
       
       // Frontend validation for duplicate
       const isDuplicate = checkDuplicateKeyword(
@@ -3239,7 +3254,9 @@ export default function FluktuasiOIPage() {
                           </td>
                           <td className="px-4 py-3 text-xs">
                             {kw.sourceColumn
-                              ? <span className="inline-flex px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-mono">{kw.sourceColumn}</span>
+                              ? parseSourceColumns(kw.sourceColumn).map((col) => (
+                                  <span key={col} className="inline-flex px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-mono mr-1 mb-1">{col}</span>
+                                ))
                               : <span className="text-gray-400 italic">Otomatis</span>}
                           </td>
                           <td className="px-4 py-3 text-center">
@@ -4843,18 +4860,21 @@ export default function FluktuasiOIPage() {
                       Cek di Kolom
                       <span className="ml-2 text-xs font-normal text-gray-500">(kosong = kolom deskripsi/header teks)</span>
                     </label>
-                    <select
+                    <input
+                      type="text"
+                      list="source-columns-list"
                       value={keywordForm.sourceColumn}
                       onChange={(e) => setKeywordForm({ ...keywordForm, sourceColumn: e.target.value })}
+                      placeholder="Misal: Text, Assignment, Document Header Text"
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-white text-sm"
-                    >
-                      <option value="">— Otomatis (kolom deskripsi default) —</option>
+                    />
+                    <datalist id="source-columns-list">
                       {availableColumns.map(col => (
                         <option key={col} value={col}>{col}</option>
                       ))}
-                    </select>
+                    </datalist>
                     <p className="text-xs text-gray-500 mt-1.5">
-                      Pilih kolom yang akan dicocokkan dengan keyword ini. Misal: kolom "Assignment" atau "Text".
+                      Boleh isi lebih dari satu kolom, pisahkan dengan koma, <code className="bg-gray-100 px-1 rounded">|</code>, atau <code className="bg-gray-100 px-1 rounded">/</code>. Contoh: <code className="bg-gray-100 px-1 rounded">Text, Assignment</code>.
                     </p>
                   </div>
 

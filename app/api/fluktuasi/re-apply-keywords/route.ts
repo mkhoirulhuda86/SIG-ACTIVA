@@ -30,6 +30,15 @@ type KW = {
   sourceColumn: string;
 };
 
+const parseSourceColumns = (raw: string): string[] => {
+  return [...new Set(
+    String(raw ?? '')
+      .split(/[,|/]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+  )];
+};
+
 function matchKeywords(
   text:    string,
   kws:     KW[],
@@ -81,11 +90,18 @@ function matchKeywords(
   };
 
   const getEffText = (kw: KW): { str: string; lower: string } => {
-    const sc = (kw.sourceColumn ?? '').trim();
-    if (sc && rowData) {
-      const key = resolveRowKey(sc);
-      const val = key ? String(rowData[key] ?? '').trim() : '';
-      if (val) return { str: val, lower: val.toLowerCase() };
+    const sourceCols = parseSourceColumns(kw.sourceColumn ?? '');
+    if (sourceCols.length > 0 && rowData) {
+      const values = sourceCols
+        .map((col) => {
+          const key = resolveRowKey(col);
+          return key ? String(rowData[key] ?? '').trim() : '';
+        })
+        .filter(Boolean);
+      if (values.length > 0) {
+        const combinedFromColumns = values.join(' | ');
+        return { str: combinedFromColumns, lower: combinedFromColumns.toLowerCase() };
+      }
       const combined = Object.entries(rowData)
         .filter(([k]) => !k.startsWith('__'))
         .map(([, v]) => String(v ?? '').trim())

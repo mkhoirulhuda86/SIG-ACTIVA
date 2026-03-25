@@ -13,6 +13,15 @@ const dbErrorMessage = (error: unknown): string => {
   return 'Gagal memuat keywords';
 };
 
+const normalizeSourceColumns = (raw: string): string => {
+  return [...new Set(
+    String(raw ?? '')
+      .split(/[,|/]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+  )].join(', ');
+};
+
 // GET: Ambil semua keywords
 export async function GET(req: NextRequest) {
   try {
@@ -102,7 +111,7 @@ export async function POST(req: NextRequest) {
         result: (result ?? '').trim(),
         priority: parseInt(priority, 10) || 0,
         accountCodes: (body.accountCodes ?? '').trim(),
-        sourceColumn: (body.sourceColumn ?? '').trim(),
+        sourceColumn: normalizeSourceColumns(body.sourceColumn ?? ''),
       },
     });
 
@@ -148,7 +157,7 @@ export async function PUT(req: NextRequest) {
     if (result !== undefined) data.result = result.trim();
     if (priority !== undefined) data.priority = parseInt(priority, 10);
     if (body.accountCodes !== undefined) data.accountCodes = (body.accountCodes ?? '').trim();
-    if (body.sourceColumn !== undefined) data.sourceColumn = (body.sourceColumn ?? '').trim();
+    if (body.sourceColumn !== undefined) data.sourceColumn = normalizeSourceColumns(body.sourceColumn ?? '');
 
     // Check for duplicate keyword when updating (exclude current record)
     if (keyword !== undefined && type !== undefined) {
