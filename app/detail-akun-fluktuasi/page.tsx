@@ -23,6 +23,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Skeleton } from '../components/ui/skeleton';
+import { ScrollArea } from '../components/ui/scroll-area';
 
 const Sidebar = dynamic(() => import('../components/Sidebar'), { ssr: false });
 const Header  = dynamic(() => import('../components/Header'),  { ssr: false });
@@ -42,6 +43,15 @@ type AkunPeriodeRecord = {
   reasonYtD?: string;
 };
 
+type DetailFrameRow = {
+  klasifikasi: string;
+  prev: number;
+  curr: number;
+  delta: number;
+  reason: string;
+  reasons: string[];
+};
+
 // --- Helpers -----------------------------------------------------------------
 const MONTHS_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 
@@ -59,7 +69,7 @@ const _fmtFull = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 });
 const fmtFull = (n: number): string => _fmtFull.format(n);
 
 const summarizeAccountFrameReason = (
-  rows: { klasifikasi: string; prev: number; curr: number }[],
+  rows: DetailFrameRow[],
   mode: 'mom' | 'yoy' | 'ytd',
 ): string => {
   if (rows.length === 0) return '-';
@@ -225,50 +235,121 @@ const ACCOUNT_NAMES: Record<string, string> = {
   '71620004': 'EXCHANGE RATE DIFFERENCE UTK PEMBELIAN',
 };
 
+type SeriesColors = {
+  prev: string;
+  curr: string;
+  prevText: string;
+  currText: string;
+};
+
+const SOFT_BLUE_2025 = '#7fb3ff';
+const NAVY_2026 = '#1e3a8a';
+
+const extractYearFromLabel = (label: string): string => {
+  const m = String(label || '').match(/(20\d{2})/);
+  return m?.[1] ?? '';
+};
+
+const resolveDetailSeriesColors = (labelPrev: string, labelCurr: string): SeriesColors => {
+  const prevYear = extractYearFromLabel(labelPrev);
+  const currYear = extractYearFromLabel(labelCurr);
+
+  const colorForYear = (year: string, fallback: string) => {
+    if (year === '2025') return SOFT_BLUE_2025;
+    if (year === '2026') return NAVY_2026;
+    return fallback;
+  };
+
+  let colors: SeriesColors = {
+    prev: colorForYear(prevYear, '#5fa3f4'),
+    curr: colorForYear(currYear, '#243b73'),
+    prevText: colorForYear(prevYear, '#2f6fbe'),
+    currText: colorForYear(currYear, '#172a57'),
+  };
+
+  if (prevYear && currYear && prevYear === currYear) {
+    colors = {
+      prev: SOFT_BLUE_2025,
+      curr: NAVY_2026,
+      prevText: '#2f6fbe',
+      currText: '#132657',
+    };
+  }
+
+  return colors;
+};
+
 const buildDetailChartData = (
   rows: { klasifikasi: string; prev: number; curr: number }[],
   labelPrev: string,
   labelCurr: string,
-): ChartData<'bar'> => ({
-  labels: rows.map((r) => r.klasifikasi),
-  datasets: [
-    {
-      label: labelPrev,
-      data: rows.map((r) => r.prev),
-      backgroundColor: '#2563eb',
-      borderRadius: 4,
-      borderSkipped: false,
-      maxBarThickness: 30,
-    },
-    {
-      label: labelCurr,
-      data: rows.map((r) => r.curr),
-      backgroundColor: '#16a34a',
-      borderRadius: 4,
-      borderSkipped: false,
-      maxBarThickness: 30,
-    },
-  ],
-});
+): ChartData<'bar'> => {
+  const colors = resolveDetailSeriesColors(labelPrev, labelCurr);
+  return {
+    labels: rows.map((r) => r.klasifikasi),
+    datasets: [
+      {
+        label: labelPrev,
+        data: rows.map((r) => r.prev),
+        backgroundColor: colors.prev,
+        borderRadius: 0,
+        borderSkipped: false,
+        minBarLength: 2,
+        categoryPercentage: 0.8,
+        barPercentage: 1,
+        inflateAmount: 0,
+      },
+      {
+        label: labelCurr,
+        data: rows.map((r) => r.curr),
+        backgroundColor: colors.curr,
+        borderRadius: 0,
+        borderSkipped: false,
+        minBarLength: 2,
+        categoryPercentage: 0.8,
+        barPercentage: 1,
+        inflateAmount: 0,
+      },
+    ],
+  };
+};
 
-const buildDetailChartOptions = (isCompact: boolean): ChartOptions<'bar'> => ({
+const buildDetailChartOptions = (isCompact: boolean, labelPrev: string, labelCurr: string): ChartOptions<'bar'> => ({
   responsive: true,
   maintainAspectRatio: false,
   animation: false,
+  layout: {
+    padding: { top: 2, right: 2, left: 2, bottom: 0 },
+  },
   plugins: {
     legend: { display: false },
     datalabels: {
-      display: !isCompact,
-      anchor: 'end',
-      align: 'end',
-      offset: 2,
+      display: (ctx: any) => {
+        const v = Number(ctx.dataset?.data?.[ctx.dataIndex] ?? 0);
+        return !isCompact || v === 0;
+      },
+      anchor: (ctx: any) => {
+        const v = Number(ctx.dataset?.data?.[ctx.dataIndex] ?? 0);
+        return v === 0 ? 'center' : 'end';
+      },
+      align: (ctx: any) => {
+        const v = Number(ctx.dataset?.data?.[ctx.dataIndex] ?? 0);
+        return v === 0 ? 'top' : 'end';
+      },
+      offset: (ctx: any) => {
+        const v = Number(ctx.dataset?.data?.[ctx.dataIndex] ?? 0);
+        return v === 0 ? 6 : 2;
+      },
       clamp: true,
       clip: false,
       font: {
         size: 9,
         weight: 700,
       },
-      color: (ctx: any) => (ctx.datasetIndex === 0 ? '#1d4ed8' : '#15803d'),
+      color: (ctx: any) => {
+        const c = resolveDetailSeriesColors(labelPrev, labelCurr);
+        return ctx.datasetIndex === 0 ? c.prevText : c.currText;
+      },
       formatter: (value: unknown) => fmtCompact(Number(value ?? 0)),
     },
     tooltip: {
@@ -282,18 +363,19 @@ const buildDetailChartOptions = (isCompact: boolean): ChartOptions<'bar'> => ({
       ticks: {
         color: '#64748b',
         font: { size: isCompact ? 7 : 8 },
-        maxRotation: isCompact ? 30 : 18,
-        minRotation: isCompact ? 30 : 18,
+        maxRotation: isCompact ? 24 : 12,
+        minRotation: isCompact ? 24 : 12,
         callback: function(value) {
           const raw = typeof this.getLabelForValue === 'function' ? this.getLabelForValue(Number(value)) : value;
           const label = String(raw ?? '');
-          const cap = isCompact ? 13 : 18;
+          const cap = isCompact ? 14 : 22;
           return label.length > cap ? `${label.slice(0, cap)}...` : label;
         },
       },
       grid: { color: '#e2e8f0' },
     },
     y: {
+      grace: '8%',
       ticks: {
         color: '#64748b',
         font: { size: isCompact ? 8 : 9 },
@@ -565,6 +647,7 @@ export default function DetailAkunFluktuasiPage() {
   const [loading, setLoading]                   = useState(true);
   const [isMobileSidebarOpen, setMobileSidebar] = useState(false);
   const [isCompact, setIsCompact]               = useState(false);
+  const [activeReasonAccountCode, setActiveReasonAccountCode] = useState<string | null>(null);
   const [compMode, setCompMode]                 = useState<'mom' | 'yoy' | 'ytd'>('yoy');
   const [compPeriodeRaw, setCompPeriodeRaw]     = useState('');
   const [activeAccountTab, setActiveAccountTab] = useState<AccountTabDef['key']>('beban-bunga');
@@ -594,6 +677,9 @@ export default function DetailAkunFluktuasiPage() {
   const klasListRef    = useRef<HTMLDivElement>(null);
   const subAkunListRef = useRef<HTMLDivElement>(null);
   const tableBodyRef   = useRef<HTMLTableSectionElement>(null);
+  const reasonOverlayRef = useRef<HTMLDivElement>(null);
+  const reasonPanelRef = useRef<HTMLDivElement>(null);
+  const reasonListRef = useRef<HTMLDivElement>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -746,7 +832,7 @@ export default function DetailAkunFluktuasiPage() {
   const accountFramesByMode = useMemo(() => {
     if (!compPeriode) {
       return {
-        frames: [] as { accountCode: string; rows: { klasifikasi: string; prev: number; curr: number }[]; frameReason: string }[],
+        frames: [] as { accountCode: string; rows: { klasifikasi: string; prev: number; curr: number }[]; detailRows: DetailFrameRow[]; frameReason: string }[],
         labelA: '',
         labelB: '',
       };
@@ -789,10 +875,10 @@ export default function DetailAkunFluktuasiPage() {
     const allowedCodes = new Set(
       activeTabDef.accountCodes.filter((code) => !EXCLUDED_PARENT_ACCOUNT_CODES.has(code)),
     );
-    const accountMap = new Map<string, { mapA: Map<string, number>; mapB: Map<string, number> }>();
+    const accountMap = new Map<string, { mapA: Map<string, number>; mapB: Map<string, number>; reasonMap: Map<string, Set<string>> }>();
 
     for (const code of allowedCodes) {
-      accountMap.set(code, { mapA: new Map<string, number>(), mapB: new Map<string, number>() });
+      accountMap.set(code, { mapA: new Map<string, number>(), mapB: new Map<string, number>(), reasonMap: new Map<string, Set<string>>() });
     }
 
     for (const r of records) {
@@ -800,12 +886,21 @@ export default function DetailAkunFluktuasiPage() {
 
       let entry = accountMap.get(r.accountCode);
       if (!entry) {
-        entry = { mapA: new Map<string, number>(), mapB: new Map<string, number>() };
+        entry = { mapA: new Map<string, number>(), mapB: new Map<string, number>(), reasonMap: new Map<string, Set<string>>() };
         accountMap.set(r.accountCode, entry);
       }
 
       const klasifikasiParts = r._parts.length > 0 ? r._parts : ['(Tanpa Klasifikasi)'];
       const share = r.amount / klasifikasiParts.length;
+      const reasonRaw = compMode === 'mom' ? r.reasonMoM : compMode === 'yoy' ? r.reasonYoY : r.reasonYtD;
+      const reasonList = String(reasonRaw || '').split(';').map(s => s.trim()).filter(Boolean);
+      if (reasonList.length > 0) {
+        for (const klasifikasi of klasifikasiParts) {
+          const rs = entry.reasonMap.get(klasifikasi) ?? new Set<string>();
+          for (const reason of reasonList) rs.add(reason);
+          entry.reasonMap.set(klasifikasi, rs);
+        }
+      }
 
       if (periodesA.has(r.periode)) {
         for (const klasifikasi of klasifikasiParts) {
@@ -825,25 +920,73 @@ export default function DetailAkunFluktuasiPage() {
           ...entry.mapB.keys(),
         ]);
 
-        const rows = [...allKlasifikasi]
+        const detailRows = [...allKlasifikasi]
           .map((klasifikasi) => ({
             klasifikasi,
             prev: entry.mapB.get(klasifikasi) ?? 0,
             curr: entry.mapA.get(klasifikasi) ?? 0,
+            delta: (entry.mapA.get(klasifikasi) ?? 0) - (entry.mapB.get(klasifikasi) ?? 0),
+            reason: [...(entry.reasonMap.get(klasifikasi) ?? new Set<string>())].join('; '),
+            reasons: [...(entry.reasonMap.get(klasifikasi) ?? new Set<string>())],
           }))
           .filter((row) => row.prev !== 0 || row.curr !== 0)
+          .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+        const rows = detailRows
+          .map((r) => ({ klasifikasi: r.klasifikasi, prev: r.prev, curr: r.curr }))
           .sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)));
 
         return {
           accountCode,
           rows,
-          frameReason: summarizeAccountFrameReason(rows, compMode),
+          detailRows,
+          frameReason: summarizeAccountFrameReason(detailRows, compMode),
         };
       })
       .sort((a, b) => activeTabDef.accountCodes.indexOf(a.accountCode) - activeTabDef.accountCodes.indexOf(b.accountCode));
 
     return { frames, labelA, labelB };
   }, [records, compMode, compPeriode, activeTabDef]);
+
+  const activeReasonFrame = useMemo(
+    () => accountFramesByMode.frames.find((f) => f.accountCode === activeReasonAccountCode) ?? null,
+    [accountFramesByMode.frames, activeReasonAccountCode],
+  );
+
+  const legendColors = useMemo(
+    () => resolveDetailSeriesColors(accountFramesByMode.labelB || 'Basis', accountFramesByMode.labelA || 'Berjalan'),
+    [accountFramesByMode.labelA, accountFramesByMode.labelB],
+  );
+
+  useEffect(() => {
+    if (!activeReasonFrame) return;
+    if (!reasonOverlayRef.current || !reasonPanelRef.current) return;
+
+    gsap.fromTo(reasonOverlayRef.current, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'power2.out' });
+    gsap.fromTo(reasonPanelRef.current, { opacity: 0, y: 22, scale: 0.985 }, { opacity: 1, y: 0, scale: 1, duration: 0.25, ease: 'power3.out' });
+
+    if (reasonListRef.current) {
+      const items = Array.from(reasonListRef.current.querySelectorAll('.reason-item'));
+      if (items.length > 0) {
+        animate(items, {
+          opacity: [0, 1],
+          translateY: [8, 0],
+          duration: 220,
+          delay: stagger(45),
+          ease: 'easeOutQuad',
+        });
+      }
+    }
+  }, [activeReasonFrame]);
+
+  useEffect(() => {
+    if (!activeReasonFrame) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setActiveReasonAccountCode(null);
+    };
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, [activeReasonFrame]);
 
   const allAkunCodes = useMemo(() => {
     const m = new Map<string, number>();
@@ -1128,9 +1271,21 @@ export default function DetailAkunFluktuasiPage() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-                {accountFramesByMode.frames.map((frame) => (
-                  <Card key={frame.accountCode} className="border border-slate-200 shadow-sm bg-white">
+              <>
+                <div className="mb-1 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[10px] font-semibold text-slate-700">
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: legendColors.prev }} />
+                    <span>{accountFramesByMode.labelB || 'Basis'}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: legendColors.curr }} />
+                    <span>{accountFramesByMode.labelA || 'Berjalan'}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                  {accountFramesByMode.frames.map((frame) => (
+                    <Card key={frame.accountCode} className="border border-slate-200 shadow-sm bg-white">
                     <CardHeader className="p-2 pb-1">
                       <CardTitle className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide text-red-600">
                         {(ACCOUNT_NAMES[frame.accountCode] ?? frame.accountCode) + ` (${frame.accountCode})`}
@@ -1148,12 +1303,27 @@ export default function DetailAkunFluktuasiPage() {
                                 accountFramesByMode.labelB || 'Basis',
                                 accountFramesByMode.labelA || 'Berjalan',
                               )}
-                              options={buildDetailChartOptions(isCompact)}
+                              options={buildDetailChartOptions(
+                                isCompact,
+                                accountFramesByMode.labelB || 'Basis',
+                                accountFramesByMode.labelA || 'Berjalan',
+                              )}
                             />
                           </div>
 
                           <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-1.5">
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 mb-1">Reason Singkat</p>
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Reason Singkat</p>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-5 px-1.5 text-[9px] border-blue-200 text-blue-700 hover:bg-blue-50"
+                                onClick={() => setActiveReasonAccountCode(frame.accountCode)}
+                              >
+                                Reason Lengkap
+                              </Button>
+                            </div>
                             <p className="text-[10px] leading-4 text-slate-700 max-h-16 overflow-y-auto pr-1 whitespace-normal break-words">
                               {frame.frameReason || '-'}
                             </p>
@@ -1161,15 +1331,78 @@ export default function DetailAkunFluktuasiPage() {
                         </div>
                       )}
                     </CardContent>
-                  </Card>
-                ))}
-              </div>
+                    </Card>
+                  ))}
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
       </div>
 
       <div className="pb-4" />
+
+      {activeReasonFrame && (
+        <div
+          ref={reasonOverlayRef}
+          className="fixed inset-0 z-[70] bg-slate-900/35 backdrop-blur-[1px] px-3 py-5 sm:p-6 flex items-center justify-center"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setActiveReasonAccountCode(null);
+          }}
+        >
+          <Card ref={reasonPanelRef} className="w-full max-w-3xl border border-blue-100 shadow-2xl bg-white">
+            <CardHeader className="p-3 pb-2 border-b border-slate-100">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-sm font-bold uppercase tracking-wide text-slate-800">
+                    Reason Lengkap - {(ACCOUNT_NAMES[activeReasonFrame.accountCode] ?? activeReasonFrame.accountCode)} ({activeReasonFrame.accountCode})
+                  </CardTitle>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {compMode.toUpperCase()} • {accountFramesByMode.labelB || 'Basis'} vs {accountFramesByMode.labelA || 'Berjalan'}
+                  </p>
+                </div>
+                <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setActiveReasonAccountCode(null)}>
+                  Tutup
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-3 pt-2 space-y-2">
+              <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 mb-1">Ringkasan</p>
+                <p className="text-[11px] leading-5 text-slate-700">{activeReasonFrame.frameReason || '-'}</p>
+              </div>
+
+              <ScrollArea className="h-[46vh] rounded-md border border-slate-200 bg-white">
+                <div ref={reasonListRef} className="p-2.5 space-y-2">
+                  {activeReasonFrame.detailRows.length === 0 ? (
+                    <p className="text-xs text-slate-500">Tidak ada detail klasifikasi movement pada akun ini.</p>
+                  ) : (
+                    activeReasonFrame.detailRows
+                      .filter((row) => row.delta !== 0)
+                      .map((row) => (
+                        <div key={`${activeReasonFrame.accountCode}::${row.klasifikasi}`} className="reason-item rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <p className="text-xs font-semibold text-slate-800">{row.klasifikasi}</p>
+                            <Badge
+                              variant="outline"
+                              className={`h-5 text-[10px] ${row.delta >= 0 ? 'border-emerald-200 text-emerald-700 bg-emerald-50' : 'border-rose-200 text-rose-700 bg-rose-50'}`}
+                            >
+                              {row.delta >= 0 ? 'Naik' : 'Turun'} {fmtCompact(Math.abs(row.delta))}
+                            </Badge>
+                            <span className="text-[10px] text-slate-500">{fmtCompact(row.prev)} {'->'} {fmtCompact(row.curr)}</span>
+                          </div>
+                          <p className="mt-1 text-[11px] leading-5 text-slate-600 whitespace-pre-wrap break-words">
+                            {row.reason || 'Tidak ada narasi reason pada klasifikasi ini.'}
+                          </p>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
     </div>
   );

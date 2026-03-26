@@ -137,6 +137,18 @@ type RekapReasonRecord = {
   reasonYtD?: string;
 };
 
+type RekapGroupResponse = {
+  success?: boolean;
+  data?: {
+    rekapSheetData?: {
+      rows?: Array<{
+        type?: string;
+        values?: unknown[];
+      }>;
+    } | null;
+  };
+};
+
 type FrameReasonRow = {
   klasifikasi: string;
   prev: number;
@@ -189,16 +201,28 @@ const autoReasonFromContributors = (row: FrameReasonRow): string => {
 
 const SUBTOTAL_DELTA_EPSILON = 1;
 
-const normalizeOverviewKlasifikasi = (raw: string, accountCode: string): string => {
-  const first = String(raw || '').split(';').map(s => s.trim()).find(Boolean) ?? '';
-  if (!first) return '';
+const parseOverviewKlasifikasiParts = (raw: string, accountCode: string): string[] => {
+  const parts = String(raw || '').split(';').map(s => s.trim()).filter(Boolean);
+  if (parts.length === 0) return [];
 
-  // Untuk frame selisih kurs (akun 716*), abaikan klasifikasi yang bukan kategori kurs.
-  if (accountCode.startsWith('716') && !/selisih\s*kurs|kurs/i.test(first)) {
-    return '';
+  // Untuk frame selisih kurs (akun 716*), hanya klasifikasi bertema kurs yang dipakai.
+  if (accountCode.startsWith('716')) {
+    return parts.filter((p) => /selisih\s*kurs|kurs/i.test(p));
   }
 
-  return first;
+  return [...new Set(parts)];
+};
+
+const isKlasifikasiAllowedInFrame = (frameKey: FrameKey, klasifikasi: string): boolean => {
+  const k = String(klasifikasi || '').trim().toLowerCase();
+  if (!k) return false;
+
+  // Rule bisnis: Kor. Tagihan Air hanya valid pada kelompok Pendapatan Lain-Lain.
+  if (/^kor\.?\s*tagihan\s*air$/.test(k) && frameKey !== 'pendapatan-lain') {
+    return false;
+  }
+
+  return true;
 };
 
 const summarizeFrameReason = (
@@ -288,6 +312,58 @@ type FrameDef = {
   match: (accountCode: string) => boolean;
 };
 
+type FrameKey = FrameDef['key'];
+
+const EMPTY_FRAME_ACCOUNT_MAP: Record<FrameKey, Set<string>> = {
+  'beban-bunga': new Set<string>(),
+  'pendapatan-lain': new Set<string>(),
+  'pendapatan-bunga': new Set<string>(),
+  'selisih-kurs': new Set<string>(),
+};
+
+const parseFrameKeyFromCategory = (raw: string): FrameKey | null => {
+  const s = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  if (s.includes('beban bunga')) return 'beban-bunga';
+  if (s.includes('pendapatan lain')) return 'pendapatan-lain';
+  if (s.includes('pendapatan bunga')) return 'pendapatan-bunga';
+  if (s.includes('selisih kurs')) return 'selisih-kurs';
+  return null;
+};
+
+const buildFrameAccountsFromRekap = (resp: RekapGroupResponse | null | undefined): Record<FrameKey, Set<string>> => {
+  const out: Record<FrameKey, Set<string>> = {
+    'beban-bunga': new Set<string>(),
+    'pendapatan-lain': new Set<string>(),
+    'pendapatan-bunga': new Set<string>(),
+    'selisih-kurs': new Set<string>(),
+  };
+
+  const rows = resp?.data?.rekapSheetData?.rows;
+  if (!Array.isArray(rows)) return out;
+
+  let currentFrame: FrameKey | null = null;
+  for (const row of rows) {
+    const values = Array.isArray(row?.values) ? row.values : [];
+    const accountCode = String(values[0] ?? '').trim();
+    const description = String(values[1] ?? '').trim();
+
+    if (row?.type === 'category') {
+      currentFrame = parseFrameKeyFromCategory(description);
+      continue;
+    }
+
+    if (row?.type !== 'detail') continue;
+    if (!currentFrame) continue;
+    if (!/^\d{5,}$/.test(accountCode)) continue;
+    if (EXCLUDED_OVERVIEW_ACCOUNT_CODES.has(accountCode)) continue;
+
+    out[currentFrame].add(accountCode);
+  }
+
+  return out;
+};
+
 const FRAME_DEFS: FrameDef[] = [
   {
     key: 'beban-bunga',
@@ -342,12 +418,25 @@ const resolveOverviewSeriesColors = (labelPrev: string, labelCurr: string): Seri
     return fallback;
   };
 
-  return {
+  let colors: SeriesColors = {
     prev: colorForYear(prevYear, '#5fa3f4'),
     curr: colorForYear(currYear, '#243b73'),
     prevText: colorForYear(prevYear, '#2f6fbe'),
     currText: colorForYear(currYear, '#172a57'),
   };
+
+  // Jika tahun sama (mis. MOM Jan 2026 vs Feb 2026), pakai palet role-based
+  // agar dua seri tetap mudah dibedakan.
+  if (prevYear && currYear && prevYear === currYear) {
+    colors = {
+      prev: SOFT_BLUE_2025,
+      curr: NAVY_2026,
+      prevText: '#2f6fbe',
+      currText: '#132657',
+    };
+  }
+
+  return colors;
 };
 
 const buildOverviewChartData = (
@@ -401,15 +490,21 @@ const buildOverviewChartOptions = (isCompact: boolean, labelPrev: string, labelC
       },
       anchor: (ctx: any) => {
         const v = Number(ctx.dataset?.data?.[ctx.dataIndex] ?? 0);
-        return v === 0 ? 'center' : 'end';
+        if (v === 0) return 'center';
+        // Untuk batang negatif, anchor ke sisi baseline (nol).
+        return v < 0 ? 'start' : 'end';
       },
       align: (ctx: any) => {
         const v = Number(ctx.dataset?.data?.[ctx.dataIndex] ?? 0);
-        return v === 0 ? 'top' : 'end';
+        // Nilai nol ditaruh di bawah baseline agar tidak ter-clip di atas area chart.
+        if (v === 0) return 'bottom';
+        // Nilai negatif ditempatkan sedikit ke dalam batang dari baseline agar tidak terpotong.
+        return v < 0 ? 'bottom' : 'end';
       },
       offset: (ctx: any) => {
         const v = Number(ctx.dataset?.data?.[ctx.dataIndex] ?? 0);
-        return v === 0 ? 6 : 2;
+        if (v === 0) return 2;
+        return v < 0 ? 2 : 2;
       },
       clamp: true,
       clip: false,
@@ -463,6 +558,7 @@ export default function OverviewFluktuasiPage() {
   const [loading, setLoading]                   = useState(true);
   const [isMobileSidebarOpen, setMobileSidebar] = useState(false);
   const [isCompact, setIsCompact]               = useState(false);
+  const [frameAccountsFromRekap, setFrameAccountsFromRekap] = useState<Record<FrameKey, Set<string>>>(EMPTY_FRAME_ACCOUNT_MAP);
   const [activeReasonFrameKey, setActiveReasonFrameKey] = useState<FrameDef['key'] | null>(null);
   const [expandedReasonRows, setExpandedReasonRows] = useState<Set<string>>(new Set());
 
@@ -477,11 +573,18 @@ export default function OverviewFluktuasiPage() {
       fetch('/api/fluktuasi/rekap-amounts')
         .then((r) => r.json())
         .catch(() => ({ success: false, data: [] as RekapReasonRecord[] })),
+      fetch('/api/fluktuasi')
+        .then((r) => r.json())
+        .catch(() => ({ success: false, data: { rekapSheetData: null } } as RekapGroupResponse)),
     ])
-      .then(([akunData, rekapData]: [
+      .then(([akunData, rekapData, rekapGroupData]: [
         { success: boolean; data: AkunPeriodeRecord[] },
-        { success: boolean; data: RekapReasonRecord[] }
+        { success: boolean; data: RekapReasonRecord[] },
+        RekapGroupResponse,
       ]) => {
+        const groupedAccounts = buildFrameAccountsFromRekap(rekapGroupData);
+        setFrameAccountsFromRekap(groupedAccounts);
+
         if (akunData.success && Array.isArray(akunData.data)) {
           const reasonMap = new Map<string, { reasonMoM: string; reasonYoY: string; reasonYtD: string }>();
           if (rekapData?.success && Array.isArray(rekapData.data)) {
@@ -592,6 +695,19 @@ export default function OverviewFluktuasiPage() {
       tagB = String(yearA - 1).slice(-2);
     }
 
+    const frameAccountsResolved = FRAME_DEFS.map((frame) => {
+      const fromRekap = frameAccountsFromRekap[frame.key];
+      const accounts = (fromRekap && fromRekap.size > 0) ? [...fromRekap] : frame.accounts;
+      return { key: frame.key, accounts: new Set(accounts) };
+    });
+
+    const accountToFrame = new Map<string, FrameKey>();
+    for (const entry of frameAccountsResolved) {
+      for (const accountCode of entry.accounts) {
+        accountToFrame.set(accountCode, entry.key);
+      }
+    }
+
     const frameMaps = FRAME_DEFS.map(frame => ({
       ...frame,
       mapA: new Map<string, number>(),
@@ -600,38 +716,76 @@ export default function OverviewFluktuasiPage() {
       contributorMaps: new Map<string, Map<string, { prev: number; curr: number }>>(),
     }));
 
+    const frameByKey = new Map(frameMaps.map((f) => [f.key, f]));
+
+    // Pass-1: tentukan frame dominan untuk tiap klasifikasi pada window komparasi aktif.
+    const klasifikasiFrameTotals = new Map<string, Map<FrameKey, number>>();
     for (const r of records) {
       if (EXCLUDED_OVERVIEW_ACCOUNT_CODES.has(r.accountCode)) continue;
-      const frame = frameMaps.find(f => f.match(r.accountCode));
+      const frameKey = accountToFrame.get(r.accountCode);
+      if (!frameKey) continue;
+      if (!periodesA.has(r.periode) && !periodesB.has(r.periode)) continue;
+
+      const parts = parseOverviewKlasifikasiParts(String(r.klasifikasi || ''), r.accountCode)
+        .filter((k) => isKlasifikasiAllowedInFrame(frameKey, k));
+      if (parts.length === 0) continue;
+
+      const shareAbs = Math.abs(r.amount / parts.length);
+      for (const klasifikasi of parts) {
+        const m = klasifikasiFrameTotals.get(klasifikasi) ?? new Map<FrameKey, number>();
+        m.set(frameKey, (m.get(frameKey) ?? 0) + shareAbs);
+        klasifikasiFrameTotals.set(klasifikasi, m);
+      }
+    }
+
+    const dominantFrameByKlasifikasi = new Map<string, FrameKey>();
+    for (const [klasifikasi, totals] of klasifikasiFrameTotals.entries()) {
+      const best = [...totals.entries()].sort((a, b) => b[1] - a[1])[0];
+      if (best) dominantFrameByKlasifikasi.set(klasifikasi, best[0]);
+    }
+
+    for (const r of records) {
+      if (EXCLUDED_OVERVIEW_ACCOUNT_CODES.has(r.accountCode)) continue;
+      const frameKey = accountToFrame.get(r.accountCode);
+      if (!frameKey) continue;
+      const frame = frameByKey.get(frameKey);
       if (!frame) continue;
 
-      const klasifikasi = normalizeOverviewKlasifikasi(String(r.klasifikasi || ''), r.accountCode);
-      if (!klasifikasi) continue;
+      const klasifikasiParts = parseOverviewKlasifikasiParts(String(r.klasifikasi || ''), r.accountCode);
+      const filteredParts = klasifikasiParts.filter((k) => {
+        if (!isKlasifikasiAllowedInFrame(frame.key, k)) return false;
+        const dominant = dominantFrameByKlasifikasi.get(k);
+        return !dominant || dominant === frame.key;
+      });
+      if (filteredParts.length === 0) continue;
+      const share = r.amount / filteredParts.length;
 
       const reasonRaw = compMode === 'mom' ? r.reasonMoM : compMode === 'yoy' ? r.reasonYoY : r.reasonYtD;
       const reasonList = String(reasonRaw || '').split(';').map(s => s.trim()).filter(Boolean);
-      if (reasonList.length > 0) {
-        const set = frame.reasons.get(klasifikasi) ?? new Set<string>();
-        for (const reason of reasonList) set.add(reason);
-        frame.reasons.set(klasifikasi, set);
-      }
+      for (const klasifikasi of filteredParts) {
+        if (reasonList.length > 0) {
+          const set = frame.reasons.get(klasifikasi) ?? new Set<string>();
+          for (const reason of reasonList) set.add(reason);
+          frame.reasons.set(klasifikasi, set);
+        }
 
-      if (periodesA.has(r.periode)) {
-        frame.mapA.set(klasifikasi, (frame.mapA.get(klasifikasi) ?? 0) + r.amount);
+        if (periodesA.has(r.periode)) {
+          frame.mapA.set(klasifikasi, (frame.mapA.get(klasifikasi) ?? 0) + share);
 
-        const byAcc = frame.contributorMaps.get(klasifikasi) ?? new Map<string, { prev: number; curr: number }>();
-        const currAcc = byAcc.get(r.accountCode) ?? { prev: 0, curr: 0 };
-        currAcc.curr += r.amount;
-        byAcc.set(r.accountCode, currAcc);
-        frame.contributorMaps.set(klasifikasi, byAcc);
-      } else if (periodesB.has(r.periode)) {
-        frame.mapB.set(klasifikasi, (frame.mapB.get(klasifikasi) ?? 0) + r.amount);
+          const byAcc = frame.contributorMaps.get(klasifikasi) ?? new Map<string, { prev: number; curr: number }>();
+          const currAcc = byAcc.get(r.accountCode) ?? { prev: 0, curr: 0 };
+          currAcc.curr += share;
+          byAcc.set(r.accountCode, currAcc);
+          frame.contributorMaps.set(klasifikasi, byAcc);
+        } else if (periodesB.has(r.periode)) {
+          frame.mapB.set(klasifikasi, (frame.mapB.get(klasifikasi) ?? 0) + share);
 
-        const byAcc = frame.contributorMaps.get(klasifikasi) ?? new Map<string, { prev: number; curr: number }>();
-        const currAcc = byAcc.get(r.accountCode) ?? { prev: 0, curr: 0 };
-        currAcc.prev += r.amount;
-        byAcc.set(r.accountCode, currAcc);
-        frame.contributorMaps.set(klasifikasi, byAcc);
+          const byAcc = frame.contributorMaps.get(klasifikasi) ?? new Map<string, { prev: number; curr: number }>();
+          const currAcc = byAcc.get(r.accountCode) ?? { prev: 0, curr: 0 };
+          currAcc.prev += share;
+          byAcc.set(r.accountCode, currAcc);
+          frame.contributorMaps.set(klasifikasi, byAcc);
+        }
       }
     }
 
@@ -689,7 +843,7 @@ export default function OverviewFluktuasiPage() {
     });
 
     return { frames, labelA, labelB, tagA, tagB };
-  }, [records, compMode, compPeriode]);
+  }, [records, compMode, compPeriode, frameAccountsFromRekap]);
 
   const legendColors = useMemo(
     () => resolveOverviewSeriesColors(accountFramesByMode.labelB || accountFramesByMode.tagB, accountFramesByMode.labelA || accountFramesByMode.tagA),
