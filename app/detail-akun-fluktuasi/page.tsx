@@ -55,6 +55,66 @@ type DetailFrameRow = {
 // --- Helpers -----------------------------------------------------------------
 const MONTHS_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 
+type FrameKey = 'beban-bunga' | 'pendapatan-lain' | 'pendapatan-bunga' | 'selisih-kurs';
+
+type RekapSheetRow = {
+  type?: 'category' | 'detail' | 'amount';
+  category?: string;
+  detail?: string;
+  values?: unknown[];
+};
+
+type RekapData = {
+  rekapSheetData?: { rows?: RekapSheetRow[] };
+};
+
+const EXCLUDED_PARENT_ACCOUNT_CODES_DETAIL = new Set([
+  '71510000', '71400000', '71560000', '71300000', '71600000',
+]);
+
+const parseFrameKeyFromCategory = (desc: string): FrameKey | null => {
+  const s = String(desc || '').toLowerCase();
+  if (s.includes('bunga')) return 'beban-bunga';
+  if (s.includes('lain')) return 'pendapatan-lain';
+  if (s.includes('kurs')) return 'selisih-kurs';
+  if (s.includes('bunga')) return 'pendapatan-bunga';
+  return null;
+};
+
+// Build frame account mapping from rekap sheet (source of truth)
+const buildFrameAccountsFromRekapDetail = (rekapData: RekapData | null | undefined): Record<FrameKey, Set<string>> => {
+  const out: Record<FrameKey, Set<string>> = {
+    'beban-bunga': new Set<string>(),
+    'pendapatan-lain': new Set<string>(),
+    'pendapatan-bunga': new Set<string>(),
+    'selisih-kurs': new Set<string>(),
+  };
+
+  const rows = rekapData?.rekapSheetData?.rows;
+  if (!Array.isArray(rows)) return out;
+
+  let currentFrame: FrameKey | null = null;
+  for (const row of rows) {
+    const values = Array.isArray(row?.values) ? row.values : [];
+    const accountCode = String(values[0] ?? '').trim();
+    const description = String(values[1] ?? '').trim();
+
+    if (row?.type === 'category') {
+      currentFrame = parseFrameKeyFromCategory(description);
+      continue;
+    }
+
+    if (row?.type !== 'detail') continue;
+    if (!currentFrame) continue;
+    if (!/^\d{5,}$/.test(accountCode)) continue;
+    if (EXCLUDED_PARENT_ACCOUNT_CODES_DETAIL.has(accountCode)) continue;
+
+    out[currentFrame].add(accountCode);
+  }
+
+  return out;
+};
+
 const fmtCompact = (n: number): string => {
   const a = Math.abs(n);
   const sign = n < 0 ? '-' : '';
@@ -658,6 +718,12 @@ type ProcessedRecord = AkunPeriodeRecord & { _parts: string[] };
 export default function DetailAkunFluktuasiPage() {
   const [records, setRecords]                   = useState<ProcessedRecord[]>([]);
   const [loading, setLoading]                   = useState(true);
+  const [frameAccountsMap, setFrameAccountsMap] = useState<Record<FrameKey, Set<string>>>({
+    'beban-bunga': new Set(),
+    'pendapatan-lain': new Set(),
+    'pendapatan-bunga': new Set(),
+    'selisih-kurs': new Set(),
+  });
   const [isMobileSidebarOpen, setMobileSidebar] = useState(false);
   const [isCompact, setIsCompact]               = useState(false);
   const [activeReasonAccountCode, setActiveReasonAccountCode] = useState<string | null>(null);
@@ -696,6 +762,13 @@ export default function DetailAkunFluktuasiPage() {
 
   const loadData = useCallback(async () => {
     try {
+      // Fetch full rekap data to build frame account mapping
+      const resFluktuasi = await fetch('/api/fluktuasi');
+      const dataFluktuasi = await resFluktuasi.json();
+      const rekap = dataFluktuasi?.data as RekapData | undefined;
+      const frameAccounts = buildFrameAccountsFromRekapDetail(rekap);
+      setFrameAccountsMap(frameAccounts);
+
       // Primary source: rekap-amounts (covers full imported rekap data)
       const resRekap = await fetch('/api/fluktuasi/rekap-amounts');
       const dataRekap = await resRekap.json();
@@ -886,7 +959,9 @@ export default function DetailAkunFluktuasiPage() {
     }
 
     const allowedCodes = new Set(
-      activeTabDef.accountCodes.filter((code) => !EXCLUDED_PARENT_ACCOUNT_CODES.has(code)),
+      frameAccountsMap[activeAccountTab]?.size > 0
+        ? frameAccountsMap[activeAccountTab]
+        : activeTabDef.accountCodes.filter((code) => !EXCLUDED_PARENT_ACCOUNT_CODES.has(code))
     );
     const accountMap = new Map<string, { mapA: Map<string, number>; mapB: Map<string, number>; reasonMap: Map<string, Set<string>> }>();
 
@@ -962,10 +1037,17 @@ export default function DetailAkunFluktuasiPage() {
           frameReason: summarizeAccountFrameReason(detailRows, compMode),
         };
       })
-      .sort((a, b) => activeTabDef.accountCodes.indexOf(a.accountCode) - activeTabDef.accountCodes.indexOf(b.accountCode));
+      .sort((a, b) => {
+        // Sort by the order from frameAccountsMap, if available
+        const aIdx = [...(frameAccountsMap[activeAccountTab] || [])].indexOf(a.accountCode);
+        const bIdx = [...(frameAccountsMap[activeAccountTab] || [])].indexOf(b.accountCode);
+        if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
+        // Fallback to hardcoded order
+        return activeTabDef.accountCodes.indexOf(a.accountCode) - activeTabDef.accountCodes.indexOf(b.accountCode);
+      });
 
     return { frames, labelA, labelB };
-  }, [records, compMode, compPeriode, activeTabDef]);
+  }, [records, compMode, compPeriode, activeTabDef, frameAccountsMap, activeAccountTab]);
 
   const activeReasonFrame = useMemo(
     () => accountFramesByMode.frames.find((f) => f.accountCode === activeReasonAccountCode) ?? null,
