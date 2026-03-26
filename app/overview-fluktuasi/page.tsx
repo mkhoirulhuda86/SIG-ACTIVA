@@ -149,6 +149,12 @@ type RekapGroupResponse = {
   };
 };
 
+type KeywordRule = {
+  type?: string;
+  result?: string;
+  accountCodes?: string;
+};
+
 type FrameReasonRow = {
   klasifikasi: string;
   prev: number;
@@ -561,6 +567,7 @@ export default function OverviewFluktuasiPage() {
   const [frameAccountsFromRekap, setFrameAccountsFromRekap] = useState<Record<FrameKey, Set<string>>>(EMPTY_FRAME_ACCOUNT_MAP);
   const [activeReasonFrameKey, setActiveReasonFrameKey] = useState<FrameDef['key'] | null>(null);
   const [expandedReasonRows, setExpandedReasonRows] = useState<Set<string>>(new Set());
+  const [klasifikasiScopeMap, setKlasifikasiScopeMap] = useState<Map<string, Set<string>>>(new Map());
 
   const [compMode,       setCompMode]       = useState<'mom' | 'yoy' | 'ytd'>('yoy');
   const [compPeriodeRaw, setCompPeriodeRaw] = useState<string>('');
@@ -576,14 +583,36 @@ export default function OverviewFluktuasiPage() {
       fetch('/api/fluktuasi')
         .then((r) => r.json())
         .catch(() => ({ success: false, data: { rekapSheetData: null } } as RekapGroupResponse)),
+      fetch('/api/fluktuasi/keywords')
+        .then((r) => r.json())
+        .catch(() => ({ success: false, data: [] as KeywordRule[] })),
     ])
-      .then(([akunData, rekapData, rekapGroupData]: [
+      .then(([akunData, rekapData, rekapGroupData, kwResp]: [
         { success: boolean; data: AkunPeriodeRecord[] },
         { success: boolean; data: RekapReasonRecord[] },
         RekapGroupResponse,
+        { success?: boolean; data?: KeywordRule[] },
       ]) => {
         const groupedAccounts = buildFrameAccountsFromRekap(rekapGroupData);
         setFrameAccountsFromRekap(groupedAccounts);
+
+        // Build: klasifikasi result -> allowed account codes (from master keyword restrictions)
+        const scope = new Map<string, Set<string>>();
+        if (kwResp?.success && Array.isArray(kwResp.data)) {
+          for (const kw of kwResp.data) {
+            if (String(kw.type ?? '').trim().toLowerCase() !== 'klasifikasi') continue;
+            const result = String(kw.result ?? '').trim().toLowerCase();
+            if (!result) continue;
+            const rawCodes = String(kw.accountCodes ?? '').trim();
+            if (!rawCodes) continue; // unrestricted keyword
+            const allowed = new Set(rawCodes.split(',').map((s) => s.trim()).filter(Boolean));
+            if (allowed.size === 0) continue;
+            const existing = scope.get(result) ?? new Set<string>();
+            for (const code of allowed) existing.add(code);
+            scope.set(result, existing);
+          }
+        }
+        setKlasifikasiScopeMap(scope);
 
         if (akunData.success && Array.isArray(akunData.data)) {
           const reasonMap = new Map<string, { reasonMoM: string; reasonYoY: string; reasonYtD: string }>();
@@ -696,9 +725,16 @@ export default function OverviewFluktuasiPage() {
     }
 
     const frameAccountsResolved = FRAME_DEFS.map((frame) => {
-      const fromRekap = frameAccountsFromRekap[frame.key];
-      const accounts = (fromRekap && fromRekap.size > 0) ? [...fromRekap] : frame.accounts;
-      return { key: frame.key, accounts: new Set(accounts) };
+      // Deterministic mapping from current akun-periode records.
+      // Prevent stale snapshot rekap from mis-grouping accounts.
+      const accounts = new Set(
+        records
+          .map((r) => String(r.accountCode ?? '').trim())
+          .filter((code) => /^\d{5,}$/.test(code))
+          .filter((code) => !EXCLUDED_OVERVIEW_ACCOUNT_CODES.has(code))
+          .filter((code) => frame.match(code)),
+      );
+      return { key: frame.key, accounts };
     });
 
     const accountToFrame = new Map<string, FrameKey>();
@@ -754,6 +790,8 @@ export default function OverviewFluktuasiPage() {
       const klasifikasiParts = parseOverviewKlasifikasiParts(String(r.klasifikasi || ''), r.accountCode);
       const filteredParts = klasifikasiParts.filter((k) => {
         if (!isKlasifikasiAllowedInFrame(frame.key, k)) return false;
+        const scope = klasifikasiScopeMap.get(String(k).trim().toLowerCase());
+        if (scope && !scope.has(r.accountCode)) return false;
         const dominant = dominantFrameByKlasifikasi.get(k);
         return !dominant || dominant === frame.key;
       });
@@ -843,7 +881,7 @@ export default function OverviewFluktuasiPage() {
     });
 
     return { frames, labelA, labelB, tagA, tagB };
-  }, [records, compMode, compPeriode, frameAccountsFromRekap]);
+  }, [records, compMode, compPeriode, frameAccountsFromRekap, klasifikasiScopeMap]);
 
   const legendColors = useMemo(
     () => resolveOverviewSeriesColors(accountFramesByMode.labelB || accountFramesByMode.tagB, accountFramesByMode.labelA || accountFramesByMode.tagA),

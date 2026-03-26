@@ -74,10 +74,10 @@ const EXCLUDED_PARENT_ACCOUNT_CODES_DETAIL = new Set([
 
 const parseFrameKeyFromCategory = (desc: string): FrameKey | null => {
   const s = String(desc || '').toLowerCase();
-  if (s.includes('bunga')) return 'beban-bunga';
+  if (s.includes('beban bunga')) return 'beban-bunga';
   if (s.includes('lain')) return 'pendapatan-lain';
+  if (s.includes('pendapatan bunga')) return 'pendapatan-bunga';
   if (s.includes('kurs')) return 'selisih-kurs';
-  if (s.includes('bunga')) return 'pendapatan-bunga';
   return null;
 };
 
@@ -154,6 +154,16 @@ const summarizeAccountFrameReason = (
   if (topTurun) summary += ` Turun terbesar: ${topTurun.klasifikasi} ${fmtCompact(Math.abs(topTurun.delta))}.`;
 
   return summary;
+};
+
+const buildAutoDetailRowReason = (row: DetailFrameRow, mode: 'mom' | 'yoy' | 'ytd'): string => {
+  const movement = row.delta > 0 ? 'meningkat' : row.delta < 0 ? 'menurun' : 'stabil';
+  const modeLabel = mode.toUpperCase();
+  if (row.delta === 0) {
+    return `${modeLabel}: nilai klasifikasi ini stabil (tidak ada perubahan) pada periode pembanding.`;
+  }
+  return `${modeLabel}: klasifikasi ini ${movement} ${fmtCompact(Math.abs(row.delta))} ` +
+    `dari ${fmtCompact(row.prev)} menjadi ${fmtCompact(row.curr)}.`;
 };
 
 // Cached periode label map to avoid repeated string splits
@@ -726,6 +736,7 @@ function PageSkeleton() {
 
 // --- Pre-processed record type ----------------------------------------------
 type ProcessedRecord = AkunPeriodeRecord & { _parts: string[] };
+type KeywordRule = { type?: string; result?: string; accountCodes?: string };
 
 // --- Main Component ----------------------------------------------------------
 export default function DetailAkunFluktuasiPage() {
@@ -775,39 +786,93 @@ export default function DetailAkunFluktuasiPage() {
 
   const loadData = useCallback(async () => {
     try {
-      // Fetch full rekap data to build frame account mapping
-      const resFluktuasi = await fetch('/api/fluktuasi');
-      const dataFluktuasi = await resFluktuasi.json();
-      const rekap = dataFluktuasi?.data as RekapData | undefined;
-      const frameAccounts = buildFrameAccountsFromRekapDetail(rekap);
-      setFrameAccountsMap(frameAccounts);
+      // Source of truth for dashboard klasifikasi: akun-periode table.
+      const [resAkun, resRekapReasons, resKeywords] = await Promise.all([
+        fetch('/api/fluktuasi/akun-periodes'),
+        fetch('/api/fluktuasi/rekap-amounts').catch(() => null),
+        fetch('/api/fluktuasi/keywords').catch(() => null),
+      ]);
+      const dataAkun = await resAkun.json();
+      const sourceRows: AkunPeriodeRecord[] =
+        dataAkun?.success && Array.isArray(dataAkun.data)
+          ? (dataAkun.data as AkunPeriodeRecord[])
+          : [];
+      const dataRekapReasons =
+        resRekapReasons && 'ok' in resRekapReasons
+          ? await resRekapReasons.json().catch(() => ({ success: false, data: [] }))
+          : { success: false, data: [] as AkunPeriodeRecord[] };
+      const dataKeywords =
+        resKeywords && 'ok' in resKeywords
+          ? await resKeywords.json().catch(() => ({ success: false, data: [] }))
+          : { success: false, data: [] as KeywordRule[] };
 
-      // Primary source: rekap-amounts (covers full imported rekap data)
-      const resRekap = await fetch('/api/fluktuasi/rekap-amounts');
-      const dataRekap = await resRekap.json();
-
-      let sourceRows: AkunPeriodeRecord[] = [];
-      if (dataRekap?.success && Array.isArray(dataRekap.data) && dataRekap.data.length > 0) {
-        sourceRows = dataRekap.data as AkunPeriodeRecord[];
-      } else {
-        // Fallback for legacy data path
-        const resAkun = await fetch('/api/fluktuasi/akun-periodes?slim=1');
-        const dataAkun = await resAkun.json();
-        if (dataAkun?.success && Array.isArray(dataAkun.data)) {
-          sourceRows = dataAkun.data as AkunPeriodeRecord[];
+      const scope = new Map<string, Set<string>>();
+      if (dataKeywords?.success && Array.isArray(dataKeywords.data)) {
+        for (const kw of dataKeywords.data as KeywordRule[]) {
+          if (String(kw.type ?? '').trim().toLowerCase() !== 'klasifikasi') continue;
+          const result = String(kw.result ?? '').trim().toLowerCase();
+          if (!result) continue;
+          const rawCodes = String(kw.accountCodes ?? '').trim();
+          if (!rawCodes) continue;
+          const allowed = new Set(rawCodes.split(',').map((s) => s.trim()).filter(Boolean));
+          if (allowed.size === 0) continue;
+          const ex = scope.get(result) ?? new Set<string>();
+          for (const code of allowed) ex.add(code);
+          scope.set(result, ex);
+        }
+      }
+      const reasonMap = new Map<string, { reasonMoM?: string; reasonYoY?: string; reasonYtD?: string }>();
+      if (dataRekapReasons?.success && Array.isArray(dataRekapReasons.data)) {
+        for (const rr of dataRekapReasons.data as AkunPeriodeRecord[]) {
+          const accountCode = String(rr.accountCode ?? '').trim();
+          const periode = String(rr.periode ?? '').trim();
+          if (!accountCode || !periode) continue;
+          reasonMap.set(`${accountCode}|${periode}`, {
+            reasonMoM: String((rr as any).reasonMoM ?? '').trim(),
+            reasonYoY: String((rr as any).reasonYoY ?? '').trim(),
+            reasonYtD: String((rr as any).reasonYtD ?? '').trim(),
+          });
         }
       }
 
+      // Build frame account map from existing records (deterministic by account tab rules)
+      const frameAccounts: Record<FrameKey, Set<string>> = {
+        'beban-bunga': new Set<string>(),
+        'pendapatan-lain': new Set<string>(),
+        'pendapatan-bunga': new Set<string>(),
+        'selisih-kurs': new Set<string>(),
+      };
+      for (const row of sourceRows) {
+        const code = String(row.accountCode ?? '').trim();
+        if (!/^\d{5,}$/.test(code)) continue;
+        if (EXCLUDED_PARENT_ACCOUNT_CODES_DETAIL.has(code)) continue;
+        if (code.startsWith('7151')) frameAccounts['beban-bunga'].add(code);
+        else if (code.startsWith('714') || code.startsWith('7156')) frameAccounts['pendapatan-lain'].add(code);
+        else if (code.startsWith('713')) frameAccounts['pendapatan-bunga'].add(code);
+        else if (code.startsWith('716')) frameAccounts['selisih-kurs'].add(code);
+      }
+      setFrameAccountsMap(frameAccounts);
+
       const processed: ProcessedRecord[] = sourceRows.map((r) => {
-        const klasifikasiRaw = (r.klasifikasi || r.reasonMoM || '(Tanpa Klasifikasi)').toString();
+        const klasifikasiRaw = String(r.klasifikasi || '').trim() || '(Tanpa Klasifikasi)';
         const accountCode = String(r.accountCode || '').trim();
+        const periode = String(r.periode || '').trim();
+        const mergedReason = reasonMap.get(`${accountCode}|${periode}`);
+        const fallbackReason = String(r.remark ?? '').trim();
         return {
           ...r,
           accountCode,
-          periode: String(r.periode || '').trim(),
+          periode,
           amount: Number(r.amount || 0),
+          reasonMoM: String(mergedReason?.reasonMoM ?? r.reasonMoM ?? fallbackReason),
+          reasonYoY: String(mergedReason?.reasonYoY ?? r.reasonYoY ?? fallbackReason),
+          reasonYtD: String(mergedReason?.reasonYtD ?? r.reasonYtD ?? fallbackReason),
           // Parse klasifikasi with account-specific filtering (e.g., 716* only kurs)
-          _parts: parseDetailKlasifikasiParts(klasifikasiRaw, accountCode),
+          _parts: parseDetailKlasifikasiParts(klasifikasiRaw, accountCode).filter((k) => {
+            const allowed = scope.get(String(k).trim().toLowerCase());
+            if (!allowed) return true;
+            return allowed.has(accountCode);
+          }),
         };
       });
 
@@ -1508,7 +1573,7 @@ export default function DetailAkunFluktuasiPage() {
                             <span className="text-[10px] text-slate-500">{fmtCompact(row.prev)} {'->'} {fmtCompact(row.curr)}</span>
                           </div>
                           <p className="mt-1 text-[11px] leading-5 text-slate-600 whitespace-pre-wrap break-words">
-                            {row.reason || 'Tidak ada narasi reason pada klasifikasi ini.'}
+                            {row.reason || buildAutoDetailRowReason(row, compMode)}
                           </p>
                         </div>
                       ))

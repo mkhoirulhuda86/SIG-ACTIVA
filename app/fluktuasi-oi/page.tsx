@@ -2289,6 +2289,14 @@ export default function FluktuasiOIPage() {
       for (const sheetName of kodeAkunSheets) {
         const ws = workbook.Sheets[sheetName];
         if (!ws) continue;
+        // Scope keyword rules to this specific account-sheet (prevents "nyasar" classifications).
+        const sheetNumCode = String(sheetName).trim().match(/^(\d{5,})/)?.[1] ?? String(sheetName).trim();
+        const scopedKeywords = keywords.filter((kw) => {
+          const ac = String(kw.accountCodes ?? '').trim();
+          if (!ac) return true; // no restriction => apply to all accounts
+          const allowed = ac.split(',').map((s) => s.trim()).filter(Boolean);
+          return allowed.includes(sheetNumCode);
+        });
         const raw: any[][] = XLSXLib.utils.sheet_to_json(ws, { header: 1, defval: '' });
         if (raw.length < 2) continue;
 
@@ -2442,6 +2450,17 @@ export default function FluktuasiOIPage() {
           obj['__amount']          = amountColIdx >= 0 ? parseNum(rawRow[amountColIdx]) : 0;
           rows.push(obj);
         }
+        // Apply scoped keywords when populating klasifikasi/remark per row.
+        // (We do this after rows are collected to keep rowData mappings intact.)
+        // However, we already call matchKeywords above; so we must re-run it with scopedKeywords.
+        // To avoid double work, we re-run directly on each row here.
+        for (const rowObj of rows) {
+          const sourceText = String(klasifikasiColIdx >= 0 ? rowObj[headers[klasifikasiColIdx]] : rowObj['__klasifikasi_raw'] ?? '');
+          const docnoText  = String(docnoColIdx >= 0 ? rowObj[headers[docnoColIdx]] : rowObj['__docno_raw'] ?? '');
+          rowObj['__klasifikasi'] = matchKeywords(sourceText, scopedKeywords, 'klasifikasi', docnoText, rowObj);
+          rowObj['__remark']      = matchKeywords(sourceText, scopedKeywords, 'remark', docnoText, rowObj);
+        }
+
         result.push({ sheetName, headers, originalHeaders, rows, klasifikasiColIdx, docnoColIdx });
       }
       setSheetDataList(result);
@@ -2487,19 +2506,15 @@ export default function FluktuasiOIPage() {
       let latestDbRecords: AkunPeriodeRecord[] = [];
       let recordsToUpsert = akunPeriodesFlat;
 
-      // Append mode: preserve old periods exactly as-is by inserting ONLY new account+periode keys.
+      // Append mode: keep old periods, but still upsert uploaded keys so
+      // corrected klasifikasi/remark can overwrite previously wrong mappings.
       if (!shouldClearOldData && akunPeriodesFlat.length > 0) {
         try {
           const existingRes = await fetch('/api/fluktuasi/akun-periodes?slim=1');
           const existingJson = await existingRes.json();
           if (existingJson.success && Array.isArray(existingJson.data)) {
             latestDbRecords = existingJson.data as AkunPeriodeRecord[];
-            const existingKeys = new Set(
-              latestDbRecords.map((r) => `${String(r.accountCode).trim()}__${String(r.periode).trim()}`),
-            );
-            recordsToUpsert = akunPeriodesFlat.filter(
-              (r) => !existingKeys.has(`${String(r.accountCode).trim()}__${String(r.periode).trim()}`),
-            );
+            recordsToUpsert = akunPeriodesFlat;
           }
         } catch (e) {
           console.warn('Could not load existing akun-periode keys before append:', e);
