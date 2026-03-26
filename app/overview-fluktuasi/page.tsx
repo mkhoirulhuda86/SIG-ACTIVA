@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Skeleton } from '../components/ui/skeleton';
+import { ScrollArea } from '../components/ui/scroll-area';
 
 const Sidebar  = dynamic(() => import('../components/Sidebar'),  { ssr: false });
 const Header   = dynamic(() => import('../components/Header'),   { ssr: false });
@@ -112,6 +113,7 @@ type AkunPeriodeRecord = {
   accountCode: string;
   periode: string;
   amount: number;
+  klasifikasi?: string;
   reasonMoM?: string;
   reasonYoY?: string;
   reasonYtD?: string;
@@ -121,9 +123,34 @@ type ParsedRecord = {
   accountCode: string;
   periode: string;
   amount: number;
+  klasifikasi: string;
   reasonMoM: string;
   reasonYoY: string;
   reasonYtD: string;
+};
+
+type RekapReasonRecord = {
+  accountCode: string;
+  periode: string;
+  reasonMoM?: string;
+  reasonYoY?: string;
+  reasonYtD?: string;
+};
+
+type FrameReasonRow = {
+  klasifikasi: string;
+  prev: number;
+  curr: number;
+  delta: number;
+  reason: string;
+  reasons: string[];
+  contributors: {
+    accountCode: string;
+    accountName: string;
+    prev: number;
+    curr: number;
+    delta: number;
+  }[];
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -152,8 +179,30 @@ const compactReason = (reason: string, maxLen = 80): string => {
   return `${firstPoint.slice(0, maxLen - 1)}...`;
 };
 
+const autoReasonFromContributors = (row: FrameReasonRow): string => {
+  const movers = row.contributors.filter((c) => c.delta !== 0).slice(0, 5);
+  if (movers.length === 0) return 'Tidak ada narasi reason pada klasifikasi ini.';
+  const dir = row.delta >= 0 ? 'Kenaikan' : 'Penurunan';
+  const parts = movers.map((c) => `${c.accountName} ${fmtCompact(Math.abs(c.delta))}`);
+  return `${dir} dipengaruhi oleh: ${parts.join('; ')}.`;
+};
+
+const SUBTOTAL_DELTA_EPSILON = 1;
+
+const normalizeOverviewKlasifikasi = (raw: string, accountCode: string): string => {
+  const first = String(raw || '').split(';').map(s => s.trim()).find(Boolean) ?? '';
+  if (!first) return '';
+
+  // Untuk frame selisih kurs (akun 716*), abaikan klasifikasi yang bukan kategori kurs.
+  if (accountCode.startsWith('716') && !/selisih\s*kurs|kurs/i.test(first)) {
+    return '';
+  }
+
+  return first;
+};
+
 const summarizeFrameReason = (
-  rows: { klasifikasi: string; prev: number; curr: number; reason: string }[],
+  rows: FrameReasonRow[],
   frameTitle: string,
   mode: 'mom' | 'yoy' | 'ytd',
   labelA: string,
@@ -268,50 +317,110 @@ const FRAME_DEFS: FrameDef[] = [
 
 const TOP_CLASSIFICATIONS_PER_FRAME = 5;
 
+type SeriesColors = {
+  prev: string;
+  curr: string;
+  prevText: string;
+  currText: string;
+};
+
+const SOFT_BLUE_2025 = '#7fb3ff';
+const NAVY_2026 = '#1e3a8a';
+
+const extractYearFromLabel = (label: string): string => {
+  const m = String(label || '').match(/(20\d{2})/);
+  return m?.[1] ?? '';
+};
+
+const resolveOverviewSeriesColors = (labelPrev: string, labelCurr: string): SeriesColors => {
+  const prevYear = extractYearFromLabel(labelPrev);
+  const currYear = extractYearFromLabel(labelCurr);
+
+  const colorForYear = (year: string, fallback: string) => {
+    if (year === '2025') return SOFT_BLUE_2025;
+    if (year === '2026') return NAVY_2026;
+    return fallback;
+  };
+
+  return {
+    prev: colorForYear(prevYear, '#5fa3f4'),
+    curr: colorForYear(currYear, '#243b73'),
+    prevText: colorForYear(prevYear, '#2f6fbe'),
+    currText: colorForYear(currYear, '#172a57'),
+  };
+};
+
 const buildOverviewChartData = (
   rows: { klasifikasi: string; prev: number; curr: number }[],
   labelPrev: string,
   labelCurr: string,
-): ChartData<'bar'> => ({
-  labels: rows.map((r) => r.klasifikasi),
-  datasets: [
-    {
-      label: labelPrev,
-      data: rows.map((r) => r.prev),
-      backgroundColor: '#2563eb',
-      borderRadius: 4,
-      borderSkipped: false,
-      maxBarThickness: 28,
-    },
-    {
-      label: labelCurr,
-      data: rows.map((r) => r.curr),
-      backgroundColor: '#16a34a',
-      borderRadius: 4,
-      borderSkipped: false,
-      maxBarThickness: 28,
-    },
-  ],
-});
+): ChartData<'bar'> => {
+  const colors = resolveOverviewSeriesColors(labelPrev, labelCurr);
+  return {
+    labels: rows.map((r) => r.klasifikasi),
+    datasets: [
+      {
+        label: labelPrev,
+        data: rows.map((r) => r.prev),
+        backgroundColor: colors.prev,
+        borderRadius: 0,
+        borderSkipped: false,
+        minBarLength: 2,
+        categoryPercentage: 0.8,
+        barPercentage: 1,
+        inflateAmount: 0,
+      },
+      {
+        label: labelCurr,
+        data: rows.map((r) => r.curr),
+        backgroundColor: colors.curr,
+        borderRadius: 0,
+        borderSkipped: false,
+        minBarLength: 2,
+        categoryPercentage: 0.8,
+        barPercentage: 1,
+        inflateAmount: 0,
+      },
+    ],
+  };
+};
 
-const buildOverviewChartOptions = (isCompact: boolean): ChartOptions<'bar'> => ({
+const buildOverviewChartOptions = (isCompact: boolean, labelPrev: string, labelCurr: string): ChartOptions<'bar'> => ({
   responsive: true,
   maintainAspectRatio: false,
   animation: false,
+  layout: {
+    padding: { top: 2, right: 2, left: 2, bottom: 0 },
+  },
   plugins: {
     legend: { display: false },
     datalabels: {
-      display: !isCompact,
-      anchor: 'end',
-      align: 'end',
-      offset: 2,
+      display: (ctx: any) => {
+        const v = Number(ctx.dataset?.data?.[ctx.dataIndex] ?? 0);
+        return !isCompact || v === 0;
+      },
+      anchor: (ctx: any) => {
+        const v = Number(ctx.dataset?.data?.[ctx.dataIndex] ?? 0);
+        return v === 0 ? 'center' : 'end';
+      },
+      align: (ctx: any) => {
+        const v = Number(ctx.dataset?.data?.[ctx.dataIndex] ?? 0);
+        return v === 0 ? 'top' : 'end';
+      },
+      offset: (ctx: any) => {
+        const v = Number(ctx.dataset?.data?.[ctx.dataIndex] ?? 0);
+        return v === 0 ? 6 : 2;
+      },
       clamp: true,
       clip: false,
       font: {
         size: 9,
         weight: 700,
       },
-      color: (ctx: any) => (ctx.datasetIndex === 0 ? '#1d4ed8' : '#15803d'),
+      color: (ctx: any) => {
+        const c = resolveOverviewSeriesColors(labelPrev, labelCurr);
+        return ctx.datasetIndex === 0 ? c.prevText : c.currText;
+      },
       formatter: (value: unknown) => fmtCompact(Number(value ?? 0)),
     },
     tooltip: {
@@ -325,8 +434,8 @@ const buildOverviewChartOptions = (isCompact: boolean): ChartOptions<'bar'> => (
       ticks: {
         color: '#64748b',
         font: { size: isCompact ? 7 : 8 },
-        maxRotation: isCompact ? 30 : 18,
-        minRotation: isCompact ? 30 : 18,
+        maxRotation: isCompact ? 24 : 12,
+        minRotation: isCompact ? 24 : 12,
         callback: function(value) {
           const raw = typeof this.getLabelForValue === 'function' ? this.getLabelForValue(Number(value)) : value;
           const label = String(raw ?? '');
@@ -337,6 +446,7 @@ const buildOverviewChartOptions = (isCompact: boolean): ChartOptions<'bar'> => (
       grid: { color: '#e2e8f0' },
     },
     y: {
+      grace: '8%',
       ticks: {
         color: '#64748b',
         font: { size: isCompact ? 8 : 9 },
@@ -353,26 +463,49 @@ export default function OverviewFluktuasiPage() {
   const [loading, setLoading]                   = useState(true);
   const [isMobileSidebarOpen, setMobileSidebar] = useState(false);
   const [isCompact, setIsCompact]               = useState(false);
+  const [activeReasonFrameKey, setActiveReasonFrameKey] = useState<FrameDef['key'] | null>(null);
+  const [expandedReasonRows, setExpandedReasonRows] = useState<Set<string>>(new Set());
 
   const [compMode,       setCompMode]       = useState<'mom' | 'yoy' | 'ytd'>('yoy');
   const [compPeriodeRaw, setCompPeriodeRaw] = useState<string>('');
 
   // ── Load data ──────────────────────────────────────────────────────────────
   const loadData = useCallback(() => {
-    // Use rekap-amounts which reads from FluktuasiImport.rekapSheetData — covers ALL accounts
-    // including those that only appear in the REKAP sheet (not individual account sheets).
-    fetch('/api/fluktuasi/rekap-amounts')
-      .then(r => r.json())
-      .then((data: { success: boolean; data: AkunPeriodeRecord[] }) => {
-        if (data.success && Array.isArray(data.data)) {
-          setRecords(data.data.map(r => ({
-            accountCode: r.accountCode,
-            periode:     r.periode,
-            amount:      r.amount,
-            reasonMoM:   String(r.reasonMoM ?? ''),
-            reasonYoY:   String(r.reasonYoY ?? ''),
-            reasonYtD:   String(r.reasonYtD ?? ''),
-          })));
+    // Basis klasifikasi dari tabel akun-periode + reason dari rekap-amounts.
+    Promise.all([
+      fetch('/api/fluktuasi/akun-periodes?slim=1').then((r) => r.json()),
+      fetch('/api/fluktuasi/rekap-amounts')
+        .then((r) => r.json())
+        .catch(() => ({ success: false, data: [] as RekapReasonRecord[] })),
+    ])
+      .then(([akunData, rekapData]: [
+        { success: boolean; data: AkunPeriodeRecord[] },
+        { success: boolean; data: RekapReasonRecord[] }
+      ]) => {
+        if (akunData.success && Array.isArray(akunData.data)) {
+          const reasonMap = new Map<string, { reasonMoM: string; reasonYoY: string; reasonYtD: string }>();
+          if (rekapData?.success && Array.isArray(rekapData.data)) {
+            for (const rr of rekapData.data) {
+              reasonMap.set(`${rr.accountCode}|${rr.periode}`, {
+                reasonMoM: String(rr.reasonMoM ?? ''),
+                reasonYoY: String(rr.reasonYoY ?? ''),
+                reasonYtD: String(rr.reasonYtD ?? ''),
+              });
+            }
+          }
+
+          setRecords(akunData.data.map(r => {
+            const mergedReason = reasonMap.get(`${r.accountCode}|${r.periode}`);
+            return {
+              accountCode: r.accountCode,
+              periode:     r.periode,
+              amount:      r.amount,
+              klasifikasi: String(r.klasifikasi ?? '').trim(),
+              reasonMoM:   String(mergedReason?.reasonMoM ?? r.reasonMoM ?? ''),
+              reasonYoY:   String(mergedReason?.reasonYoY ?? r.reasonYoY ?? ''),
+              reasonYtD:   String(mergedReason?.reasonYtD ?? r.reasonYtD ?? ''),
+            };
+          }));
         }
       })
       .catch(console.error)
@@ -406,7 +539,8 @@ export default function OverviewFluktuasiPage() {
         frames: FRAME_DEFS.map(frame => ({
           key: frame.key,
           title: frame.title,
-          rows: [] as { klasifikasi: string; prev: number; curr: number; reason: string }[],
+          rows: [] as FrameReasonRow[],
+          detailRows: [] as FrameReasonRow[],
           frameReason: '-',
         })),
         labelA: '',
@@ -462,9 +596,8 @@ export default function OverviewFluktuasiPage() {
       ...frame,
       mapA: new Map<string, number>(),
       mapB: new Map<string, number>(),
-      allAccounts: new Set<string>(frame.accounts),
       reasons: new Map<string, Set<string>>(),
-      axisKlasifikasi: new Map<string, string>(),
+      contributorMaps: new Map<string, Map<string, { prev: number; curr: number }>>(),
     }));
 
     for (const r of records) {
@@ -472,38 +605,47 @@ export default function OverviewFluktuasiPage() {
       const frame = frameMaps.find(f => f.match(r.accountCode));
       if (!frame) continue;
 
-      frame.allAccounts.add(r.accountCode);
+      const klasifikasi = normalizeOverviewKlasifikasi(String(r.klasifikasi || ''), r.accountCode);
+      if (!klasifikasi) continue;
 
       const reasonRaw = compMode === 'mom' ? r.reasonMoM : compMode === 'yoy' ? r.reasonYoY : r.reasonYtD;
       const reasonList = String(reasonRaw || '').split(';').map(s => s.trim()).filter(Boolean);
       if (reasonList.length > 0) {
-        const set = frame.reasons.get(r.accountCode) ?? new Set<string>();
+        const set = frame.reasons.get(klasifikasi) ?? new Set<string>();
         for (const reason of reasonList) set.add(reason);
-        frame.reasons.set(r.accountCode, set);
-      }
-
-      // X-axis classification should consistently use klasifikasi source.
-      // In imported data this is represented by reasonMoM.
-      if (!frame.axisKlasifikasi.has(r.accountCode)) {
-        const klasifikasi = String(r.reasonMoM || '').split(';').map(s => s.trim()).find(Boolean);
-        if (klasifikasi) frame.axisKlasifikasi.set(r.accountCode, klasifikasi);
+        frame.reasons.set(klasifikasi, set);
       }
 
       if (periodesA.has(r.periode)) {
-        frame.mapA.set(r.accountCode, (frame.mapA.get(r.accountCode) ?? 0) + r.amount);
+        frame.mapA.set(klasifikasi, (frame.mapA.get(klasifikasi) ?? 0) + r.amount);
+
+        const byAcc = frame.contributorMaps.get(klasifikasi) ?? new Map<string, { prev: number; curr: number }>();
+        const currAcc = byAcc.get(r.accountCode) ?? { prev: 0, curr: 0 };
+        currAcc.curr += r.amount;
+        byAcc.set(r.accountCode, currAcc);
+        frame.contributorMaps.set(klasifikasi, byAcc);
       } else if (periodesB.has(r.periode)) {
-        frame.mapB.set(r.accountCode, (frame.mapB.get(r.accountCode) ?? 0) + r.amount);
+        frame.mapB.set(klasifikasi, (frame.mapB.get(klasifikasi) ?? 0) + r.amount);
+
+        const byAcc = frame.contributorMaps.get(klasifikasi) ?? new Map<string, { prev: number; curr: number }>();
+        const currAcc = byAcc.get(r.accountCode) ?? { prev: 0, curr: 0 };
+        currAcc.prev += r.amount;
+        byAcc.set(r.accountCode, currAcc);
+        frame.contributorMaps.set(klasifikasi, byAcc);
       }
     }
 
     const frames = frameMaps.map(frame => {
       const klasifikasiMap = new Map<string, { prev: number; curr: number; reasons: Set<string> }>();
+      const allKlasifikasi = new Set<string>([
+        ...frame.mapA.keys(),
+        ...frame.mapB.keys(),
+      ]);
 
-      for (const accountCode of frame.allAccounts) {
-        const klasifikasi = frame.axisKlasifikasi.get(accountCode) ?? ACCOUNT_NAMES[accountCode] ?? accountCode;
-        const prev = frame.mapB.get(accountCode) ?? 0;
-        const curr = frame.mapA.get(accountCode) ?? 0;
-        const reasonSet = frame.reasons.get(accountCode) ?? new Set<string>();
+      for (const klasifikasi of allKlasifikasi) {
+        const prev = frame.mapB.get(klasifikasi) ?? 0;
+        const curr = frame.mapA.get(klasifikasi) ?? 0;
+        const reasonSet = frame.reasons.get(klasifikasi) ?? new Set<string>();
 
         const existing = klasifikasiMap.get(klasifikasi) ?? { prev: 0, curr: 0, reasons: new Set<string>() };
         existing.prev += prev;
@@ -512,27 +654,68 @@ export default function OverviewFluktuasiPage() {
         klasifikasiMap.set(klasifikasi, existing);
       }
 
-      const rows = [...klasifikasiMap.entries()]
+      const detailRows = [...klasifikasiMap.entries()]
         .map(([klasifikasi, v]) => ({
+          contributors: [...(frame.contributorMaps.get(klasifikasi)?.entries() ?? [])]
+            .map(([accountCode, av]) => ({
+              accountCode,
+              accountName: ACCOUNT_NAMES[accountCode] ?? accountCode,
+              prev: av.prev,
+              curr: av.curr,
+              delta: av.curr - av.prev,
+            }))
+            .filter((c) => c.prev !== 0 || c.curr !== 0)
+            .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)),
           klasifikasi,
           prev: v.prev,
           curr: v.curr,
+          delta: v.curr - v.prev,
           reason: [...v.reasons].join('; '),
+          reasons: [...v.reasons],
         }))
         .filter(row => row.prev !== 0 || row.curr !== 0)
-        .sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)))
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+      const rows = [...detailRows]
         .slice(0, TOP_CLASSIFICATIONS_PER_FRAME);
 
       return {
         key: frame.key,
         title: frame.title,
         rows,
-        frameReason: summarizeFrameReason(rows, frame.title, compMode, labelA, labelB),
+        detailRows,
+        frameReason: summarizeFrameReason(detailRows, frame.title, compMode, labelA, labelB),
       };
     });
 
     return { frames, labelA, labelB, tagA, tagB };
   }, [records, compMode, compPeriode]);
+
+  const legendColors = useMemo(
+    () => resolveOverviewSeriesColors(accountFramesByMode.labelB || accountFramesByMode.tagB, accountFramesByMode.labelA || accountFramesByMode.tagA),
+    [accountFramesByMode.labelA, accountFramesByMode.labelB, accountFramesByMode.tagA, accountFramesByMode.tagB],
+  );
+
+  const activeReasonFrame = useMemo(
+    () => accountFramesByMode.frames.find((f) => f.key === activeReasonFrameKey) ?? null,
+    [accountFramesByMode.frames, activeReasonFrameKey],
+  );
+
+  const toggleReasonRow = useCallback((rowKey: string) => {
+    setExpandedReasonRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowKey)) {
+        next.delete(rowKey);
+      } else {
+        next.add(rowKey);
+      }
+      return next;
+    });
+  }, []);
+
+  const reasonOverlayRef = useRef<HTMLDivElement>(null);
+  const reasonPanelRef = useRef<HTMLDivElement>(null);
+  const reasonListRef = useRef<HTMLDivElement>(null);
 
   // ── Refs for GSAP page animations ─────────────────────────────────────────
   const contentRef = useRef<HTMLDivElement>(null);
@@ -562,6 +745,55 @@ export default function OverviewFluktuasiPage() {
       ease: 'easeOutQuad',
     });
   }, [compMode, compPeriode]);
+
+  useEffect(() => {
+    if (!activeReasonFrame) return;
+    if (!reasonOverlayRef.current || !reasonPanelRef.current) return;
+
+    gsap.fromTo(reasonOverlayRef.current, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'power2.out' });
+    gsap.fromTo(reasonPanelRef.current, { opacity: 0, y: 22, scale: 0.985 }, { opacity: 1, y: 0, scale: 1, duration: 0.25, ease: 'power3.out' });
+
+    if (reasonListRef.current) {
+      const items = Array.from(reasonListRef.current.querySelectorAll('.reason-item'));
+      if (items.length > 0) {
+        animate(items, {
+          opacity: [0, 1],
+          translateY: [8, 0],
+          duration: 220,
+          delay: stagger(45),
+          ease: 'easeOutQuad',
+        });
+      }
+    }
+  }, [activeReasonFrame]);
+
+  useEffect(() => {
+    if (!activeReasonFrame) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setActiveReasonFrameKey(null);
+    };
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, [activeReasonFrame]);
+
+  useEffect(() => {
+    if (!activeReasonFrame) {
+      setExpandedReasonRows(new Set());
+    }
+  }, [activeReasonFrame]);
+
+  useEffect(() => {
+    if (!reasonListRef.current) return;
+    const items = Array.from(reasonListRef.current.querySelectorAll('.contrib-item'));
+    if (items.length === 0) return;
+    animate(items, {
+      opacity: [0, 1],
+      translateY: [6, 0],
+      duration: 180,
+      delay: stagger(28),
+      ease: 'easeOutQuad',
+    });
+  }, [expandedReasonRows]);
 
   // Table rows: simple CSS fade (no JS stagger on filter change — too expensive)
   // The initial page-entry GSAP timeline already handles first-render animation.
@@ -663,11 +895,11 @@ export default function OverviewFluktuasiPage() {
             <CardContent className="p-1.5 pt-1 flex-1 min-h-0 flex flex-col">
               <div className="mb-0.5 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[10px] font-semibold text-slate-700">
                 <div className="flex items-center gap-1.5">
-                  <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#2563eb]" />
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: legendColors.prev }} />
                   <span>{accountFramesByMode.labelB || accountFramesByMode.tagB}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#16a34a]" />
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: legendColors.curr }} />
                   <span>{accountFramesByMode.labelA || accountFramesByMode.tagA}</span>
                 </div>
               </div>
@@ -689,12 +921,27 @@ export default function OverviewFluktuasiPage() {
                                 accountFramesByMode.labelB || accountFramesByMode.tagB,
                                 accountFramesByMode.labelA || accountFramesByMode.tagA,
                               )}
-                              options={buildOverviewChartOptions(isCompact)}
+                              options={buildOverviewChartOptions(
+                                isCompact,
+                                accountFramesByMode.labelB || accountFramesByMode.tagB,
+                                accountFramesByMode.labelA || accountFramesByMode.tagA,
+                              )}
                             />
                           </div>
 
                           <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-1.5 flex-none">
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 mb-1">Reason Singkat</p>
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Reason Singkat</p>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-5 px-1.5 text-[9px] border-blue-200 text-blue-700 hover:bg-blue-50"
+                                onClick={() => setActiveReasonFrameKey(frame.key)}
+                              >
+                                Reason Lengkap
+                              </Button>
+                            </div>
                             <p className="text-[10px] leading-4 text-slate-700 max-h-16 overflow-y-auto pr-1 whitespace-normal break-words">
                               {frame.frameReason || '-'}
                             </p>
@@ -710,6 +957,129 @@ export default function OverviewFluktuasiPage() {
 
         </div>{/* /content */}
       </div>{/* /main */}
+
+      {activeReasonFrame && (
+        <div
+          ref={reasonOverlayRef}
+          className="fixed inset-0 z-[70] bg-slate-900/35 backdrop-blur-[1px] px-3 py-5 sm:p-6 flex items-center justify-center"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setActiveReasonFrameKey(null);
+          }}
+        >
+          <Card ref={reasonPanelRef} className="w-full max-w-3xl border border-blue-100 shadow-2xl bg-white">
+            <CardHeader className="p-3 pb-2 border-b border-slate-100">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-sm font-bold uppercase tracking-wide text-slate-800">
+                    Reason Lengkap - {activeReasonFrame.title}
+                  </CardTitle>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {compMode.toUpperCase()} • {accountFramesByMode.labelB || accountFramesByMode.tagB} vs {accountFramesByMode.labelA || accountFramesByMode.tagA}
+                  </p>
+                </div>
+                <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setActiveReasonFrameKey(null)}>
+                  Tutup
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-3 pt-2 space-y-2">
+              <div className="rounded-md border border-blue-100 bg-[#f8fbff] px-2 py-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 mb-1">Ringkasan</p>
+                <p className="text-[11px] leading-5 text-slate-700">{activeReasonFrame.frameReason || '-'}</p>
+              </div>
+
+              <ScrollArea className="h-[46vh] rounded-md border border-slate-200 bg-white">
+                <div ref={reasonListRef} className="p-2.5 space-y-2">
+                  {activeReasonFrame.detailRows.length === 0 ? (
+                    <p className="text-xs text-slate-500">Tidak ada detail klasifikasi movement pada frame ini.</p>
+                  ) : (
+                    activeReasonFrame.detailRows
+                      .filter((row) => row.delta !== 0)
+                      .map((row) => (
+                        <div key={row.klasifikasi} className="reason-item rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <p className="text-xs font-semibold text-slate-800">{row.klasifikasi}</p>
+                            <Badge
+                              variant="outline"
+                              className={`h-5 text-[10px] ${row.delta >= 0 ? 'border-emerald-200 text-emerald-700 bg-emerald-50' : 'border-rose-200 text-rose-700 bg-rose-50'}`}
+                            >
+                              {row.delta >= 0 ? 'Naik' : 'Turun'} {fmtCompact(Math.abs(row.delta))}
+                            </Badge>
+                            <span className="text-[10px] text-slate-500">{fmtCompact(row.prev)} {'->'} {fmtCompact(row.curr)}</span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-5 px-1.5 ml-auto text-[9px] text-blue-700 hover:bg-blue-100"
+                              onClick={() => toggleReasonRow(`${activeReasonFrame.key}::${row.klasifikasi}`)}
+                            >
+                              {expandedReasonRows.has(`${activeReasonFrame.key}::${row.klasifikasi}`) ? 'Sembunyikan GL' : 'Lihat GL'}
+                            </Button>
+                          </div>
+                          <p className="mt-1 text-[11px] leading-5 text-slate-600 whitespace-pre-wrap break-words">
+                            {row.reason || autoReasonFromContributors(row)}
+                          </p>
+                          {expandedReasonRows.has(`${activeReasonFrame.key}::${row.klasifikasi}`) && (
+                            <div className="mt-2 border-t border-slate-200 pt-2 space-y-1.5">
+                              {row.contributors.length === 0 ? (
+                                <p className="text-[10px] text-slate-500">Tidak ada rincian GL untuk klasifikasi ini.</p>
+                              ) : (
+                                (() => {
+                                  const subtotalPrev = row.contributors.reduce((acc, c) => acc + c.prev, 0);
+                                  const subtotalCurr = row.contributors.reduce((acc, c) => acc + c.curr, 0);
+                                  const subtotalDelta = subtotalCurr - subtotalPrev;
+                                  const isMatch = Math.abs(subtotalDelta - row.delta) <= SUBTOTAL_DELTA_EPSILON;
+
+                                  return (
+                                    <>
+                                      {row.contributors.map((c) => (
+                                        <div key={`${row.klasifikasi}::${c.accountCode}`} className="contrib-item rounded border border-slate-200 bg-white px-2 py-1.5">
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                            <p className="text-[10px] font-semibold text-slate-700">{c.accountCode}</p>
+                                            <span className="text-[10px] text-slate-500">{c.accountName}</span>
+                                            <Badge
+                                              variant="outline"
+                                              className={`ml-auto h-5 text-[10px] ${c.delta >= 0 ? 'border-emerald-200 text-emerald-700 bg-emerald-50' : 'border-rose-200 text-rose-700 bg-rose-50'}`}
+                                            >
+                                              {c.delta >= 0 ? '+' : '-'}{fmtCompact(Math.abs(c.delta))}
+                                            </Badge>
+                                          </div>
+                                          <p className="text-[10px] text-slate-500 mt-0.5">{fmtCompact(c.prev)} {'->'} {fmtCompact(c.curr)}</p>
+                                        </div>
+                                      ))}
+
+                                      <div className="contrib-item rounded border border-blue-200 bg-blue-50 px-2 py-1.5">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          <p className="text-[10px] font-bold text-blue-800 uppercase tracking-wide">Subtotal Klasifikasi</p>
+                                          <Badge
+                                            variant="outline"
+                                            className={`ml-auto h-5 text-[10px] ${isMatch ? 'border-emerald-200 text-emerald-700 bg-emerald-50' : 'border-amber-200 text-amber-700 bg-amber-50'}`}
+                                          >
+                                            {isMatch ? 'Match Delta' : 'Cek Selisih'}
+                                          </Badge>
+                                        </div>
+                                        <p className="text-[10px] text-blue-900 mt-0.5">
+                                          Prev {fmtCompact(subtotalPrev)} {'->'} Curr {fmtCompact(subtotalCurr)}
+                                        </p>
+                                        <p className="text-[10px] text-blue-900">
+                                          Delta Subtotal {subtotalDelta >= 0 ? '+' : '-'}{fmtCompact(Math.abs(subtotalDelta))} • Delta Klasifikasi {row.delta >= 0 ? '+' : '-'}{fmtCompact(Math.abs(row.delta))}
+                                        </p>
+                                      </div>
+                                    </>
+                                  );
+                                })()
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                  )}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
