@@ -308,6 +308,19 @@ const isKlasifikasiValidForDetailTab = (tabKey: AccountTabDef['key'], klasifikas
   return true;
 };
 
+// Parse dan filter klasifikasi sesuai account code (sama dengan overview logic)
+const parseDetailKlasifikasiParts = (raw: string, accountCode: string): string[] => {
+  const parts = String(raw || '').split(';').map(s => s.trim()).filter(Boolean);
+  if (parts.length === 0) return [];
+
+  // Untuk frame selisih kurs (akun 716*), hanya klasifikasi bertema kurs yang dipakai.
+  if (accountCode.startsWith('716')) {
+    return parts.filter((p) => /selisih\s*kurs|kurs/i.test(p));
+  }
+
+  return [...new Set(parts)];
+};
+
 type SeriesColors = {
   prev: string;
   curr: string;
@@ -787,12 +800,14 @@ export default function DetailAkunFluktuasiPage() {
 
       const processed: ProcessedRecord[] = sourceRows.map((r) => {
         const klasifikasiRaw = (r.klasifikasi || r.reasonMoM || '(Tanpa Klasifikasi)').toString();
+        const accountCode = String(r.accountCode || '').trim();
         return {
           ...r,
-          accountCode: String(r.accountCode || '').trim(),
+          accountCode,
           periode: String(r.periode || '').trim(),
           amount: Number(r.amount || 0),
-          _parts: klasifikasiRaw.split(';').map((p: string) => p.trim()).filter(Boolean),
+          // Parse klasifikasi with account-specific filtering (e.g., 716* only kurs)
+          _parts: parseDetailKlasifikasiParts(klasifikasiRaw, accountCode),
         };
       });
 
