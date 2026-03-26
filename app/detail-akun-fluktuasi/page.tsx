@@ -235,6 +235,19 @@ const ACCOUNT_NAMES: Record<string, string> = {
   '71620004': 'EXCHANGE RATE DIFFERENCE UTK PEMBELIAN',
 };
 
+// ═══ Klasifikasi Validation Rules (per-account detail) ═════════════════════
+const isKlasifikasiValidForDetailTab = (tabKey: AccountTabDef['key'], klasifikasi: string): boolean => {
+  const k = String(klasifikasi || '').trim().toLowerCase();
+  if (!k) return false;
+
+  // Rule: "Kor. Tagihan Air" hanya boleh di pendapatan-lain
+  if (/^kor\.?\s*tagihan\s*air$/.test(k) && tabKey !== 'pendapatan-lain') {
+    return false;
+  }
+
+  return true;
+};
+
 type SeriesColors = {
   prev: string;
   curr: string;
@@ -890,7 +903,11 @@ export default function DetailAkunFluktuasiPage() {
         accountMap.set(r.accountCode, entry);
       }
 
-      const klasifikasiParts = r._parts.length > 0 ? r._parts : ['(Tanpa Klasifikasi)'];
+      const klasifikasiParts = r._parts
+        .filter(k => isKlasifikasiValidForDetailTab(activeAccountTab, k))
+        .filter(Boolean);
+      if (klasifikasiParts.length === 0) continue;
+
       const share = r.amount / klasifikasiParts.length;
       const reasonRaw = compMode === 'mom' ? r.reasonMoM : compMode === 'yoy' ? r.reasonYoY : r.reasonYtD;
       const reasonList = String(reasonRaw || '').split(';').map(s => s.trim()).filter(Boolean);
@@ -932,13 +949,15 @@ export default function DetailAkunFluktuasiPage() {
           .filter((row) => row.prev !== 0 || row.curr !== 0)
           .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 
-        const rows = detailRows
+        // ─── TOP 5 untuk chart display ─────────────────────────────────
+        const top5ClassificationRows = detailRows
+          .slice(0, 5)
           .map((r) => ({ klasifikasi: r.klasifikasi, prev: r.prev, curr: r.curr }))
           .sort((a, b) => Math.max(Math.abs(b.prev), Math.abs(b.curr)) - Math.max(Math.abs(a.prev), Math.abs(a.curr)));
 
         return {
           accountCode,
-          rows,
+          rows: top5ClassificationRows,
           detailRows,
           frameReason: summarizeAccountFrameReason(detailRows, compMode),
         };
