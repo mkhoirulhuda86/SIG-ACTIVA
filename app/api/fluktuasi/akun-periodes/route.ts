@@ -4,6 +4,17 @@ import { broadcast } from '@/lib/sse';
 import { sendPushToAll } from '@/lib/webpush';
 import { checkFluktuasiAlerts } from '@/lib/notificationChecker';
 
+const dbErrorMessage = (error: unknown, fallback: string): string => {
+  const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+  if (/planLimitReached/i.test(message)) {
+    return 'Koneksi database ditolak: limit paket Prisma sudah tercapai (planLimitReached).';
+  }
+  if (/P1001|Can\'t reach database server/i.test(message)) {
+    return 'Koneksi database gagal (P1001): server database tidak terjangkau.';
+  }
+  return fallback;
+};
+
 // ─── GET: Ambil semua account-period records ─────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
@@ -33,7 +44,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('Error fetching akun periodes:', error);
     return NextResponse.json(
-      { success: false, error: 'Gagal mengambil data akun periode' },
+      { success: false, error: dbErrorMessage(error, 'Gagal mengambil data akun periode') },
       { status: 500 },
     );
   }
@@ -62,29 +73,65 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Preserve previously stored non-zero amounts when a newer upload sends 0
+    // for the same account+periode key.
+    const uniqKeys = [...new Set(records.map((r) => `${r.accountCode}__${r.periode}`))]
+      .map((k) => {
+        const [accountCode, periode] = k.split('__');
+        return { accountCode, periode };
+      });
+
+    const existingRows = await prisma.fluktuasiAkunPeriode.findMany({
+      where: {
+        OR: uniqKeys.map((k) => ({ accountCode: k.accountCode, periode: k.periode })),
+      },
+      select: {
+        accountCode: true,
+        periode: true,
+        amount: true,
+        klasifikasi: true,
+        remark: true,
+      },
+    });
+
+    const existingMap = new Map<string, { amount: number; klasifikasi: string; remark: string }>();
+    for (const row of existingRows) {
+      existingMap.set(`${row.accountCode}__${row.periode}`, {
+        amount: row.amount,
+        klasifikasi: row.klasifikasi ?? '',
+        remark: row.remark ?? '',
+      });
+    }
+
     // Batch upsert: update if (accountCode, periode) exists, insert otherwise
     const results = await Promise.allSettled(
-      records.map((r) =>
-        prisma.fluktuasiAkunPeriode.upsert({
+      records.map((r) => {
+        const existing = existingMap.get(`${r.accountCode}__${r.periode}`);
+        const keepExistingAmount = !!existing && Number(r.amount) === 0 && Number(existing.amount) !== 0;
+        const effectiveAmount = keepExistingAmount ? existing.amount : r.amount;
+        const effectiveKlasifikasi = String(r.klasifikasi ?? '').trim() || existing?.klasifikasi || '';
+        const effectiveRemark = String(r.remark ?? '').trim() || existing?.remark || '';
+
+        return prisma.fluktuasiAkunPeriode.upsert({
           where: { accountCode_periode: { accountCode: r.accountCode, periode: r.periode } },
           update: {
-            amount:      r.amount,
-            klasifikasi: r.klasifikasi,
-            remark:      r.remark,
+            amount:      effectiveAmount,
+            klasifikasi: effectiveKlasifikasi,
+            remark:      effectiveRemark,
             uploadedBy,
             fileName,
           },
           create: {
             accountCode: r.accountCode,
             periode:     r.periode,
-            amount:      r.amount,
-            klasifikasi: r.klasifikasi,
-            remark:      r.remark,
+            amount:      effectiveAmount,
+            klasifikasi: effectiveKlasifikasi,
+            remark:      effectiveRemark,
             uploadedBy,
             fileName,
           },
-        }),
-      ),
+        });
+      }),
     );
 
     const failed  = results.filter((r) => r.status === 'rejected').length;
@@ -102,7 +149,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Error upserting akun periodes:', error);
     return NextResponse.json(
-      { success: false, error: 'Gagal menyimpan data akun periode' },
+      { success: false, error: dbErrorMessage(error, 'Gagal menyimpan data akun periode') },
       { status: 500 },
     );
   }
@@ -132,7 +179,7 @@ export async function DELETE(req: NextRequest) {
   } catch (error) {
     console.error('Error deleting akun periodes:', error);
     return NextResponse.json(
-      { success: false, error: 'Gagal menghapus data akun periode' },
+      { success: false, error: dbErrorMessage(error, 'Gagal menghapus data akun periode') },
       { status: 500 },
     );
   }

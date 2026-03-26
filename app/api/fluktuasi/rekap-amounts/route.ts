@@ -4,8 +4,32 @@ import { prisma } from '@/lib/prisma';
 const parseNum = (val: unknown): number => {
   if (typeof val === 'number') return val;
   if (val === null || val === undefined || val === '') return 0;
-  const n = Number(String(val).replace(/\./g, '').replace(',', '.'));
-  return isNaN(n) ? 0 : n;
+  let s = String(val).trim();
+  if (!s) return 0;
+
+  let negative = false;
+  if (/^\(.*\)$/.test(s)) {
+    negative = true;
+    s = s.slice(1, -1);
+  }
+  if (s.startsWith('-')) {
+    negative = true;
+    s = s.slice(1);
+  }
+  if (s.endsWith('-')) {
+    negative = true;
+    s = s.slice(0, -1);
+  }
+
+  s = s.replace(/[^\d.,]/g, '');
+  if (!s) return 0;
+
+  const digitsOnly = s.replace(/[.,]/g, '');
+  if (!digitsOnly) return 0;
+
+  const n = Number(digitsOnly);
+  if (isNaN(n)) return 0;
+  return negative ? -n : n;
 };
 
 /**

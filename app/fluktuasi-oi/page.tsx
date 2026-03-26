@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { toast } from 'sonner';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
@@ -73,26 +73,162 @@ const loadXLSX = async () => {
 const parseNum = (val: any): number => {
   if (val === '' || val === null || val === undefined) return 0;
   if (typeof val === 'number') return val;
-  const n = Number(val.toString().replace(/\./g, '').replace(/,/g, '.'));
-  return Number.isNaN(n) ? 0 : n;
+  let s = String(val).trim();
+  if (!s) return 0;
+
+  // Handle accounting negatives: (1.234), 1.234-, -1.234
+  let negative = false;
+  if (/^\(.*\)$/.test(s)) {
+    negative = true;
+    s = s.slice(1, -1);
+  }
+  if (s.startsWith('-')) {
+    negative = true;
+    s = s.slice(1);
+  }
+  if (s.endsWith('-')) {
+    negative = true;
+    s = s.slice(0, -1);
+  }
+
+  // Remove currency/symbol noise, keep only digits and separators
+  s = s.replace(/[^\d.,]/g, '');
+  if (!s) return 0;
+
+  // For this report amounts are effectively integer-like; treat separators as thousands.
+  const digitsOnly = s.replace(/[.,]/g, '');
+  if (!digitsOnly) return 0;
+
+  const n = Number(digitsOnly);
+  if (Number.isNaN(n)) return 0;
+  return negative ? -n : n;
 };
 
 const parseDateToPeriode = (val: any): string => {
   if (val === '' || val === null || val === undefined) return '';
   let date: Date | null = null;
+  // If the value comes from Excel date-serial -> we build it in UTC,
+  // so we must read it back using UTC getters to avoid timezone month-shift.
+  let useUTC = false;
   if (typeof val === 'number' && val > 40000) {
+    useUTC = true;
     date = new Date(Date.UTC(1899, 11, 30) + val * 86400000);
   } else if (typeof val === 'string') {
     const s = val.trim();
     let m: RegExpMatchArray | null;
     m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (m) date = new Date(+m[3], +m[1] - 1, +m[2]);
+    // Handle 2-digit year dates: DD/MM/YY or DD-MM-YY or DD.MM.YY
+    // (common in some SAP exports for older periods)
+    if (!date) {
+      m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2})$/);
+      if (m) {
+        const day = parseInt(m[1], 10);
+        const month = parseInt(m[2], 10);
+        const yy = parseInt(m[3], 10);
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          // Assume 20xx (matches logic used elsewhere in the file)
+          const year = 2000 + yy;
+          useUTC = true;
+          date = new Date(Date.UTC(year, month - 1, day));
+        }
+      }
+    }
     if (!date) { m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/); if (m) date = new Date(+m[3], +m[2] - 1, +m[1]); }
     if (!date) { m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); if (m) date = new Date(+m[1], +m[2] - 1, +m[3]); }
     if (!date) { m = s.match(/^(\d{4})(\d{2})(\d{2})$/); if (m) date = new Date(+m[1], +m[2] - 1, +m[3]); }
+    if (!date) { m = s.match(/^(\d{4})[\/.\-](\d{1,2})$/); if (m) date = new Date(+m[1], +m[2] - 1, 1); }
+    if (!date) { m = s.match(/^(\d{1,2})[\/.\-](\d{4})$/); if (m) date = new Date(+m[2], +m[1] - 1, 1); }
+    // Excel serial as string (e.g. "45123")
+    if (!date && /^\d{5}$/.test(s)) {
+      const n = parseInt(s, 10);
+      if (n > 40000) {
+        useUTC = true;
+        date = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
+      }
+    }
+    // Support Excel text date format: "31-Jan-25" → extract month and year
+    if (!date) {
+      m = s.match(/^(\d{1,2})[-\s]([a-z]{3,})[-\s](\d{2,4})$/i);
+      if (m) {
+        const dayStr = m[1];
+        const monthStr = m[2].toLowerCase();
+        const yearStr = m[3];
+        const monthNum = MONTH_TOKEN_TO_NUM[monthStr];
+        if (monthNum) {
+          const year = yearStr.length === 2 ? (2000 + parseInt(yearStr)) : parseInt(yearStr);
+          date = new Date(year, monthNum - 1, parseInt(dayStr));
+        }
+      }
+    }
+    // Support month-year text: "Jan-25", "Januari 2025", "Aug 2025"
+    if (!date) {
+      m = s.match(/^([a-z]{3,})[-\s](\d{2,4})$/i);
+      if (m) {
+        const monthNum = MONTH_TOKEN_TO_NUM[m[1].toLowerCase()];
+        if (monthNum) {
+          const year = m[2].length === 2 ? (2000 + parseInt(m[2])) : parseInt(m[2]);
+          date = new Date(year, monthNum - 1, 1);
+        }
+      }
+    }
+    // Last fallback for common parseable formats
+    if (!date) {
+      const parsedMs = Date.parse(s);
+      if (!Number.isNaN(parsedMs)) date = new Date(parsedMs);
+    }
   }
-  if (!date || isNaN(date.getTime())) return String(val ?? '');
-  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}`;
+  if (!date || isNaN(date.getTime())) return '';
+  const y = useUTC ? date.getUTCFullYear() : date.getFullYear();
+  const m = (useUTC ? date.getUTCMonth() : date.getMonth()) + 1;
+  return `${y}.${String(m).padStart(2, '0')}`;
+};
+
+const MAX_PERIOD_COLUMNS = 24;
+
+const MONTH_TOKEN_TO_NUM: Record<string, number> = {
+  jan: 1, januari: 1,
+  feb: 2, februari: 2,
+  mar: 3, maret: 3,
+  apr: 4, april: 4,
+  mei: 5, may: 5,
+  jun: 6, juni: 6,
+  jul: 7, juli: 7,
+  agu: 8, agustus: 8, aug: 8,
+  sep: 9, sept: 9, september: 9,
+  okt: 10, oktober: 10, oct: 10,
+  nov: 11, november: 11,
+  des: 12, desember: 12, dec: 12, december: 12,
+};
+
+const extractMonthNum = (text: string): number => {
+  const s = String(text ?? '').toLowerCase();
+  for (const [token, month] of Object.entries(MONTH_TOKEN_TO_NUM)) {
+    if (new RegExp(`\\b${token}\\b`, 'i').test(s)) return month;
+  }
+  return 0;
+};
+
+const isPeriodeKey = (v: string): boolean => /^\d{4}\.\d{2}$/.test(v);
+
+const normalizePeriodeKey = (v: string): string => {
+  const [y, m] = v.split('.');
+  return `${y}.${String(parseInt(m, 10)).padStart(2, '0')}`;
+};
+
+const lastNPeriodes = (periodes: string[], n: number): string[] => {
+  const normalized = [...new Set(periodes.map((p) => normalizePeriodeKey(p)).filter(isPeriodeKey))].sort();
+  return normalized.slice(-n);
+};
+
+const inferAmountColPeriodeKey = (ac: AmountCol): string | null => {
+  const yearText = `${ac.yearLabel} ${ac.dateLabel} ${ac.label}`;
+  const year4 = yearText.match(/(20\d{2})/)?.[1];
+  const year2 = yearText.match(/(?:'|\b)(\d{2})(?!\d)/)?.[1];
+  const year = year4 ? parseInt(year4, 10) : year2 ? 2000 + parseInt(year2, 10) : NaN;
+  const month = extractMonthNum(`${ac.dateLabel} ${ac.label}`);
+  if (!Number.isFinite(year) || month <= 0) return null;
+  return `${year}.${String(month).padStart(2, '0')}`;
 };
 
 const extractKlasifikasi = (text: string): string => {
@@ -116,6 +252,107 @@ const parseSourceColumns = (raw: string): string[] => {
 };
 
 const normalizeSourceColumns = (raw: string): string => parseSourceColumns(raw).join(', ');
+
+const ACCOUNT_NAME_BY_CODE: Record<string, string> = {
+  '71510000': 'BEBAN BUNGA PINJAMAN',
+  '71510001': 'BEBAN BUNGA PINJAMAN INVESTASI',
+  '71510002': 'BEBAN BUNGA PINJAMAN MODAL KERJA',
+  '71510003': 'BEBAN BUNGA OBLIGASI',
+  '71510004': 'BEBAN BUNGA SEWA PEMBIAYAAN',
+  '71510005': 'DERIVATIVE INSTRUMENT INTEREST EXPENSES',
+  '71510098': 'BEBAN BUNGA (PSAK 57)',
+  '71510099': 'BEBAN BUNGA LAIN - LAIN',
+  '71400000': 'PENDAPATAN KLAIM',
+  '71410001': 'PENDAPATAN KLAIM ASURANSI',
+  '71410009': 'PENDAPATAN KLAIM LAINNYA',
+  '71421001': 'PENDAPATAN HASIL ANALISA',
+  '71421002': 'PENDAPATAN JASA PELABUHAN',
+  '71421009': 'PENDAPATAN JASA LAINNYA',
+  '71430001': 'PENDAPATAN SEWA TANAH',
+  '71430002': 'PENDAPATAN SEWA BANGUNAN',
+  '71440001': 'PENDAPATAN PENJUALAN AFVAL',
+  '71460001': 'PENDAPATAN PEMAKAIAN LISTRIK',
+  '71460002': 'PENDAPATAN PEMAKAIAN AIR',
+  '71460009': 'PENDAPATAN LAIN-LAIN',
+  '71560001': 'BEBAN LAIN-LAINNYA',
+  '71300000': 'PENDAPATAN BUNGA',
+  '71310001': 'PENDAPATAN BUNGA DEPOSITO',
+  '71310002': 'PENDAPATAN JASA GIRO',
+  '71320001': 'PENDAPATAN CICILAN',
+  '71320002': 'PENDAPATAN BUNGA OBLIGASI',
+  '71600000': 'LABA (RUGI) SELISIH KURS',
+  '71610001': 'LABA SELISIH KURS [REALISED]',
+  '71610002': 'RUGI SELISIH KURS [REALISED]',
+  '71620001': 'LABA SELISIH KURS [UNREALISED]',
+  '71620002': 'RUGI SELISIH KURS [UNREALISED]',
+  '71620004': 'EXCHANGE RATE DIFFERENCE UTK PEMBELIAN',
+};
+
+const resolveAccountDescription = (accountCode: string): string => {
+  return ACCOUNT_NAME_BY_CODE[String(accountCode ?? '').trim()] ?? String(accountCode ?? '').trim();
+};
+
+const normalizeRekapDescriptions = (rekap: RekapSheetData | null): RekapSheetData | null => {
+  if (!rekap) return null;
+
+  const amountColSet = new Set(rekap.amountCols.map((ac) => ac.colIdx));
+  const firstAmtIdx = rekap.amountCols.length > 0 ? Math.min(...rekap.amountCols.map((ac) => ac.colIdx)) : Infinity;
+  const descCandidates = rekap.headers
+    .map((h, ci) => ({ h, ci }))
+    .filter(({ ci }) => ci !== rekap.accountColIdx && !amountColSet.has(ci) && ci < firstAmtIdx);
+
+  const descColIdx = descCandidates.find(({ h }) =>
+    /description|deskripsi|nama akun|account name|uraian|keterangan|narasi/i.test(h)
+  )?.ci ?? descCandidates[0]?.ci ?? -1;
+
+  if (descColIdx < 0) return rekap;
+
+  const describedRows = rekap.rows.map((row) => {
+    const values = [...row.values];
+    const raw = String(values[rekap.accountColIdx] ?? '').trim();
+    const accountCode = raw.match(/^(\d{5,})/)?.[1] ?? raw;
+    if (/^\d{5,}$/.test(accountCode)) {
+      values[descColIdx] = resolveAccountDescription(accountCode);
+    }
+    return { ...row, values };
+  });
+
+  // Keep legacy layout: in each category block, subtotal account rows (xxxx0000)
+  // must appear first, then detail sub-accounts.
+  const reorderedRows: RekapSheetRow[] = [];
+  let currentBlock: RekapSheetRow[] = [];
+
+  const flushBlock = () => {
+    if (currentBlock.length === 0) return;
+    const subtotalAccountRows: RekapSheetRow[] = [];
+    const detailRows: RekapSheetRow[] = [];
+    const otherRows: RekapSheetRow[] = [];
+
+    for (const row of currentBlock) {
+      const acct = String(row.values[rekap.accountColIdx] ?? '').trim();
+      const isNumericAcct = /^\d{5,}$/.test(acct);
+      const isSubtotalAccount = row.type === 'subtotal' && isNumericAcct;
+      if (isSubtotalAccount) subtotalAccountRows.push(row);
+      else if (row.type === 'detail') detailRows.push(row);
+      else otherRows.push(row);
+    }
+
+    reorderedRows.push(...subtotalAccountRows, ...detailRows, ...otherRows);
+    currentBlock = [];
+  };
+
+  for (const row of describedRows) {
+    if (row.type === 'category') {
+      flushBlock();
+      reorderedRows.push(row);
+      continue;
+    }
+    currentBlock.push(row);
+  }
+  flushBlock();
+
+  return { ...rekap, rows: reorderedRows };
+};
 
 // Match text with keywords from database
 // Parse natural language keyword input
@@ -479,8 +716,12 @@ const matchKeywords = (text: string, keywords: Keyword[], type: string, docno?: 
 };
 
 const findColIdx = (headers: string[], keywords: string[]): number => {
+  const norm = (s: string) => String(s ?? '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
   for (const kw of keywords) {
-    const idx = headers.findIndex((h) => h.toLowerCase().includes(kw.toLowerCase()));
+    const idx = headers.findIndex((h) => norm(h).includes(norm(kw)));
     if (idx >= 0) return idx;
   }
   return -1;
@@ -493,9 +734,30 @@ const findAmountColIdx = (
   headerRowIdx: number,
   excludeCols: number[],
 ): number => {
+  const isDateLikeVal = (v: any): boolean => {
+    if (typeof v === 'number') {
+      // Excel date serial range is often around 40k-60k
+      if (v > 38000 && v < 70000) return true;
+      return false;
+    }
+    const s = String(v ?? '').trim();
+    if (!s) return false;
+    return (
+      /^\d{1,2}[.\-\/]\d{1,2}[.\-\/]\d{2,4}$/.test(s) ||
+      /^\d{2}[.\-]\d{2}[.\-]\d{4}$/.test(s) ||
+      /^\d{4}-\d{2}-\d{2}$/.test(s) ||
+      /^\d{8}$/.test(s) ||
+      /^\d{4}[\/.\-]\d{1,2}$/.test(s) ||
+      /^\d{1,2}[\/.\-]\d{4}$/.test(s) ||
+      /^\d{1,2}[-\s][A-Za-z]{3,}[-\s]\d{2,4}$/.test(s) ||
+      /^[A-Za-z]{3,}[-\s]\d{2,4}$/.test(s)
+    );
+  };
+
   // Priority 1: known SAP / ID amount column names
   const amountKeywords = [
     'Amount in LC', 'Amt in loc.cur', 'LC Amount', 'Amount in Local',
+    'Amount in local currency', 'Amount in Local Currency',
     'Betrag in HW', 'Betrag HW', 'Net Amount', 'Net amount',
     'Nilai LC', 'Nilai', 'Amount', 'Jumlah', 'Total',
   ];
@@ -510,13 +772,34 @@ const findAmountColIdx = (
     if (excludeCols.includes(col)) return;
     const vals = sampleRows.map((r) => r[col]).filter((v) => v !== '' && v !== null && v !== undefined);
     if (vals.length === 0) return;
-    const nums = vals.map((v) => parseNum(v));
-    const nonZero = nums.filter((v) => v !== 0).length;
-    if (nonZero < vals.length * 0.3) return;
-    const avgAbs = nums.reduce((s, v) => s + Math.abs(v), 0) / nums.length;
+
+    // If this column mostly looks like a date, it's not the amount column.
+    const dateLikeCount = vals.filter(isDateLikeVal).length;
+    if (dateLikeCount / vals.length >= 0.6) return;
+
+    // Numeric-ness detection: don't rely on "non-zero" ratio only,
+    // because some amount columns legitimately contain zeros for many rows.
+    const isNumericLike = (v: any) => {
+      if (typeof v === 'number') return true;
+      const s = String(v ?? '').trim();
+      if (!s) return false;
+      // If it has at least one digit and only digits/separators/currency noise, treat as numeric-like.
+      return /[\d]/.test(s) && !/[a-zA-Z]/.test(s.replace(/[^\d.,\-()]/g, ''));
+    };
+    const numericVals = vals.filter(isNumericLike);
+    if (numericVals.length < vals.length * 0.4) return;
+
+    const nums = numericVals.map((v) => parseNum(v));
+    const absSum = nums.reduce((s, v) => s + Math.abs(v), 0);
+    if (absSum === 0) return;
+
+    const avgAbs = absSum / nums.length;
     // Amounts in SAP are typically > 100; doc numbers are large but don't mix positive/negative
     const hasNeg = nums.some((v) => v < 0);
-    const score  = nonZero / vals.length * (avgAbs > 100 ? Math.log10(avgAbs) : 0) * (hasNeg ? 1.5 : 1);
+    const numericRatio = numericVals.length / vals.length;
+    // Use absSum to avoid bias when amounts are small/rounded,
+    // and to prefer true amount columns over doc-number or other numeric columns.
+    const score  = numericRatio * Math.log10(absSum + 1) * (hasNeg ? 1.5 : 1);
     if (score > bestScore) { bestScore = score; bestCol = col; }
   });
   return bestCol;
@@ -607,7 +890,7 @@ const buildRekapFromAkunPeriodes = (
   records: AkunPeriodeRecord[],
 ): RekapSheetData => {
   // 1. All unique sorted periods
-  const allPeriodes = [...new Set(records.map((r) => r.periode))].sort();
+  const allPeriodes = lastNPeriodes(records.map((r) => r.periode), MAX_PERIOD_COLUMNS);
 
   // 2. Aggregate per account, combining amounts + reasons from records
   const accountMap = new Map<
@@ -628,22 +911,43 @@ const buildRekapFromAkunPeriodes = (
     r.remark.split(';').map((s) => s.trim()).filter(Boolean).forEach((k) => entry.remark.add(k));
   }
 
-  // 3. Headers: ['G/L Account', ...periods]
-  const headers         = ['G/L Account', ...allPeriodes];
+  const toMonthEndLabel = (periode: string): string => {
+    const [yr, mo] = periode.split('.');
+    const y = parseInt(yr, 10);
+    const m = parseInt(mo, 10);
+    if (!y || !m) return periode;
+    const end = new Date(y, m, 0);
+    const dd = String(end.getDate()).padStart(2, '0');
+    const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][end.getMonth()];
+    const yy = String(y).slice(-2);
+    return `${dd}-${mon}-${yy}`;
+  };
+
+  const DESIGN_FRAMES: Array<{
+    label: string;
+    prefixes: string[];
+    subtotalCode: string;
+    subtotalLabel: string;
+  }> = [
+    { label: 'Beban Bunga',             prefixes: ['7151'],        subtotalCode: '71510000', subtotalLabel: 'BEBAN BUNGA PINJAMAN' },
+    { label: 'Pendapatan Lain-Lain',    prefixes: ['714', '7156'], subtotalCode: '71400000', subtotalLabel: 'PENDAPATAN KLAIM' },
+    { label: 'Pendapatan Bunga',        prefixes: ['713'],         subtotalCode: '71300000', subtotalLabel: 'PENDAPATAN BUNGA' },
+    { label: 'Laba (Rugi) Selisih Kurs',prefixes: ['716'],         subtotalCode: '71600000', subtotalLabel: 'LABA (RUGI) SELISIH KURS' },
+  ];
+
+  // 3. Headers: ['Account','Description', ...periods]
+  const headers         = ['Account', 'Description', ...allPeriodes];
   const originalHeaders = headers.slice();
   const accountColIdx   = 0;
 
   // 4. AmountCols — one entry per period
-  const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
   const amountCols: AmountCol[] = allPeriodes.map((p, i) => {
     const [yr, mo] = p.split('.');
-    const moNum    = parseInt(mo) - 1;
-    const moLabel  = MONTH_LABELS[moNum] ?? mo;
     return {
-      colIdx:       i + 1, // col 0 = account code
+      colIdx:       i + 2, // col 0 = account, col 1 = description
       label:        p,
       yearLabel:    yr,
-      dateLabel:    `${moLabel} '${yr.slice(2)}`,
+      dateLabel:    toMonthEndLabel(p),
       isCumulative: false,
     };
   });
@@ -668,10 +972,103 @@ const buildRekapFromAkunPeriodes = (
   // 6. Build rows
   const rows: RekapSheetRow[] = [];
   const sortedAccounts = [...accountMap.keys()].sort();
-  for (const accountCode of sortedAccounts) {
-    const { klasifikasi, remark, amounts } = accountMap.get(accountCode)!;
+  const usedAccounts = new Set<string>();
+
+  const makeCategoryRow = (label: string): RekapSheetRow => ({
+    values: ['', label, ...allPeriodes.map(() => '')],
+    type: 'category',
+    gapMoM: 0,
+    pctMoM: 0,
+    gapYoY: 0,
+    pctYoY: 0,
+    gapYtD: 0,
+    pctYtD: 0,
+    ytdCurrV: 0,
+    ytdPrevV: 0,
+    reasonMoM: '',
+    reasonYoY: '',
+    reasonYtD: '',
+  });
+
+  const sumAmountsByCodes = (codes: string[]): Map<string, number> => {
+    const m = new Map<string, number>();
+    for (const code of codes) {
+      const entry = accountMap.get(code);
+      if (!entry) continue;
+      for (const p of allPeriodes) {
+        m.set(p, (m.get(p) ?? 0) + (entry.amounts.get(p) ?? 0));
+      }
+    }
+    return m;
+  };
+
+  const hasNonZeroAmounts = (amounts: Map<string, number>): boolean => {
+    for (const p of allPeriodes) {
+      if ((amounts.get(p) ?? 0) !== 0) return true;
+    }
+    return false;
+  };
+
+  const mergeAmountsByPeriod = (
+    primary: Map<string, number>,
+    fallback: Map<string, number>,
+  ): Map<string, number> => {
+    const out = new Map<string, number>();
+    for (const p of allPeriodes) {
+      const pv = primary.get(p) ?? 0;
+      const fv = fallback.get(p) ?? 0;
+      out.set(p, pv !== 0 ? pv : fv);
+    }
+    return out;
+  };
+
+  const makeDataRow = (
+    accountCode: string,
+    description: string,
+    amounts: Map<string, number>,
+    rowType: RekapSheetRow['type'],
+    reasonMoM: string,
+    hidePeriodValues = false,
+  ): RekapSheetRow => {
     const values: (string | number)[] = [
       accountCode,
+      description,
+      ...allPeriodes.map((p) => hidePeriodValues ? '' : (amounts.get(p) ?? 0)),
+    ];
+
+    const curr    = amounts.get(allPeriodes[momCurrIdx] ?? '')  ?? 0;
+    const prev    = amounts.get(allPeriodes[momPrevIdx] ?? '')  ?? 0;
+    const yoyCurr = amounts.get(allPeriodes[yoyCurrIdx] ?? '') ?? 0;
+    const yoyPrev = amounts.get(allPeriodes[yoyPrevIdx] ?? '') ?? 0;
+
+    const gapMoM = curr - prev;
+    const pctMoM = prev !== 0 ? (gapMoM / Math.abs(prev)) * 100 : 0;
+    const gapYoY = yoyCurr - yoyPrev;
+    const pctYoY = yoyPrev !== 0 ? (gapYoY / Math.abs(yoyPrev)) * 100 : 0;
+
+    const ytdCurr = ytdCurrColIdxs.reduce((s, i) => s + (amounts.get(allPeriodes[i] ?? '') ?? 0), 0);
+    const ytdPrev = ytdPrevColIdxs.reduce((s, i) => s + (amounts.get(allPeriodes[i] ?? '') ?? 0), 0);
+    const gapYtD  = ytdCurr - ytdPrev;
+    const pctYtD  = ytdPrev !== 0 ? (gapYtD / Math.abs(ytdPrev)) * 100 : 0;
+
+    return {
+      values,
+      type: rowType,
+      gapMoM,  pctMoM,
+      gapYoY,  pctYoY,
+      gapYtD,  pctYtD,
+      ytdCurrV: ytdCurr,
+      ytdPrevV: ytdPrev,
+      reasonMoM,
+      reasonYoY: '',
+      reasonYtD: '',
+    };
+  };
+
+  const makeSectionTotalRow = (amounts: Map<string, number>): RekapSheetRow => {
+    const values: (string | number)[] = [
+      '',
+      '',
       ...allPeriodes.map((p) => amounts.get(p) ?? 0),
     ];
 
@@ -690,18 +1087,96 @@ const buildRekapFromAkunPeriodes = (
     const gapYtD  = ytdCurr - ytdPrev;
     const pctYtD  = ytdPrev !== 0 ? (gapYtD / Math.abs(ytdPrev)) * 100 : 0;
 
-    rows.push({
+    return {
       values,
-      type:       'detail',
-      gapMoM,  pctMoM,
-      gapYoY,  pctYoY,
-      gapYtD,  pctYtD,
+      type: 'subtotal',
+      gapMoM,
+      pctMoM,
+      gapYoY,
+      pctYoY,
+      gapYtD,
+      pctYtD,
       ytdCurrV: ytdCurr,
       ytdPrevV: ytdPrev,
-      reasonMoM: [...klasifikasi].filter(Boolean).join('; '),
+      reasonMoM: '',
       reasonYoY: '',
       reasonYtD: '',
-    });
+    };
+  };
+
+
+  for (const frame of DESIGN_FRAMES) {
+    const frameAccountsFromData = sortedAccounts.filter((code) => frame.prefixes.some((p) => code.startsWith(p)));
+    const frameAccountsFromTemplate = Object.keys(ACCOUNT_NAME_BY_CODE)
+      .filter((code) => frame.prefixes.some((p) => code.startsWith(p)));
+    const frameAccounts = [...new Set([...frameAccountsFromTemplate, ...frameAccountsFromData])]
+      .sort((a, b) => a.localeCompare(b, 'en'));
+    if (frameAccounts.length === 0) continue;
+
+    rows.push(makeCategoryRow(frame.label));
+
+    const explicitSubtotal = frameAccounts.find((c) => c === frame.subtotalCode) ?? frameAccounts.find((c) => /0{4,}$/.test(c));
+    const detailAccounts = frameAccounts
+      .filter((c) => c !== explicitSubtotal)
+      .filter((c) => !/0{4,}$/.test(c))
+      .sort();
+
+    const explicitSubtotalAmounts = explicitSubtotal
+      ? accountMap.get(explicitSubtotal)?.amounts ?? new Map<string, number>()
+      : new Map<string, number>();
+    const detailSumAmounts = sumAmountsByCodes(detailAccounts);
+    const subtotalAmounts = hasNonZeroAmounts(explicitSubtotalAmounts)
+      ? mergeAmountsByPeriod(explicitSubtotalAmounts, detailSumAmounts)
+      : detailSumAmounts;
+    const subtotalEntry = explicitSubtotal ? accountMap.get(explicitSubtotal) : null;
+    const subtotalReason = subtotalEntry ? [...subtotalEntry.klasifikasi].filter(Boolean).join('; ') : frame.subtotalLabel;
+    if (detailAccounts.length > 0 || explicitSubtotal) {
+      rows.push(makeDataRow(
+        explicitSubtotal ?? frame.subtotalCode,
+        frame.subtotalLabel,
+        subtotalAmounts,
+        'subtotal',
+        subtotalReason,
+        true,
+      ));
+    }
+
+    for (const accountCode of detailAccounts) {
+      const entry = accountMap.get(accountCode);
+      const description = resolveAccountDescription(accountCode);
+      rows.push(makeDataRow(
+        accountCode,
+        description,
+        entry?.amounts ?? new Map<string, number>(),
+        'detail',
+        [...(entry?.klasifikasi ?? new Set<string>())].filter(Boolean).join('; '),
+      ));
+      usedAccounts.add(accountCode);
+    }
+
+    const sectionTotalAmounts = detailAccounts.length > 0 ? detailSumAmounts : subtotalAmounts;
+    if (detailAccounts.length > 0 || explicitSubtotal) {
+      rows.push(makeSectionTotalRow(sectionTotalAmounts));
+    }
+
+    if (explicitSubtotal) usedAccounts.add(explicitSubtotal);
+  }
+
+  const uncategorized = sortedAccounts.filter((code) => !usedAccounts.has(code));
+  if (uncategorized.length > 0) {
+    rows.push(makeCategoryRow('Lainnya'));
+    for (const accountCode of uncategorized) {
+      const entry = accountMap.get(accountCode)!;
+      const description = resolveAccountDescription(accountCode);
+      const rowType: RekapSheetRow['type'] = /0{4,}$/.test(accountCode) ? 'subtotal' : 'detail';
+      rows.push(makeDataRow(
+        accountCode,
+        description,
+        entry.amounts,
+        rowType,
+        [...entry.klasifikasi].filter(Boolean).join('; '),
+      ));
+    }
   }
 
   return {
@@ -1108,7 +1583,10 @@ export default function FluktuasiOIPage() {
     message: string;
     confirmText?: string;
     confirmTone?: 'primary' | 'danger';
+    secondaryText?: string;
+    secondaryTone?: 'primary' | 'danger';
     onConfirm: () => void | Promise<void>;
+    onSecondary?: () => void | Promise<void>;
   } | null>(null);
   const [kwMode, setKwMode] = useState<'normal' | 'regex' | 'not' | 'docno' | 'col'>('normal');
   const [colHeader, setColHeader] = useState('');
@@ -1125,6 +1603,22 @@ export default function FluktuasiOIPage() {
   const [dbPeriodeStats,  setDbPeriodeStats]  = useState<{ periodes: string[]; accounts: number } | null>(null);
   const [selectedPeriodes, setSelectedPeriodes] = useState<Set<string>>(new Set());
   const [persistedSheetRowCodes, setPersistedSheetRowCodes] = useState<Set<string>>(new Set());
+
+  const fetchJsonWithRetry = useCallback(async (url: string, init?: RequestInit, retries = 2, delayMs = 350) => {
+    let lastErr: unknown = null;
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const res = await fetch(url, init);
+        const data = await res.json().catch(() => null);
+        if (res.ok) return { ok: true as const, data };
+        lastErr = new Error(String(data?.error ?? `HTTP ${res.status}`));
+      } catch (e) {
+        lastErr = e;
+      }
+      if (i < retries) await new Promise((r) => setTimeout(r, delayMs * (i + 1)));
+    }
+    return { ok: false as const, error: lastErr };
+  }, []);
 
   // -- Animation refs --------------------------------------------------------
   const pageContentRef   = useRef<HTMLDivElement>(null);
@@ -1191,7 +1685,7 @@ export default function FluktuasiOIPage() {
       // L1: in-memory (same session, instant)
       if (_sheetCache && _sheetCache.sheets.some(s => s.rows.length > 0)) {
         setSheetDataList(_sheetCache.sheets);
-        setRekapSheetData(_sheetCache.rekap);
+        setRekapSheetData(normalizeRekapDescriptions(_sheetCache.rekap));
         setFileName(_sheetCache.fileName);
         return;
       }
@@ -1200,7 +1694,7 @@ export default function FluktuasiOIPage() {
       if (idbEntry && idbEntry.sheets.some(s => s.rows.length > 0)) {
         _sheetCache = idbEntry;
         setSheetDataList(idbEntry.sheets);
-        setRekapSheetData(idbEntry.rekap);
+        setRekapSheetData(normalizeRekapDescriptions(idbEntry.rekap));
         setFileName(idbEntry.fileName);
         return;
       }
@@ -1215,7 +1709,7 @@ export default function FluktuasiOIPage() {
               ? result.data.sheetDataList
               : [];
             const rekap: RekapSheetData | null = result.data.rekapSheetData ?? null;
-            setRekapSheetData(rekap);
+            setRekapSheetData(normalizeRekapDescriptions(rekap));
             setSheetDataList(rawSheets);
             // If all sheets are stripped and we have the new sheet-rows DB,
             // eagerly load the first account so the tab bar appears.
@@ -1236,9 +1730,9 @@ export default function FluktuasiOIPage() {
   // -- Load keywords ----------------------------------------------------------
   const loadKeywords = useCallback(async () => {
     try {
-      const res = await fetch('/api/fluktuasi/keywords');
-      if (res.ok) {
-        const result = await res.json();
+      const rsp = await fetchJsonWithRetry('/api/fluktuasi/keywords');
+      if (rsp.ok) {
+        const result = rsp.data;
         if (result.success) {
           const normalized = Array.isArray(result.data)
             ? result.data.map((kw: any) => ({
@@ -1281,7 +1775,7 @@ export default function FluktuasiOIPage() {
         toast.error('Gagal memuat master keyword');
       }
     }
-  }, []);
+  }, [fetchJsonWithRetry]);
 
   // -- Load example keywords --------------------------------------------------
   const handleLoadExamples = async () => {
@@ -1536,9 +2030,9 @@ export default function FluktuasiOIPage() {
 
   const loadDbStats = useCallback(async () => {
     try {
-      const res = await fetch('/api/fluktuasi/akun-periodes');
-      if (!res.ok) return;
-      const data = await res.json();
+      const rsp = await fetchJsonWithRetry('/api/fluktuasi/akun-periodes');
+      if (!rsp.ok) return;
+      const data = rsp.data;
       if (data.success && Array.isArray(data.data)) {
         const records: AkunPeriodeRecord[] = data.data;
         setDbAkunPeriodes(records);
@@ -1549,7 +2043,7 @@ export default function FluktuasiOIPage() {
     } catch (e) {
       console.error('Gagal load DB stats:', e);
     }
-  }, []);
+  }, [fetchJsonWithRetry]);
 
   // Realtime: debounce refresh so rapid batch imports don't hammer the API
   const _fluktuasiDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1581,7 +2075,7 @@ export default function FluktuasiOIPage() {
         const aktivePeriodes = selectedPeriodes.size > 0 ? selectedPeriodes : new Set(periodes);
         const filtered = records.filter(r => aktivePeriodes.has(r.periode));
         const rekap = buildRekapFromAkunPeriodes(filtered.length > 0 ? filtered : records);
-        setRekapSheetData(rekap);
+        setRekapSheetData(normalizeRekapDescriptions(rekap));
         setAiReasons({});
       }
     } catch (e: any) {
@@ -1652,22 +2146,73 @@ export default function FluktuasiOIPage() {
       // Strip row data before saving — full rows can exceed Vercel's 4.5 MB body limit.
       // Detail rows are only available in the current upload session.
       const sheetsMetaOnly = sheets.map(({ rows: _rows, ...meta }) => ({ ...meta, rows: [] }));
-      const res = await fetch('/api/fluktuasi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileName: fname,
-          sheetDataList: sheetsMetaOnly,
-          rekapSheetData: rekap,
-          uploadedBy: 'system',
-        }),
+      const postImport = async (payload: { fileName: string; sheetDataList: unknown; rekapSheetData: unknown; uploadedBy: string }) => {
+        const res = await fetch('/api/fluktuasi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        let result: any = null;
+        try {
+          result = await res.json();
+        } catch {
+          result = { success: false, error: `HTTP ${res.status}` };
+        }
+        return { ok: !!result?.success, status: res.status, error: String(result?.error ?? '') };
+      };
+
+      const fullPayload = {
+        fileName: fname,
+        sheetDataList: sheetsMetaOnly,
+        rekapSheetData: rekap,
+        uploadedBy: 'system',
+      };
+
+      const compactRekap = (input: RekapSheetData): RekapSheetData => ({
+        ...input,
+        rows: input.rows.map((r) => ({
+          values: r.values,
+          type: r.type,
+          gapMoM: 0,
+          pctMoM: 0,
+          gapYoY: 0,
+          pctYoY: 0,
+          gapYtD: 0,
+          pctYtD: 0,
+          ytdCurrV: 0,
+          ytdPrevV: 0,
+          reasonMoM: '',
+          reasonYoY: '',
+          reasonYtD: '',
+        })),
       });
-      const result = await res.json();
-      if (!result.success) {
-        console.error('Gagal menyimpan ke database:', result.error);
+
+      const firstTry = await postImport(fullPayload);
+      if (firstTry.ok) return;
+
+      // Large uploads can fail when persisting full rekap snapshot JSON.
+      // Retry with compact rekap first to preserve table format after reload.
+      if (rekap) {
+        const compactTry = await postImport({
+          ...fullPayload,
+          rekapSheetData: compactRekap(rekap),
+        });
+        if (compactTry.ok) {
+          console.warn('Snapshot rekap penuh terlalu besar. Disimpan versi ringkas agar format tabel tetap konsisten.');
+          return;
+        }
+
+        // Last resort: save without rekap snapshot.
+        const nullTry = await postImport({ ...fullPayload, rekapSheetData: null });
+        if (nullTry.ok) {
+          console.warn('Snapshot rekap terlalu besar untuk disimpan. Data utama tetap tersimpan (mode ringan).');
+          return;
+        }
       }
+
+      console.warn('Gagal menyimpan snapshot import:', firstTry.error || `HTTP ${firstTry.status}`);
     } catch (error) {
-      console.error('Error menyimpan ke database:', error);
+      console.warn('Error menyimpan snapshot import:', error);
     }
   };
 
@@ -1675,15 +2220,51 @@ export default function FluktuasiOIPage() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    
+    // Ask user if they want to replace or append data using modal dialog
+    const hasExistingData = sheetDataList.length > 0 || rekapSheetData;
+    
+    if (hasExistingData) {
+      // Always append when data already exists (keep previous behavior that worked).
+      setConfirmDialog({
+        title: 'Data Lama Sudah Ada',
+        message: 'Data lama akan dipertahankan. File baru akan ditambahkan.',
+        confirmText: 'Tambah ke Data Lama',
+        confirmTone: 'primary',
+        onConfirm: async () => {
+          await proceedWithFileUpload(file, false);
+        },
+      });
+      return;
+    }
+    
+    // No existing data - just proceed with upload
+    await proceedWithFileUpload(file, false);
+  };
+  
+  const proceedWithFileUpload = async (file: File, shouldClearOldData: boolean) => {
     setIsProcessing(true);
     setUploadError('');
     setFileName(file.name);
     setSheetDataList([]);
     setRekapSheetData(null);
     setActiveSheetIdx(0);
+    setKaPage(0);
+    setRekapPage(0);
 
     // Reset input so same file can be re-uploaded
     if (fileInputRef.current) fileInputRef.current.value = '';
+    
+    // If user wants to replace, delete old data first
+    if (shouldClearOldData) {
+      try {
+        await fetch('/api/fluktuasi/sheet-rows', { method: 'DELETE' });
+        await fetch('/api/fluktuasi/akun-periodes', { method: 'DELETE' });
+      } catch (err) {
+        console.warn('Warning: Could not clear old data:', err);
+        // Continue anyway, new data will replace old
+      }
+    }
 
     try {
       const XLSXLib = await loadXLSX();
@@ -1714,7 +2295,8 @@ export default function FluktuasiOIPage() {
         // Find header row: look for row with most non-empty text cells
         let headerRowIdx = 0;
         let maxTextCells = 0;
-        for (let i = 0; i < Math.min(raw.length, 10); i++) {
+        // Some SAP exports place the header a bit lower; scan further to reduce mis-detection
+        for (let i = 0; i < Math.min(raw.length, 25); i++) {
           const row = raw[i];
           const textCells = row.filter((c: any) => {
             if (c === '' || c === null || c === undefined) return false;
@@ -1754,7 +2336,11 @@ export default function FluktuasiOIPage() {
             return /^\d{1,2}[.\-\/]\d{1,2}[.\-\/]\d{2,4}$/.test(s) ||
               /^\d{2}[.\-]\d{2}[.\-]\d{4}$/.test(s) ||
               /^\d{4}-\d{2}-\d{2}$/.test(s) ||
-              /^\d{8}$/.test(s);
+              /^\d{8}$/.test(s) ||
+              /^\d{4}[\/.\-]\d{1,2}$/.test(s) ||
+              /^\d{1,2}[\/.\-]\d{4}$/.test(s) ||
+              /^\d{1,2}[-\s][A-Za-z]{3,}[-\s]\d{2,4}$/.test(s) ||
+              /^[A-Za-z]{3,}[-\s]\d{2,4}$/.test(s);
           };
           let bestDateScore = 0;
           headers.forEach((_, col) => {
@@ -1829,7 +2415,9 @@ export default function FluktuasiOIPage() {
         // Detect amount column for period aggregation
         const amountColIdx = findAmountColIdx(
           headers, raw, headerRowIdx,
-          [dateColIdx, klasifikasiColIdx, docnoColIdx].filter((i) => i >= 0),
+          // Exclude only docno column. We also filter date-like columns inside findAmountColIdx,
+          // so wrong date/description detection won't accidentally exclude the true Amount column.
+          [docnoColIdx].filter((i) => i >= 0),
         );
 
         const rows: Record<string, any>[] = [];
@@ -1896,39 +2484,66 @@ export default function FluktuasiOIPage() {
           });
         }
       }
-      // Fire-and-forget: save aggregated data to DB
-      if (akunPeriodesFlat.length > 0) {
-        fetch('/api/fluktuasi/akun-periodes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ records: akunPeriodesFlat, uploadedBy: 'system', fileName: file.name }),
-        })
-          .then((r) => r.json())
-          .then(() => loadDbStats())
-          .then(async () => {
-            // -- If no rekap sheet was found in the uploaded file, rebuild the full
-            // rekap table from ALL periods stored in DB (current + previous uploads).
-            // The initial rekap shown above only covered the current file; this
-            // replaces it with the complete multi-period view once the DB save is done.
-            if (!rekapSheetName) {
-              try {
-                const resp  = await fetch('/api/fluktuasi/akun-periodes');
-                const dbData = await resp.json();
-                if (dbData.success && Array.isArray(dbData.data) && dbData.data.length > 0) {
-                  const allRecords: AkunPeriodeRecord[] = dbData.data;
-                  const fullRekap = buildRekapFromAkunPeriodes(allRecords);
-                  setRekapSheetData(fullRekap);
-                  setDbAkunPeriodes(allRecords);
-                  // Update IDB cache so next session loads the full rekap
-                  idbSaveSheets({ sheets: result, rekap: fullRekap, fileName: file.name });
-                }
-              } catch (e) {
-                console.warn('Could not rebuild full multi-period rekap from DB:', e);
-              }
-            }
-          })
-          .catch((e) => console.error('Gagal menyimpan akun periodes:', e));
+      let latestDbRecords: AkunPeriodeRecord[] = [];
+      let recordsToUpsert = akunPeriodesFlat;
+
+      // Append mode: preserve old periods exactly as-is by inserting ONLY new account+periode keys.
+      if (!shouldClearOldData && akunPeriodesFlat.length > 0) {
+        try {
+          const existingRes = await fetch('/api/fluktuasi/akun-periodes?slim=1');
+          const existingJson = await existingRes.json();
+          if (existingJson.success && Array.isArray(existingJson.data)) {
+            latestDbRecords = existingJson.data as AkunPeriodeRecord[];
+            const existingKeys = new Set(
+              latestDbRecords.map((r) => `${String(r.accountCode).trim()}__${String(r.periode).trim()}`),
+            );
+            recordsToUpsert = akunPeriodesFlat.filter(
+              (r) => !existingKeys.has(`${String(r.accountCode).trim()}__${String(r.periode).trim()}`),
+            );
+          }
+        } catch (e) {
+          console.warn('Could not load existing akun-periode keys before append:', e);
+        }
       }
+
+      if (recordsToUpsert.length > 0) {
+        try {
+          const saveRes = await fetch('/api/fluktuasi/akun-periodes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ records: recordsToUpsert, uploadedBy: 'system', fileName: file.name }),
+          });
+          const saveJson = await saveRes.json().catch(() => null);
+          if (!saveRes.ok) {
+            console.error('Gagal menyimpan akun periodes:', saveJson?.error ?? `HTTP ${saveRes.status}`);
+            toast.error(`Gagal menyimpan akun periodes (HTTP ${saveRes.status}).`);
+          } else if (!saveJson?.success) {
+            console.error('Gagal menyimpan akun periodes:', saveJson?.error ?? `HTTP ${saveRes.status}`);
+            toast.error(`Gagal menyimpan akun periodes: ${String(saveJson?.error ?? '')}`);
+          } else if (typeof saveJson.failed === 'number' && saveJson.failed > 0) {
+            // Partial failures can be hidden because API still returns {success:true}
+            // (append mode hides this by keeping old values, replace mode exposes it).
+            toast.info(
+              `Sebagian record gagal tersimpan (${saveJson.failed} dari ${recordsToUpsert.length}). Nilai bisa jadi tidak lengkap.`
+            );
+            console.warn('Partial save failures:', saveJson);
+          }
+        } catch (e) {
+          console.error('Gagal menyimpan akun periodes:', e);
+        }
+      }
+
+      try {
+        const latestRes = await fetch('/api/fluktuasi/akun-periodes');
+        const latestJson = await latestRes.json();
+        if (latestJson.success && Array.isArray(latestJson.data)) {
+          latestDbRecords = latestJson.data as AkunPeriodeRecord[];
+          setDbAkunPeriodes(latestDbRecords);
+        }
+      } catch (e) {
+        console.warn('Could not reload akun periodes after upload:', e);
+      }
+      loadDbStats();
 
       // -- Build lookup map: accountCode ? { klasifikasi[], remark[] } ---------
       const acctReasonMap: Record<string, { klasifikasi: Set<string>; remark: Set<string> }> = {};
@@ -2028,6 +2643,20 @@ export default function FluktuasiOIPage() {
             }
           }
 
+          // Keep only rolling 24 months of period columns based on inferred period keys.
+          {
+            const withPeriode = amountCols
+              .map((ac) => ({ ac, key: inferAmountColPeriodeKey(ac) }))
+              .filter((x) => !!x.key) as Array<{ ac: AmountCol; key: string }>;
+            if (withPeriode.length > MAX_PERIOD_COLUMNS) {
+              const keepKeys = new Set(lastNPeriodes(withPeriode.map((x) => x.key), MAX_PERIOD_COLUMNS));
+              const keepColIdx = new Set(withPeriode.filter((x) => keepKeys.has(x.key)).map((x) => x.ac.colIdx));
+              for (let i = amountCols.length - 1; i >= 0; i--) {
+                if (!keepColIdx.has(amountCols[i].colIdx)) amountCols.splice(i, 1);
+              }
+            }
+          }
+
           // Determine MoM and YoY column indices within amountCols array
           // Non-cumulative cols only for point-in-time comparison
           const pointCols = amountCols.filter((c) => !c.isCumulative);
@@ -2065,6 +2694,16 @@ export default function FluktuasiOIPage() {
           const { currIdxs: ytdCurrColIdxs, prevIdxs: ytdPrevColIdxs, label: ytdLabel } =
             buildYtdColIdxs(amountCols, momCurrIdx);
 
+          const amountColSet = new Set(amountCols.map(ac => ac.colIdx));
+          const firstAmtIdx = amountCols.length > 0 ? Math.min(...amountCols.map(ac => ac.colIdx)) : Infinity;
+          const descColCandidates = headers
+            .map((h, ci) => ({ h, ci }))
+            .filter(({ ci }) => ci !== accountColIdx && !amountColSet.has(ci) && ci < firstAmtIdx);
+          const preferredDescColIdx = descColCandidates.find(({ h }) =>
+            /description|deskripsi|nama akun|account name|uraian|keterangan|narasi/i.test(h)
+          )?.ci;
+          const descColIdx = preferredDescColIdx ?? descColCandidates[0]?.ci ?? -1;
+
           // Build rows
           const rekapRows: RekapSheetRow[] = [];
           for (let r = hRow2 + 1; r < rawR.length; r++) {
@@ -2094,6 +2733,9 @@ export default function FluktuasiOIPage() {
 
             // Auto-populate reasons from kode akun lookup
             const acctCode = String(values[accountColIdx] ?? '').trim();
+            if (descColIdx >= 0 && /^\d{5,}$/.test(acctCode)) {
+              values[descColIdx] = resolveAccountDescription(acctCode);
+            }
             const acctEntry = acctReasonMap[acctCode];
             const reasonMoM = acctEntry ? [...acctEntry.klasifikasi].join('; ') : '';
             const reasonYoY = acctEntry ? [...acctEntry.remark].join('; ') : '';
@@ -2116,22 +2758,31 @@ export default function FluktuasiOIPage() {
             ytdLabel,
             rows: rekapRows,
           };
-          setRekapSheetData(rekapData);
+          setRekapSheetData(normalizeRekapDescriptions(rekapData));
         }
       }
 
       // -- Auto-build rekap from kode akun sheets (when no rekap sheet found) -
-      if (!rekapSheetName && akunPeriodesFlat.length > 0) {
-        const autoRekap = buildRekapFromAkunPeriodes(akunPeriodesFlat);
+      if (!rekapSheetName && (latestDbRecords.length > 0 || akunPeriodesFlat.length > 0)) {
+        const sourceRecords = latestDbRecords.length > 0 ? latestDbRecords : akunPeriodesFlat;
+        const autoRekap = buildRekapFromAkunPeriodes(sourceRecords);
         rekapData = autoRekap;
-        setRekapSheetData(autoRekap);
+        setRekapSheetData(normalizeRekapDescriptions(autoRekap));
+      }
+
+      // Canonical rekap source: persisted akun-periode data.
+      // This guarantees old periods stay intact when appending a new upload.
+      if (latestDbRecords.length > 0) {
+        const dbRekap = buildRekapFromAkunPeriodes(latestDbRecords);
+        rekapData = dbRekap;
+        setRekapSheetData(normalizeRekapDescriptions(dbRekap));
       }
 
       // -- Save to database ---------------------------------------------------
       await saveToDatabase(file.name, result, rekapData);
 
       // -- Save to L1 + L2 cache ---------------------------------------------------
-      _sheetCache = { sheets: result, rekap: rekapData, fileName: file.name };
+      _sheetCache = { sheets: result, rekap: normalizeRekapDescriptions(rekapData), fileName: file.name };
       idbSaveSheets(_sheetCache); // fire-and-forget
 
       // -- Save rows per-account to DB (so other users can view without re-uploading) -
@@ -2545,11 +3196,35 @@ export default function FluktuasiOIPage() {
   }, [sheetDataList]);
 
   // Paginated kode-akun rows
-  const kaRows = useMemo(() => activeSheet?.rows ?? [], [activeSheet]);
+  const recentKaPeriodeSet = useMemo(() => {
+    const all = sheetDataList
+      .flatMap((sd) => sd.rows)
+      .map((r) => String(r['__periode'] ?? '').trim())
+      .filter(isPeriodeKey);
+    const keep = lastNPeriodes(all, MAX_PERIOD_COLUMNS);
+    return new Set(keep);
+  }, [sheetDataList]);
+
+  const kaRows = useMemo(() => {
+    const rows = activeSheet?.rows ?? [];
+    if (recentKaPeriodeSet.size === 0) return rows;
+    return rows.filter((r) => {
+      const p = String(r['__periode'] ?? '').trim();
+      if (!p) return true;
+      if (!isPeriodeKey(p)) return true;
+      return recentKaPeriodeSet.has(normalizePeriodeKey(p));
+    });
+  }, [activeSheet, recentKaPeriodeSet]);
   // True only when row data is actually present (rows are stripped when saved to DB)
   const hasSheetRows = useMemo(() => sheetDataList.some(sd => sd.rows.length > 0), [sheetDataList]);
   const kaTotalPages = Math.ceil(kaRows.length / KA_PAGE_SIZE);
   const kaPageRows   = useMemo(() => kaRows.slice(kaPage * KA_PAGE_SIZE, (kaPage + 1) * KA_PAGE_SIZE), [kaRows, kaPage]);
+
+  // Keep KA pagination valid when a new upload changes row counts.
+  useEffect(() => {
+    const maxPage = Math.max(0, kaTotalPages - 1);
+    setKaPage((p) => Math.min(p, maxPage));
+  }, [kaTotalPages]);
 
   // Re-run keyword matching live on the visible KA rows so that keywords added/changed
   // after upload are reflected immediately without needing to re-upload the file.
@@ -2736,6 +3411,12 @@ export default function FluktuasiOIPage() {
   const rekapPageRows   = useMemo(() =>
     rekapDisplayRowsLive.slice(rekapPage * REKAP_PAGE_SIZE, (rekapPage + 1) * REKAP_PAGE_SIZE),
   [rekapDisplayRowsLive, rekapPage]);
+
+  // Keep rekap pagination valid when a new upload changes filtered row counts.
+  useEffect(() => {
+    const maxPage = Math.max(0, rekapTotalPages - 1);
+    setRekapPage((p) => Math.min(p, maxPage));
+  }, [rekapTotalPages]);
 
   // Reset pages when switching tabs
   const switchRef = useRef<SheetData[]>([]);
@@ -3460,123 +4141,6 @@ export default function FluktuasiOIPage() {
             )}
           </div>
 
-          {/* -- Data Tersimpan (Multi-Periode) -------------------------- */}
-          <div data-animate-card className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <div className="p-5 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800">Data Tersimpan (Multi-Periode)</h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  Setiap upload otomatis menyimpan agregat per kode akun per periode.
-                  Klik periode untuk memilih, lalu bangun rekap atau hapus periode yang salah.
-                </p>
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  onClick={loadAndBuildRekapFromDB}
-                  disabled={loadingDbRekap || selectedPeriodes.size === 0}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition text-sm font-medium disabled:opacity-50"
-                >
-                  {loadingDbRekap
-                    ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />Memuat…</>
-                    : dbPeriodeStats && selectedPeriodes.size < dbPeriodeStats.periodes.length
-                      ? <><FileSpreadsheet size={16} />Bangun Rekap ({selectedPeriodes.size} Periode)</>
-                      : <><FileSpreadsheet size={16} />Bangun Rekap dari Semua Periode</>
-                  }
-                </button>
-                {dbPeriodeStats && selectedPeriodes.size > 0 && selectedPeriodes.size < dbPeriodeStats.periodes.length && (
-                  <button
-                    onClick={deleteSelectedPeriodes}
-                    disabled={loadingDbRekap}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition text-sm font-medium disabled:opacity-50"
-                  >
-                    <Trash2 size={16} />Hapus Periode Terpilih
-                  </button>
-                )}
-                <button
-                  onClick={clearDbData}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
-                >
-                  <Trash2 size={16} />Hapus Semua Data DB
-                </button>
-              </div>
-            </div>
-
-            {loadingDbRekap ? (
-              <div className="px-5 pb-5 space-y-3">
-                <div className="flex gap-3">
-                  <Skeleton className="h-9 w-28 rounded-lg" />
-                  <Skeleton className="h-9 w-36 rounded-lg" />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-7 w-16 rounded-full" />)}
-                </div>
-              </div>
-            ) : dbPeriodeStats ? (
-              <div ref={dbStatsRef} className="px-5 pb-5">
-                <div className="flex flex-wrap items-center gap-3 mb-3">
-                  <div className="bg-teal-50 border border-teal-200 rounded-lg px-4 py-2 text-sm flex items-center gap-2">
-                    <Sparkles size={14} className="text-teal-500" />
-                    <span className="font-semibold text-teal-800">{dbPeriodeStats.accounts}</span>
-                    <span className="text-teal-600">kode akun</span>
-                  </div>
-                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2 text-sm flex items-center gap-2">
-                    <Sparkles size={14} className="text-indigo-500" />
-                    <span className="font-semibold text-indigo-800">
-                      {selectedPeriodes.size === dbPeriodeStats.periodes.length
-                        ? dbPeriodeStats.periodes.length
-                        : `${selectedPeriodes.size} / ${dbPeriodeStats.periodes.length}`}
-                    </span>
-                    <span className="text-indigo-600">periode tersimpan</span>
-                  </div>
-                  {/* Pilih semua / batal pilih */}
-                  {selectedPeriodes.size === dbPeriodeStats.periodes.length ? (
-                    <button
-                      onClick={() => setSelectedPeriodes(new Set())}
-                      className="text-xs text-gray-500 hover:text-gray-700 underline underline-offset-2 transition-colors"
-                    >
-                      Batal Pilih Semua
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => setSelectedPeriodes(new Set(dbPeriodeStats.periodes))}
-                      className="text-xs text-teal-600 hover:text-teal-800 underline underline-offset-2 transition-colors"
-                    >
-                      Pilih Semua
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {dbPeriodeStats.periodes.map((p) => {
-                    const isSelected = selectedPeriodes.has(p);
-                    const label = formatPeriodeLabel(p);
-                    return (
-                      <button
-                        key={p}
-                        onClick={() => togglePeriode(p)}
-                        title={isSelected ? `Klik untuk batal pilih ${label}` : `Klik untuk pilih ${label}`}
-                        className={`js-periode-badge inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-                          isSelected
-                            ? 'bg-teal-100 text-teal-800 border-teal-300 hover:bg-teal-200'
-                            : 'bg-gray-100 text-gray-400 border-gray-200 hover:bg-gray-200 line-through'
-                        }`}
-                      >
-                        {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />}
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {selectedPeriodes.size === 0 && (
-                  <p className="mt-2 text-xs text-amber-600">Pilih minimal satu periode untuk membangun rekap atau menghapus.</p>
-                )}
-              </div>
-            ) : (
-              <div className="px-5 pb-5 text-sm text-gray-400 italic">
-                Belum ada data tersimpan. Upload file untuk mulai mengumpulkan data per periode.
-              </div>
-            )}
-          </div>
-
           {/* -- Legend ----------------------------------------------------- */}
           {(sheetDataList.length > 0 || rekapSheetData) && (
             <div data-animate-card className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-600">
@@ -3613,8 +4177,8 @@ export default function FluktuasiOIPage() {
             </div>
           )}
           {hasSheetRows && (
-            <div data-animate-card ref={tableResultRef} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-              <div className="flex items-center border-b border-gray-200 bg-gray-50">
+            <div data-animate-card ref={tableResultRef} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden flex flex-col" style={{ maxHeight: '80vh' }}>
+              <div className="flex-shrink-0 flex items-center border-b border-gray-200 bg-gray-50">
                 <button className="flex-shrink-0 px-2 py-2 text-gray-400 hover:text-gray-600 disabled:opacity-30"
                   disabled={activeSheetIdx === 0} onClick={() => switchTab(Math.max(0, activeSheetIdx - 1))}>
                   <ChevronLeft size={16} />
@@ -3639,8 +4203,8 @@ export default function FluktuasiOIPage() {
               </div>
 
               {activeSheet && (
-                <div ref={kaTableRef}>
-                  <div className="px-4 py-2 border-b border-gray-100 text-xs text-gray-500 flex flex-wrap items-center gap-3">
+                <div ref={kaTableRef} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                  <div className="flex-shrink-0 px-4 py-2 border-b border-gray-100 text-xs text-gray-500 flex flex-wrap items-center gap-3">
                     <span>G/L Account: <span className="font-semibold text-gray-800">{activeSheet.sheetName}</span></span>
                     <span><span className="font-semibold text-gray-800">{kaRows.length}</span> baris</span>
                     <span><span className="font-semibold" style={{ color: '#4472C4' }}>{activeSheet.headers.length}</span> kolom asli + <span className="font-semibold" style={{ color: '#C00000' }}>3</span> kolom sistem</span>
@@ -3654,21 +4218,21 @@ export default function FluktuasiOIPage() {
                       </span>
                     )}
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-[11px] border-collapse">
+                  <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+                    <table className="min-w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
                       <thead>
-                        <tr>
+                        <tr style={{ position: 'sticky', top: 0, zIndex: 10, height: '32px' }}>
                           <th className="px-2 py-2 text-center font-semibold text-white whitespace-nowrap"
-                            style={{ backgroundColor: '#4472C4', border: '1px solid #3a62a8', minWidth: 36, position: 'sticky', left: 0, zIndex: 2 }}>No.</th>
+                            style={{ backgroundColor: '#4472C4', border: '1px solid #3a62a8', minWidth: 36, position: 'sticky', left: 0, zIndex: 11, height: '32px' }}>No.</th>
                           {activeSheet.headers.map((h, idx) => (
                             <th key={h} className="px-3 py-2 text-left font-semibold text-white whitespace-nowrap"
-                              style={{ backgroundColor: '#4472C4', border: '1px solid #3a62a8' }}>
+                              style={{ backgroundColor: '#4472C4', border: '1px solid #3a62a8', height: '32px' }}>
                               {activeSheet.originalHeaders?.[idx] ?? h}
                             </th>
                           ))}
                           {ADDED_KA_HEADERS.map((h) => (
                             <th key={h} className="px-3 py-2 text-left font-semibold text-white whitespace-nowrap"
-                              style={{ backgroundColor: '#C00000', border: '1px solid #900000' }}>{h}</th>
+                              style={{ backgroundColor: '#C00000', border: '1px solid #900000', height: '32px' }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -3680,7 +4244,7 @@ export default function FluktuasiOIPage() {
                           return (
                           <tr key={ri} style={{ backgroundColor: rowBg }}>
                             <td className="px-2 py-1.5 text-center text-gray-400 whitespace-nowrap select-none"
-                              style={{ border: '1px solid #e5e7eb', position: 'sticky', left: 0, zIndex: 1, backgroundColor: rowBg }}>{globalRi + 1}</td>
+                              style={{ border: '1px solid #e5e7eb', position: 'sticky', left: 0, zIndex: 5, backgroundColor: rowBg }}>{globalRi + 1}</td>
                             {activeSheet.headers.map((h) => {
                               const val = row[h];
                               const isDateCol = /date|tanggal|tgl/i.test(h);
@@ -3850,9 +4414,9 @@ export default function FluktuasiOIPage() {
             };
 
             return (
-              <div data-animate-card className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+              <div data-animate-card className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden flex flex-col" style={{ maxHeight: '80vh' }}>
                 {/* Header bar */}
-                <div className="px-4 py-3 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2"
+                <div className="flex-shrink-0 px-4 py-3 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2"
                   style={{ background: 'linear-gradient(to right,#1F3864,#2e4d8a)' }}>
                   <div>
                     <h3 className="text-sm sm:text-base font-bold text-white">
@@ -4038,7 +4602,7 @@ export default function FluktuasiOIPage() {
                 })()}
 
                 {rekapTotalPages > 1 && (
-                  <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between text-xs text-gray-500">
+                  <div className="flex-shrink-0 px-4 py-2 border-b border-gray-100 flex items-center justify-between text-xs text-gray-500">
                     <span><span className="font-semibold text-gray-800">{rekapDisplayRowsLive.length}</span> baris</span>
                     <span className="flex items-center gap-1">
                       <button onClick={() => setRekapPage((p) => Math.max(0, p - 1))} disabled={rekapPage === 0}
@@ -4050,21 +4614,25 @@ export default function FluktuasiOIPage() {
                   </div>
                 )}
 
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-[11px] border-collapse">
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                  <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+                    <table className="min-w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
                     <thead>
                       {/* -- Row 1: year group labels -- */}
-                      <tr>
-                        <th className="px-3 py-1 text-white text-[10px] font-bold"
-                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}></th>
-                        {descColIdxList.map(ci => (
-                          <th key={ci} className="px-3 py-1 text-white text-[10px] font-bold italic"
-                            style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>
-                            Description
-                          </th>
-                        ))}
+                      <tr style={{ position: 'sticky', top: 0, zIndex: 10, height: '18px' }}>
+                        <th className="px-3 py-0.5 text-white text-[10px] font-bold"
+                          style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', position: 'sticky', left: 0, zIndex: 11, minWidth: '80px', height: '18px' }}></th>
+                        {descColIdxList.map((ci, descIdx) => {
+                          const leftPos = 80 + (descIdx * 200);
+                          return (
+                            <th key={ci} className="px-3 py-0.5 text-white text-[10px] font-bold italic"
+                              style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)', minWidth: '180px', position: 'sticky', left: `${leftPos}px`, zIndex: 11 }}>
+                              Description
+                            </th>
+                          );
+                        })}
                         {visibleAmountCols.map((ac) => (
-                          <th key={ac.colIdx} className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
+                          <th key={ac.colIdx} className="px-3 py-0.5 text-white text-[10px] font-bold text-center whitespace-nowrap"
                             style={{ backgroundColor: amtColBg(ac), border: '1px solid rgba(255,255,255,0.2)' }}>
                             {ac.yearLabel}
                           </th>
@@ -4072,47 +4640,50 @@ export default function FluktuasiOIPage() {
                         {/* Dynamic YtD value columns — group row */}
                         {hasYtdData && (
                           <>
-                            <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
+                            <th className="px-3 py-0.5 text-black text-[10px] font-bold text-center whitespace-nowrap"
                               style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>
                               {effYtdCAC?.yearLabel || 'YtD'}
                             </th>
-                            <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
+                            <th className="px-3 py-0.5 text-black text-[10px] font-bold text-center whitespace-nowrap"
                               style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>
                               {effYtdPAC?.yearLabel || 'YtD'}
                             </th>
                           </>
                         )}
-                        <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-black text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM</th>
-                        <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-black text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM</th>
-                        <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-white text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>Reason MoM</th>
-                        <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-black text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY</th>
-                        <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-black text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY</th>
-                        <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-white text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>Reason YoY</th>
-                        <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-black text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YtD</th>
-                        <th className="px-3 py-1 text-black text-[10px] font-bold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-black text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YtD</th>
-                        <th className="px-3 py-1 text-white text-[10px] font-bold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-white text-[10px] font-bold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#1F3864', border: '1px solid rgba(255,255,255,0.15)' }}>Reason YtD</th>
                       </tr>
                       {/* -- Row 2: date labels -- */}
-                      <tr>
-                        <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
-                          style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)' }}>Account</th>
-                        {descColIdxList.map(ci => (
-                          <th key={ci} className="px-3 py-1.5 text-white text-[10px] font-semibold italic text-center"
-                            style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)', minWidth: '180px' }}>
-                            {rekapSheetData.originalHeaders?.[ci] || rekapSheetData.headers[ci]}
-                          </th>
-                        ))}
+                      <tr style={{ position: 'sticky', top: '18px', zIndex: 10, height: '18px' }}>
+                        <th className="px-3 py-0.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
+                          style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)', position: 'sticky', left: 0, zIndex: 11, minWidth: '80px', height: '18px' }}>Account</th>
+                        {descColIdxList.map((ci, descIdx) => {
+                          const leftPos = 80 + (descIdx * 200);
+                          return (
+                            <th key={ci} className="px-3 py-0.5 text-white text-[10px] font-semibold italic text-center"
+                              style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)', minWidth: '180px', position: 'sticky', left: `${leftPos}px`, zIndex: 11 }}>
+                              {rekapSheetData.originalHeaders?.[ci] || rekapSheetData.headers[ci]}
+                            </th>
+                          );
+                        })}
                         {visibleAmountCols.map((ac) => (
-                          <th key={ac.colIdx} className="px-3 py-1.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
+                          <th key={ac.colIdx} className="px-3 py-0.5 text-white text-[10px] font-semibold text-center whitespace-nowrap"
                             style={{ backgroundColor: ac.isCumulative ? '#E36C09' : '#244185', border: '1px solid rgba(255,255,255,0.2)', minWidth: '90px' }}>
                             {ac.dateLabel || ac.label}
                           </th>
@@ -4120,41 +4691,41 @@ export default function FluktuasiOIPage() {
                         {/* Dynamic YtD value column headers */}
                         {hasYtdData && (
                           <>
-                            <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
+                            <th className="px-3 py-0.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                               style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00', minWidth: '100px' }}>
                               YtD {ytdCLabel}
                             </th>
-                            <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
+                            <th className="px-3 py-0.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                               style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00', minWidth: '100px' }}>
                               YtD {ytdPLabel}
                             </th>
                           </>
                         )}
-                        <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>GAP<br/>MoM</th>
-                        <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>MoM<br/>%</th>
-                        <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
+                        <th className="px-3 py-0.5 text-white text-[10px] font-semibold text-center"
                           style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
                           vs {prevLabel}
                         </th>
-                        <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>GAP<br/>YoY</th>
-                        <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>YoY<br/>%</th>
-                        <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
+                        <th className="px-3 py-0.5 text-white text-[10px] font-semibold text-center"
                           style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
                           vs {yoyLabel}
                         </th>
-                        <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
+                        <th className="px-3 py-0.5 text-black text-[10px] font-semibold text-center whitespace-nowrap"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00' }}>GAP<br/>YtD</th>
-                        <th className="px-3 py-1.5 text-black text-[10px] font-semibold text-center"
+                        <th className="px-3 py-0.5 text-black text-[10px] font-semibold text-center"
                           style={{ backgroundColor: '#FFC000', border: '1px solid #cc9a00', minWidth: '120px' }}>
                           {hasYtdData && ytdCLabel && ytdPLabel
                             ? `${ytdCLabel} vs ${ytdPLabel}`
                             : (rekapSheetData.ytdLabel || 'YtD %')}
                         </th>
-                        <th className="px-3 py-1.5 text-white text-[10px] font-semibold text-center"
+                        <th className="px-3 py-0.5 text-white text-[10px] font-semibold text-center"
                           style={{ backgroundColor: '#244185', border: '1px solid rgba(255,255,255,0.15)', minWidth: '300px' }}>
                           vs {ytdPLabel || ytdCLabel || 'YtD'}
                         </th>
@@ -4183,29 +4754,32 @@ export default function FluktuasiOIPage() {
                           <tr key={ri} className="js-rekap-row">
                             {/* Account */}
                             <td className="px-3 py-1.5 whitespace-nowrap font-mono text-[10px]"
-                              style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}`, minWidth: '80px' }}>
+                              style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}`, minWidth: '80px', position: 'sticky', left: 0, zIndex: 3 }}>
                               {acctVal}
                             </td>
                             {/* Description columns */}
-                            {descColIdxList.map(ci => (
-                              <td key={ci} className="px-3 py-1.5"
-                                style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}`, minWidth: '180px' }}>
-                                {String(row.values[ci] ?? '')}
-                              </td>
-                            ))}
+                            {descColIdxList.map((ci, descIdx) => {
+                              const leftPos = 80 + (descIdx * 200);
+                              return (
+                                <td key={ci} className="px-3 py-1.5"
+                                  style={{ backgroundColor: s.bg, color: s.text, fontWeight: s.weight, border: `1px solid ${s.border}`, minWidth: '180px', position: 'sticky', left: `${leftPos}px`, zIndex: 2 }}>
+                                  {String(row.values[ci] ?? '')}
+                                </td>
+                              );
+                            })}
                             {/* All amount columns */}
                             {visibleAmountCols.map((ac) => {
                               const v = row.values[ac.colIdx];
                               const acBg = isSpecial ? s.bg : ri % 2 === 0
                                 ? (ac.isCumulative ? '#fff8ec' : '#f9fafb')
                                 : (ac.isCumulative ? '#fff3d6' : '#f0f4ff');
+                              const showAmount = !isAccountSubtotal && v !== '' && v !== null && v !== undefined;
                               return (
                                 <td key={ac.colIdx} className="px-3 py-1.5 whitespace-nowrap text-right"
                                   style={{ backgroundColor: acBg, color: s.text, fontWeight: s.weight,
                                     border: `1px solid ${isSpecial ? s.border : ac.isCumulative ? '#f5c97a' : '#e5e7eb'}`,
                                     minWidth: '90px' }}>
-                                  {v !== '' && v !== null && v !== undefined
-                                    ? fmtRp(parseNum(v)) : ''}
+                                  {showAmount ? fmtRp(parseNum(v)) : ''}
                                 </td>
                               );
                             })}
@@ -4216,13 +4790,13 @@ export default function FluktuasiOIPage() {
                                   style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                     color: s.text, fontWeight: s.weight, border: `1px solid ${isSpecial ? s.border : '#fde68a'}`,
                                     minWidth: '100px' }}>
-                                  {rowHasData && row.ytdCurrV !== 0 ? fmtRp(row.ytdCurrV) : ''}
+                                  {rowHasData ? fmtRp(row.ytdCurrV) : ''}
                                 </td>
                                 <td className="px-3 py-1.5 whitespace-nowrap text-right"
                                   style={{ backgroundColor: isSpecial ? s.bg : ri % 2 === 0 ? '#fffbeb' : '#fef9e0',
                                     color: s.text, fontWeight: s.weight, border: `1px solid ${isSpecial ? s.border : '#fde68a'}`,
                                     minWidth: '100px' }}>
-                                  {rowHasData && row.ytdPrevV !== 0 ? fmtRp(row.ytdPrevV) : ''}
+                                  {rowHasData ? fmtRp(row.ytdPrevV) : ''}
                                 </td>
                               </>
                             )}
@@ -4279,6 +4853,7 @@ export default function FluktuasiOIPage() {
                       })}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </div>
             );
@@ -4981,7 +5556,7 @@ export default function FluktuasiOIPage() {
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full border border-gray-200">
             <div className="p-5 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-800">{confirmDialog.title}</h3>
-              <p className="text-sm text-gray-600 mt-2">
+              <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">
                 {confirmDialog.message}
               </p>
             </div>
@@ -4992,6 +5567,23 @@ export default function FluktuasiOIPage() {
               >
                 Batal
               </button>
+              {confirmDialog.onSecondary && (
+                <button
+                  onClick={async () => {
+                    const action = confirmDialog.onSecondary;
+                    setConfirmDialog(null);
+                    await action?.();
+                  }}
+                  disabled={isReapplying || loadingDbRekap}
+                  className={`flex-1 px-4 py-2.5 text-white rounded-lg font-medium transition disabled:opacity-60 ${
+                    confirmDialog.secondaryTone === 'danger'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  {confirmDialog.secondaryText || 'Lanjutkan'}
+                </button>
+              )}
               <button
                 onClick={async () => {
                   const action = confirmDialog.onConfirm;
