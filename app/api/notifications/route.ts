@@ -5,6 +5,19 @@ export async function GET(request: NextRequest) {
   try {
     const notifications: any[] = [];
     const today = new Date();
+    const bulanMap: { [key: string]: number } = {
+      Jan: 0, Feb: 1, Mar: 2, Apr: 3, Mei: 4, Jun: 5,
+      Jul: 6, Agu: 7, Sep: 8, Okt: 9, Nov: 10, Des: 11,
+    };
+
+    const parsePeriodeDate = (bulanRaw?: string): Date | null => {
+      if (!bulanRaw) return null;
+      const [bulanName, tahunStr] = String(bulanRaw).split(' ');
+      const periodeBulan = bulanMap[bulanName];
+      const periodeTahun = Number(tahunStr);
+      if (!Number.isFinite(periodeBulan) || !Number.isFinite(periodeTahun)) return null;
+      return new Date(periodeTahun, periodeBulan, 1);
+    };
 
     // 1. Check Accrual Periodes that need realization
     const accruals = await prisma.accrual.findMany({
@@ -34,15 +47,8 @@ export async function GET(request: NextRequest) {
 
     accruals.forEach((accrual) => {
       accrual.periodes.forEach((periode) => {
-        // Parse periode date
-        const [bulanName, tahunStr] = periode.bulan.split(' ');
-        const bulanMap: { [key: string]: number } = {
-          'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
-          'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11
-        };
-        const periodeBulan = bulanMap[bulanName];
-        const periodeTahun = parseInt(tahunStr);
-        const periodeDate = new Date(periodeTahun, periodeBulan, 1);
+        const periodeDate = parsePeriodeDate(periode.bulan);
+        if (!periodeDate) return;
 
         // Check if periode has passed
         if (today >= periodeDate) {
@@ -90,15 +96,8 @@ export async function GET(request: NextRequest) {
 
     prepaids.forEach((prepaid) => {
       prepaid.periodes.forEach((periode) => {
-        // Parse periode date
-        const [bulanName, tahunStr] = periode.bulan.split(' ');
-        const bulanMap: { [key: string]: number } = {
-          'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
-          'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11
-        };
-        const periodeBulan = bulanMap[bulanName];
-        const periodeTahun = parseInt(tahunStr);
-        const periodeDate = new Date(periodeTahun, periodeBulan, 1);
+        const periodeDate = parsePeriodeDate(periode.bulan);
+        if (!periodeDate) return;
 
         // Check if periode has passed and not amortized
         if (today >= periodeDate && !periode.isAmortized) {

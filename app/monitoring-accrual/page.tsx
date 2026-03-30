@@ -475,16 +475,24 @@ export default function MonitoringAccrualPage() {
       // Targeted: hanya fetch item yang berubah, merge ke state tanpa re-render semua
       try {
         const res = await fetch(`/api/accrual?id=${id}`);
-        if (!res.ok) return;
+        if (!res.ok) {
+          fetchAccrualData();
+          return;
+        }
         const records = await res.json();
         const updated = records[0];
-        if (!updated) return;
+        if (!updated) {
+          fetchAccrualData();
+          return;
+        }
         setAccrualData(prev => {
           const idx = prev.findIndex(a => a.id === updated.id);
           if (idx >= 0) { const next = [...prev]; next[idx] = updated; return next; }
           return [updated, ...prev]; // item baru
         });
-      } catch { /* silently ignore */ }
+      } catch {
+        fetchAccrualData();
+      }
       return;
     }
     // Fallback (import bulk / no id): full refresh
