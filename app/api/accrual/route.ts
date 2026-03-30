@@ -25,7 +25,14 @@ export async function GET(request: NextRequest) {
     // Filter by single ID (targeted realtime update)
     const idParam = searchParams.get('id');
     if (idParam) {
-      where.id = parseInt(idParam);
+      const parsedId = Number(idParam);
+      if (!Number.isFinite(parsedId) || parsedId <= 0) {
+        return NextResponse.json(
+          { error: 'Invalid id parameter' },
+          { status: 400 }
+        );
+      }
+      where.id = parsedId;
     }
 
     // Filter by search term
@@ -41,69 +48,115 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    const accruals = await prisma.accrual.findMany({
-      where,
-      select: {
-        id: true,
-        companyCode: true,
-        noPo: true,
-        kdAkr: true,
-        alokasi: true,
-        kdAkunBiaya: true,
-        vendor: true,
-        deskripsi: true,
-        headerText: true,
-        klasifikasi: true,
-        totalAmount: true,
-        saldoAwal: true,
-        costCenter: true,
-        startDate: true,
-        jumlahPeriode: true,
-        pembagianType: true,
-        createdAt: true,
-        periodes: {
-          select: {
-            id: true,
-            periodeKe: true,
-            bulan: true,
-            tahun: true,
-            amountAccrual: true,
-            realisasis: {
-              select: {
-                id: true,
-                tanggalRealisasi: true,
-                amount: true,
-                headerText: true,
-                lineText: true,
-                keterangan: true,
-                kdAkunBiaya: true,
-                costCenter: true
+    let accruals: any[] = [];
+    try {
+      accruals = await prisma.accrual.findMany({
+        where,
+        select: {
+          id: true,
+          companyCode: true,
+          noPo: true,
+          kdAkr: true,
+          alokasi: true,
+          kdAkunBiaya: true,
+          vendor: true,
+          deskripsi: true,
+          headerText: true,
+          klasifikasi: true,
+          totalAmount: true,
+          saldoAwal: true,
+          costCenter: true,
+          startDate: true,
+          jumlahPeriode: true,
+          pembagianType: true,
+          createdAt: true,
+          periodes: {
+            select: {
+              id: true,
+              periodeKe: true,
+              bulan: true,
+              tahun: true,
+              amountAccrual: true,
+              realisasis: {
+                select: {
+                  id: true,
+                  tanggalRealisasi: true,
+                  amount: true,
+                  headerText: true,
+                  lineText: true,
+                  keterangan: true,
+                  kdAkunBiaya: true,
+                  costCenter: true
+                }
+              },
+              costcenters: {
+                select: {
+                  id: true,
+                  costCenter: true,
+                  kdAkunBiaya: true,
+                  amount: true,
+                  headerText: true,
+                  lineText: true,
+                  keterangan: true
+                },
+                orderBy: { createdAt: 'asc' }
               }
             },
-            costcenters: {
-              select: {
-                id: true,
-                costCenter: true,
-                kdAkunBiaya: true,
-                amount: true,
-                headerText: true,
-                lineText: true,
-                keterangan: true
-              },
-              orderBy: { createdAt: 'asc' }
-            }
+            orderBy: {
+              periodeKe: 'asc',
+            },
+            take: 100
           },
-          orderBy: {
-            periodeKe: 'asc',
-          },
-          take: 100
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: 1000
-    });
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: 1000
+      });
+    } catch (fullQueryError) {
+      // Fallback for schema drift in production so endpoint still serves core data.
+      console.error('Accrual full query failed, falling back to core shape:', fullQueryError);
+      accruals = await prisma.accrual.findMany({
+        where,
+        select: {
+          id: true,
+          kdAkr: true,
+          kdAkunBiaya: true,
+          vendor: true,
+          deskripsi: true,
+          totalAmount: true,
+          saldoAwal: true,
+          startDate: true,
+          jumlahPeriode: true,
+          pembagianType: true,
+          createdAt: true,
+          periodes: {
+            select: {
+              id: true,
+              periodeKe: true,
+              bulan: true,
+              tahun: true,
+              amountAccrual: true,
+              realisasis: {
+                select: {
+                  id: true,
+                  tanggalRealisasi: true,
+                  amount: true,
+                }
+              },
+            },
+            orderBy: {
+              periodeKe: 'asc',
+            },
+            take: 100,
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: 1000,
+      });
+    }
 
     // Calculate total realisasi and saldo for each periode with rollover
     const accrualsWithCalculations = accruals.map((accrual: any) => {
