@@ -175,6 +175,10 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
       return;
     }
 
+    if ('Notification' in window && Notification.permission === 'denied') {
+      return;
+    }
+
     const instanceId = process.env.NEXT_PUBLIC_BEAMS_INSTANCE_ID;
     if (!instanceId) return;
 
@@ -196,6 +200,10 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
       await beamsWindow.__beamsRegistrationPromise;
     } catch (err) {
       beamsWindow.__beamsRegistrationPromise = undefined;
+      const message = err instanceof Error ? err.message : String(err ?? '');
+      if (/NotAllowedError|permission denied/i.test(message)) {
+        return;
+      }
       console.error('[Beams] ERROR:', err);
     }
   };
