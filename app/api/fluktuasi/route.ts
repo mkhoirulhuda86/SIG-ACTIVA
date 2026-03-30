@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { broadcast } from '@/lib/sse';
 
 const dbErrorMessage = (error: unknown, fallback: string): string => {
   const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
@@ -75,6 +76,9 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Broadcast event real-time ke semua client
+    broadcast('fluktuasi');
+
     return NextResponse.json({
       success: true,
       message: 'Data fluktuasi berhasil disimpan',
@@ -114,6 +118,8 @@ export async function DELETE(req: NextRequest) {
       await prisma.fluktuasiImport.deleteMany({
         where: { id: { in: toDelete } },
       });
+      // Broadcast perubahan data
+      broadcast('fluktuasi');
     }
 
     return NextResponse.json({

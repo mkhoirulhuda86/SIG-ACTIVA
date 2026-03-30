@@ -25,10 +25,11 @@ export async function GET(request: NextRequest) {
               }
             }
           },
-          take: 50
+          take: 20,
+          where: { bulan: { not: '' } }
         }
       },
-      take: 500
+      take: 30
     });
 
     accruals.forEach((accrual) => {
@@ -80,10 +81,11 @@ export async function GET(request: NextRequest) {
             amountPrepaid: true,
             isAmortized: true
           },
-          take: 50
+          take: 20,
+          where: { bulan: { not: '' } }
         }
       },
-      take: 500
+      take: 30
     });
 
     prepaids.forEach((prepaid) => {

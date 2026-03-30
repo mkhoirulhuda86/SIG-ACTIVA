@@ -1,5 +1,10 @@
 {
   "css.lint.unknownAtRules": "ignore",
+  "problems.exclude": {
+    "**/node_modules/**": true,
+    "**/.codeium/**": true,
+    "**/workspaceStorage/**": true
+  },
   "typescript.tsserver.watchOptions": {
     "excludeDirectories": ["**/node_modules", "**/.git"]
   }
