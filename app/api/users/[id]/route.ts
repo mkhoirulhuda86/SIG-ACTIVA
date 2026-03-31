@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { UserRole } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { broadcast } from '@/lib/sse';
 import { requireAdmin } from '@/lib/api-auth';
@@ -110,13 +111,13 @@ export async function PUT(
       username: string;
       email: string;
       name: string;
-      role: string;
+      role: UserRole;
       password?: string;
     } = {
       username,
       email,
       name,
-      role,
+      role: role as UserRole,
     };
 
     // Only update password if provided
