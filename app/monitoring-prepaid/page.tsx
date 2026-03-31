@@ -9,6 +9,7 @@ import { exportToCSV } from '../utils/exportUtils';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
+import SwiperCardCarousel from '../components/SwiperCardCarousel';
 
 // Lazy load components
 const Sidebar = dynamic(() => import('../components/Sidebar'), { ssr: false });
@@ -896,7 +897,7 @@ export default function MonitoringPrepaidPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen overflow-hidden">
+      <div className="flex-1 min-w-0 lg:ml-64 flex flex-col min-h-screen overflow-x-hidden">
         <Header
           title="Monitoring Prepaid"
           onMenuClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
@@ -964,35 +965,51 @@ export default function MonitoringPrepaidPage() {
             </div>
           </div>
         ) : (
-          <div ref={pageRef} className="flex-1 p-4 sm:p-6" style={{ opacity: 0 }}>
+          <div ref={pageRef} className="flex-1 overflow-y-auto p-3 sm:p-6" style={{ opacity: 0 }}>
 
             {/* ── Metric Cards ─────────────────────────────────────── */}
-            <div ref={metricRef} className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-              {[
-                { label: 'Total Prepaid Value',      value: formatCurrency(totalPrepaidValue),  dot: 'bg-red-500',    sub: 'Seluruh nilai prepaid aktif' },
-                { label: 'Amortisasi Bulan Ini',     value: formatCurrency(amortisasiBulanIni), dot: 'bg-amber-500',  sub: `Harus diamortisasi ${new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}` },
-                { label: 'Total Saldo',              value: formatCurrency(totalSaldo),         dot: 'bg-green-500',  sub: 'Saldo belum diamortisasi' },
-              ].map((m, i) => (
-                <div key={i} data-metric
-                  className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-all duration-200 group cursor-default"
-                  style={{ opacity: 0 }}
-                  onMouseEnter={e => gsap.to(e.currentTarget, { y: -3, duration: 0.2, ease: 'power2.out' })}
-                  onMouseLeave={e => gsap.to(e.currentTarget, { y: 0, duration: 0.2, ease: 'power2.out' })}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`w-2.5 h-2.5 rounded-full ${m.dot} transition-transform duration-200 group-hover:scale-125`} />
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{m.label}</p>
+            <div ref={metricRef} className="mb-5">
+              <SwiperCardCarousel
+                slideClassName="h-full"
+                showPagination={false}
+                breakpoints={{
+                  0: { slidesPerView: 1, spaceBetween: 12 },
+                  640: { slidesPerView: 3, spaceBetween: 16 },
+                }}
+                items={[
+                  { label: 'Total Prepaid Value', value: formatCurrency(totalPrepaidValue), dot: 'bg-red-500', sub: 'Seluruh nilai prepaid aktif' },
+                  {
+                    label: 'Amortisasi Bulan Ini',
+                    value: formatCurrency(amortisasiBulanIni),
+                    dot: 'bg-amber-500',
+                    sub: `Harus diamortisasi ${new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}`,
+                  },
+                  { label: 'Total Saldo', value: formatCurrency(totalSaldo), dot: 'bg-green-500', sub: 'Saldo belum diamortisasi' },
+                ].map((m, i) => (
+                  <div
+                    key={i}
+                    data-metric
+                    className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-all duration-200 group cursor-default"
+                    style={{ opacity: 0 }}
+                    onMouseEnter={e => gsap.to(e.currentTarget, { y: -3, duration: 0.2, ease: 'power2.out' })}
+                    onMouseLeave={e => gsap.to(e.currentTarget, { y: 0, duration: 0.2, ease: 'power2.out' })}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${m.dot} transition-transform duration-200 group-hover:scale-125`} />
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{m.label}</p>
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-800 mt-1 font-mono">{m.value}</h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{m.sub}</p>
                   </div>
-                  <h3 className="text-xl font-bold text-slate-800 mt-1 font-mono">{m.value}</h3>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{m.sub}</p>
-                </div>
-              ))}
+                ))}
+              />
             </div>
 
             {/* ── Filter / Action Bar ───────────────────────────────── */}
-            <div ref={filterBarRef} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-5" style={{ opacity: 0 }}>
+            <div ref={filterBarRef} className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 sm:p-4 mb-5 sticky top-2 z-20 backdrop-blur sm:static" style={{ opacity: 0 }}>
               <div className="flex flex-wrap items-center gap-2">
                 {/* Search */}
-                <div className="relative flex-1 min-w-[200px]">
+                <div className="relative flex-1 min-w-[160px] sm:min-w-[220px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                   <input
                     type="text"
@@ -1007,9 +1024,9 @@ export default function MonitoringPrepaidPage() {
                 <input ref={importFileRef} type="file" accept=".xlsx,.xls,.xlsb" className="hidden" onChange={handleImportExcel} />
 
                 {/* Buttons */}
-                <div className="flex flex-wrap gap-2 ml-auto">
+                <div className="flex w-full sm:w-auto flex-wrap justify-end gap-2 sm:ml-auto">
                   {[
-                    { label: importLoading ? 'Mengimpor...' : 'Import Excel', icon: <Upload size={13}/>, onClick: () => importFileRef.current?.click(), color: '#dc2626', disabled: importLoading },
+                    ...(canEdit ? [{ label: importLoading ? 'Mengimpor...' : 'Import Excel', icon: <Upload size={13}/>, onClick: () => importFileRef.current?.click(), color: '#dc2626', disabled: importLoading }] : []),
                     { label: 'Laporan Prepaid', icon: <Download size={13}/>, onClick: handleDownloadGlobalReport, color: '#dc2626' },
                   ].map((btn, i) => (
                     <button key={i}
@@ -1088,7 +1105,9 @@ export default function MonitoringPrepaidPage() {
                 )}
               </div>
 
-              <div className="overflow-x-auto overflow-y-auto max-w-full custom-scrollbar" style={{ maxHeight: 'calc(100vh - 380px)' }}>
+              <div className="relative overflow-x-auto overflow-y-auto max-w-full custom-scrollbar max-h-[58vh] sm:max-h-[calc(100vh-380px)]">
+                <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-4 bg-gradient-to-r from-white to-transparent md:hidden" />
+                <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-4 bg-gradient-to-l from-white to-transparent md:hidden" />
                 <table className="w-full text-sm min-w-max" style={{ borderCollapse: 'collapse' }}>
                   <thead style={{ background: 'linear-gradient(90deg,#7f1d1d,#dc2626)', position: 'sticky', top: 0, zIndex: 10 }}>
                     <tr>
@@ -1109,7 +1128,11 @@ export default function MonitoringPrepaidPage() {
                         'Amount', 'Start', 'Finish', 'Periode',
                         'Total Amortisasi', 'Saldo', 'Aksi'
                       ].map(h => (
-                        <th key={h} className="px-3 py-3 whitespace-nowrap"
+                        <th key={h} className={`px-3 py-3 whitespace-nowrap ${
+                          ['No PO','Assignment/Order','Cost Center','Deskripsi','Header Text','Klasifikasi','Start','Finish','Periode'].includes(h)
+                            ? 'hidden md:table-cell'
+                            : ''
+                        }`}
                           style={{
                             textAlign: ['Amount','Total Prepaid','Total Amortisasi','Saldo'].includes(h) ? 'right'
                               : ['Aksi','Start','Finish','Periode'].includes(h) ? 'center' : 'left',
@@ -1151,16 +1174,16 @@ export default function MonitoringPrepaidPage() {
                                 }} />
                             </td>
                             <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap text-xs">{item.companyCode || '-'}</td>
-                            <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap text-xs">{item.noPo || '-'}</td>
-                            <td className="px-3 py-2.5 text-slate-700 text-xs max-w-[140px] truncate" title={item.alokasi}>{item.alokasi}</td>
-                            <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap text-xs">{item.costCenter || ''}</td>
+                            <td className="hidden md:table-cell px-3 py-2.5 text-slate-700 whitespace-nowrap text-xs">{item.noPo || '-'}</td>
+                            <td className="hidden md:table-cell px-3 py-2.5 text-slate-700 text-xs max-w-[140px] truncate" title={item.alokasi}>{item.alokasi}</td>
+                            <td className="hidden md:table-cell px-3 py-2.5 text-slate-700 whitespace-nowrap text-xs">{item.costCenter || ''}</td>
                             <td className="px-3 py-2.5 whitespace-nowrap text-xs">
                               <span className="font-mono font-semibold text-red-700 bg-red-50 px-1.5 py-0.5 rounded">{item.kdAkr}</span>
                             </td>
                             <td className="px-3 py-2.5 text-slate-700 text-xs">{item.namaAkun}</td>
-                            <td className="px-3 py-2.5 text-slate-500 text-xs max-w-[120px] truncate" title={item.deskripsi || ''}>{item.deskripsi || '-'}</td>
-                            <td className="px-3 py-2.5 text-slate-500 text-xs max-w-[120px] truncate" title={item.headerText || ''}>{item.headerText || '-'}</td>
-                            <td className="px-3 py-2.5 text-xs">
+                            <td className="hidden md:table-cell px-3 py-2.5 text-slate-500 text-xs max-w-[120px] truncate" title={item.deskripsi || ''}>{item.deskripsi || '-'}</td>
+                            <td className="hidden md:table-cell px-3 py-2.5 text-slate-500 text-xs max-w-[120px] truncate" title={item.headerText || ''}>{item.headerText || '-'}</td>
+                            <td className="hidden md:table-cell px-3 py-2.5 text-xs">
                               {item.klasifikasi
                                 ? <Badge variant="outline" className="text-[8px] px-1.5 py-0 h-4 text-slate-500 border-slate-200">{item.klasifikasi}</Badge>
                                 : <span className="text-slate-300 text-xs">—</span>}
@@ -1169,9 +1192,9 @@ export default function MonitoringPrepaidPage() {
                               style={{ color: sign === -1 ? '#dc2626' : undefined }}>
                               {formatCurrency(Math.abs(item.totalAmount) * sign)}
                             </td>
-                            <td className="px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{startDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
-                            <td className="px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{finishDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
-                            <td className="px-3 py-2.5 text-center text-xs text-slate-700">{item.period} {item.periodUnit}</td>
+                            <td className="hidden md:table-cell px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{startDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                            <td className="hidden md:table-cell px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{finishDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                            <td className="hidden md:table-cell px-3 py-2.5 text-center text-xs text-slate-700">{item.period} {item.periodUnit}</td>
                             <td className="px-3 py-2.5 text-right font-semibold text-xs text-slate-800 whitespace-nowrap font-mono">{formatCurrency(totalAmortisasi * sign)}</td>
                             <td className="px-3 py-2.5 text-right font-semibold text-xs whitespace-nowrap font-mono"
                               style={{ color: saldo * sign > 0 ? '#16a34a' : saldo * sign < 0 ? '#dc2626' : '#64748b' }}>
@@ -1206,6 +1229,27 @@ export default function MonitoringPrepaidPage() {
                                     </button>
                                   </>
                                 )}
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* ── Mobile Summary Row (for hidden columns) ───── */}
+                          <tr className="md:hidden bg-slate-50/70">
+                            <td colSpan={18} className="px-3 py-2 border-b border-gray-100">
+                              <div className="grid grid-cols-1 gap-1 text-[10px] text-slate-600">
+                                <p><span className="font-semibold text-slate-500">No PO:</span> {item.noPo || '-'}</p>
+                                <p><span className="font-semibold text-slate-500">Assignment/Order:</span> {item.alokasi || '-'}</p>
+                                <p><span className="font-semibold text-slate-500">Cost Center:</span> {item.costCenter || '-'}</p>
+                                <p><span className="font-semibold text-slate-500">Deskripsi:</span> {item.deskripsi || '-'}</p>
+                                <p><span className="font-semibold text-slate-500">Header Text:</span> {item.headerText || '-'}</p>
+                                <p><span className="font-semibold text-slate-500">Klasifikasi:</span> {item.klasifikasi || '-'}</p>
+                                <p><span className="font-semibold text-slate-500">Periode:</span> {item.period} {item.periodUnit}</p>
+                                <p>
+                                  <span className="font-semibold text-slate-500">Tanggal:</span>{' '}
+                                  {startDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                  {' - '}
+                                  {finishDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </p>
                               </div>
                             </td>
                           </tr>
@@ -1370,6 +1414,7 @@ export default function MonitoringPrepaidPage() {
                   </tbody>
                 </table>
               </div>
+              <p className="px-4 py-2 text-[10px] text-slate-500 border-t border-gray-100 md:hidden">Geser tabel ke kiri/kanan untuk melihat semua kolom.</p>
 
               {/* Empty state */}
               {filteredData.length === 0 && (
@@ -1389,7 +1434,7 @@ export default function MonitoringPrepaidPage() {
         {/* Modal Rincian Prepaid per Cost Center */}
         {showCcModal && ccModalPeriode && ccModalPrepaid && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden flex flex-col">
               {/* Header */}
               <div className="bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-4 flex items-center justify-between flex-shrink-0">
                 <div>
@@ -1402,9 +1447,9 @@ export default function MonitoringPrepaidPage() {
               </div>
 
               {/* Body */}
-              <div className="overflow-y-auto p-5 bg-gray-50 flex-1">
+              <div className="overflow-y-auto p-3 sm:p-5 bg-gray-50 flex-1">
                 {/* Summary */}
-                <div className="bg-white rounded-lg border border-gray-200 p-4 mb-5 grid grid-cols-2 gap-4 text-center">
+                <div className="bg-white rounded-lg border border-gray-200 p-4 mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Total Amount Periode Ini</p>
                     <p className="text-lg font-bold text-amber-700">{formatCurrency(ccModalPeriode.amountPrepaid)}</p>
@@ -1417,6 +1462,7 @@ export default function MonitoringPrepaidPage() {
                 </div>
 
                 {/* Form */}
+                {canEdit && (
                 <form onSubmit={handleCcSubmit} className="bg-white rounded-lg border border-gray-200 p-5 mb-5">
                   <h3 className="text-sm font-semibold text-gray-700 mb-4">{editingCcId ? 'Edit Rincian' : 'Tambah Rincian'}</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1462,6 +1508,7 @@ export default function MonitoringPrepaidPage() {
                     )}
                   </div>
                 </form>
+                )}
 
                 {/* Daftar Rincian */}
                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden" onClick={() => openCcGroupDropdown && setOpenCcGroupDropdown(null)}>
@@ -1524,7 +1571,8 @@ export default function MonitoringPrepaidPage() {
                                 </div>
                               </div>
                               {/* Entries table */}
-                              <table className="w-full text-xs">
+                              <div className="overflow-x-auto">
+                              <table className="w-full text-xs min-w-[640px]">
                                 <thead>
                                   <tr className="bg-gray-50 border-b border-gray-200">
                                     <th className="px-4 py-2 text-right text-gray-600 font-semibold">Amount</th>
@@ -1543,20 +1591,25 @@ export default function MonitoringPrepaidPage() {
                                       <td className="px-4 py-2">{entry.lineText || '—'}</td>
                                       <td className="px-4 py-2 text-center">
                                         <div className="flex items-center justify-center gap-1">
+                                          {canEdit && (
                                           <button onClick={() => { setEditingCcId(entry.id); setCcForm({ amount: entry.amount.toString(), costCenter: entry.costCenter || '', kdAkunBiaya: entry.kdAkunBiaya || '', headerText: entry.headerText || '', lineText: entry.lineText || '' }); }}
                                             className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded transition-colors">
                                             <Edit size={14} />
                                           </button>
+                                          )}
+                                          {canEdit && (
                                           <button onClick={() => handleDeleteCc(entry.id)}
                                             className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors">
                                             <Trash2 size={14} />
                                           </button>
+                                          )}
                                         </div>
                                       </td>
                                     </tr>
                                   ))}
                                 </tbody>
                               </table>
+                              </div>
                             </div>
                           );
                         })}
@@ -1628,7 +1681,7 @@ export default function MonitoringPrepaidPage() {
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60]"
             onClick={() => setConfirmDialog(null)}>
             <div
-              className="bg-white rounded-2xl shadow-2xl border border-red-100 p-6 mx-4 max-w-sm w-full"
+              className="bg-white rounded-2xl shadow-2xl border border-red-100 p-4 mx-4 max-w-sm w-[92vw]"
               style={{ transform: 'scale(0.88)', opacity: 0 }}
               ref={(el) => {
                 if (el) {

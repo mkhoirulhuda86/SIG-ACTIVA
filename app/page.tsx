@@ -16,6 +16,7 @@ import SimpleBarChart from './components/SimpleBarChart';
 import DonutChart from './components/DonutChart';
 import StatusCard from './components/StatusCard';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
+import SwiperCardCarousel from './components/SwiperCardCarousel';
 
 const Sidebar = dynamic(() => import('./components/Sidebar'), { ssr: false });
 const Header  = dynamic(() => import('./components/Header'),  { ssr: false });
@@ -314,7 +315,7 @@ export default function DashboardPage() {
   }, [summary?.fluktuasi?.last6Periodes]);
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-background overflow-x-hidden">
       {/* Mobile Sidebar Overlay */}
       {isMobileSidebarOpen && (
         <div
@@ -331,7 +332,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 bg-background lg:ml-64">
+      <div className="flex-1 bg-background lg:ml-64 min-w-0 overflow-x-hidden">
         {/* Top loading bar — shown during background refetch */}
         {refreshing && (
           <div className="fixed top-0 left-0 right-0 z-[100] h-1 overflow-hidden">
@@ -344,22 +345,93 @@ export default function DashboardPage() {
           subtitle="Ringkasan aktivitas dan monitoring accrual"
         />
 
-        <div ref={contentRef} className="p-4 sm:p-6 md:p-8 space-y-6">
+        <div ref={contentRef} className="p-4 sm:p-6 md:p-8 space-y-6 min-w-0 max-w-full overflow-x-hidden">
+          <style jsx global>{`
+            body {
+              overflow-x: hidden;
+            }
+            html {
+              overflow-x: hidden;
+            }
+          `}</style>
 
           {/* ─── Metric Cards ─────────────────────────────────── */}
-          <div className="dashboard-section grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <MetricCard title="Total Accrual"       value={formatCurrency(summary?.accrual?.financial?.total     ?? 0)} icon={<TrendingUp  className="w-5 h-5" />} color="blue"   />
-            <MetricCard title="Total Realisasi"     value={formatCurrency(summary?.accrual?.financial?.realized  ?? 0)} icon={<CheckCircle className="w-5 h-5" />} color="green"  />
-            <MetricCard title="Total Saldo Accrual" value={formatCurrency(Math.abs(summary?.accrual?.financial?.remaining ?? 0))} icon={<DollarSign  className="w-5 h-5" />} color="red"    />
-            <MetricCard title="Jumlah Accrual"      value={(summary?.accrual?.total ?? 0).toString()}             icon={<FileText    className="w-5 h-5" />} color="purple" />
+          <div className="dashboard-section">
+            <SwiperCardCarousel
+              slideClassName="h-full"
+              showPagination={false}
+              breakpoints={{
+                0: { slidesPerView: 1, spaceBetween: 12 },
+                640: { slidesPerView: 2, spaceBetween: 12 },
+                1024: { slidesPerView: 4, spaceBetween: 16 },
+              }}
+              items={[
+                <MetricCard
+                  key="total-accrual"
+                  title="Total Accrual"
+                  value={formatCurrency(summary?.accrual?.financial?.total ?? 0)}
+                  icon={<TrendingUp className="w-5 h-5" />}
+                  color="blue"
+                />,
+                <MetricCard
+                  key="total-realisasi"
+                  title="Total Realisasi"
+                  value={formatCurrency(summary?.accrual?.financial?.realized ?? 0)}
+                  icon={<CheckCircle className="w-5 h-5" />}
+                  color="green"
+                />,
+                <MetricCard
+                  key="total-saldo-accrual"
+                  title="Total Saldo Accrual"
+                  value={formatCurrency(Math.abs(summary?.accrual?.financial?.remaining ?? 0))}
+                  icon={<DollarSign className="w-5 h-5" />}
+                  color="red"
+                />,
+                <MetricCard
+                  key="jumlah-accrual"
+                  title="Jumlah Accrual"
+                  value={(summary?.accrual?.total ?? 0).toString()}
+                  icon={<FileText className="w-5 h-5" />}
+                  color="purple"
+                />,
+              ]}
+            />
           </div>
 
           {/* ─── Additional Overview Cards ─────────────────────── */}
           {summary && (
-            <div className="dashboard-section grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <MetricCard title="Total Material" value={summary.material.total.toString()}                   icon={<Package    className="w-5 h-5" />} color="indigo" />
-              <MetricCard title="Total Prepaid"  value={summary.prepaid.total.toString()}                    icon={<CreditCard className="w-5 h-5" />} color="teal"   />
-              <MetricCard title="Saldo Prepaid"  value={formatCurrency(summary.prepaid.financial.remaining)} icon={<Clock      className="w-5 h-5" />} color="orange" />
+            <div className="dashboard-section">
+              <SwiperCardCarousel
+                slideClassName="h-full"
+                showPagination={false}
+                breakpoints={{
+                  0: { slidesPerView: 1, spaceBetween: 12 },
+                  640: { slidesPerView: 3, spaceBetween: 16 },
+                }}
+                items={[
+                  <MetricCard
+                    key="total-material"
+                    title="Total Material"
+                    value={summary.material.total.toString()}
+                    icon={<Package className="w-5 h-5" />}
+                    color="indigo"
+                  />,
+                  <MetricCard
+                    key="total-prepaid"
+                    title="Total Prepaid"
+                    value={summary.prepaid.total.toString()}
+                    icon={<CreditCard className="w-5 h-5" />}
+                    color="teal"
+                  />,
+                  <MetricCard
+                    key="saldo-prepaid"
+                    title="Saldo Prepaid"
+                    value={formatCurrency(summary.prepaid.financial.remaining)}
+                    icon={<Clock className="w-5 h-5" />}
+                    color="orange"
+                  />,
+                ]}
+              />
             </div>
           )}
 
@@ -391,7 +463,7 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
               {/* Donut charts skeleton */}
-              <div className="sk-card grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="sk-card grid grid-cols-1 xl:grid-cols-2 gap-4 min-w-0">
                 {[0, 1].map(i => (
                   <Card key={i}>
                     <CardHeader className="pb-2"><Skeleton className="h-5 w-36" /></CardHeader>
@@ -410,7 +482,7 @@ export default function DashboardPage() {
                 ))}
               </div>
               {/* Bar charts skeleton */}
-              <div className="sk-card grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="sk-card grid grid-cols-1 xl:grid-cols-2 gap-4 min-w-0">
                 {[0, 1].map(i => (
                   <Card key={i}>
                     <CardHeader className="pb-2"><Skeleton className="h-5 w-48" /></CardHeader>
@@ -518,13 +590,13 @@ export default function DashboardPage() {
               </div>
 
               {/* Prepaid & Accrual donut charts */}
-              <div className="dashboard-section grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="dashboard-section grid grid-cols-1 xl:grid-cols-2 gap-4 min-w-0">
                 <DonutChart data={prepaidDonutData} title="Status Prepaid"  centerText={summary.prepaid.total.toString()} centerSubtext="Total Prepaid" />
                 <DonutChart data={accrualDonutData} title="Status Accrual"  centerText={summary.accrual.total.toString()} centerSubtext="Saldo" />
               </div>
 
               {/* Top classification bar charts */}
-              <div className="dashboard-section grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="dashboard-section grid grid-cols-1 xl:grid-cols-2 gap-4 min-w-0">
                 <SimpleBarChart data={topAccrualByKlasifikasiData} title="Top 5 Accrual (Berdasarkan Klasifikasi)"  color="#dc2626" />
                 <SimpleBarChart data={topPrepaidByKlasifikasiData} title="Top 5 Prepaid (Berdasarkan Klasifikasi)"  color="#059669" />
               </div>
@@ -594,7 +666,7 @@ export default function DashboardPage() {
                   </div>
 
                   {/* Fluktuasi charts */}
-                  <div className="dashboard-section grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="dashboard-section grid grid-cols-1 xl:grid-cols-2 gap-4 min-w-0">
                     <SimpleBarChart data={fluktuasiByKlasifikasiData} title="Top 5 Fluktuasi (Berdasarkan Klasifikasi)" color="#7c3aed" />
 
                     {/* Trend 6 periode — bars animated by GSAP */}
@@ -660,7 +732,7 @@ export default function DashboardPage() {
           )}
 
           {/* ─── Rekonsiliasi ──────────────────────────────────────── */}
-          <div className="dashboard-section grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="dashboard-section grid grid-cols-1 xl:grid-cols-2 gap-4 min-w-0">
             <RekonsiliasiCard
               title="Rekonsiliasi Accrual vs Realisasi"
               description="Monitoring selisih antara accrual yang dicatat dengan realisasi pembayaran"

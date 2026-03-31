@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { NextRequest } from 'next/server';
+import { requireFinanceWrite } from '@/lib/api-auth';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 const dbErrorMessage = (error: unknown, fallback: string): string => {
   const errObj = error as { message?: string; cause?: { message?: string } } | undefined;
@@ -204,8 +207,20 @@ function matchKeywords(
 // ─── POST /api/fluktuasi/re-apply-keywords ────────────────────────────────────
 // Re-processes stored raw row data against current keywords and updates
 // klasifikasi on all FluktuasiAkunPeriode records.
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const ipRateLimit = checkRateLimit(`fluktuasi-reapply:ip:${clientIp}`, 3, 60_000);
+    if (!ipRateLimit.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Terlalu banyak request re-apply. Coba lagi sebentar.' },
+        { status: 429, headers: { 'Retry-After': String(ipRateLimit.retryAfterSec) } }
+      );
+    }
+
     // 1. Fetch keywords + account list first (avoid loading huge rows JSON at once)
     const [keywords, sheetAccounts] = await Promise.all([
       prisma.fluktuasiKeyword.findMany({

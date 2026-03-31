@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireFinanceRead } from '@/lib/api-auth';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -24,6 +26,18 @@ function pickApiKey(keyIdx = 0): string {
 
 // ─── POST /api/fluktuasi/chat ─────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  const auth = await requireFinanceRead(req);
+  if ('error' in auth) return auth.error;
+
+  const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const ipRateLimit = checkRateLimit(`fluktuasi-chat:ip:${clientIp}`, 25, 60_000);
+  if (!ipRateLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Terlalu banyak request chat. Coba lagi sebentar.' },
+      { status: 429, headers: { 'Retry-After': String(ipRateLimit.retryAfterSec) } }
+    );
+  }
+
   const body: ChatRequest = await req.json();
   const { model, keyIdx = 0, systemContext, messages } = body;
 

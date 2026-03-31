@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { prisma } from '@/lib/prisma';
+import { requireFinanceRead } from '@/lib/api-auth';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 // ─── Colour palette (matches UI) ────────────────────────────────────────────
 const C = {
@@ -45,6 +47,18 @@ function parseNum(val: any): number {
 
 // ─── POST handler ────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  const auth = await requireFinanceRead(req);
+  if ('error' in auth) return auth.error;
+
+  const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const ipRateLimit = checkRateLimit(`fluktuasi-download:ip:${clientIp}`, 10, 60_000);
+  if (!ipRateLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Terlalu banyak request download. Coba lagi sebentar.' },
+      { status: 429, headers: { 'Retry-After': String(ipRateLimit.retryAfterSec) } }
+    );
+  }
+
   const body = await req.json();
   const { fileName, sheetDataList, rekapSheetData, rekapRowOverrides, rekapExportConfig } = body as {
     fileName: string;

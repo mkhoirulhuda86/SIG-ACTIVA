@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { broadcast } from '@/lib/sse';
+import { requireAdmin } from '@/lib/api-auth';
 
 // GET single user
 export async function GET(
@@ -9,6 +10,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if ('error' in auth) return auth.error;
+
     const { id } = await params;
     const userId = parseInt(id);
 
@@ -48,6 +52,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if ('error' in auth) return auth.error;
+
     const { id } = await params;
     const userId = parseInt(id);
     const { username, email, name, role, password } = await request.json();
@@ -99,7 +106,13 @@ export async function PUT(
     }
 
     // Prepare update data
-    const updateData: any = {
+    const updateData: {
+      username: string;
+      email: string;
+      name: string;
+      role: string;
+      password?: string;
+    } = {
       username,
       email,
       name,
@@ -108,7 +121,7 @@ export async function PUT(
 
     // Only update password if provided
     if (password && password.trim() !== '') {
-      updateData.password = await bcrypt.hash(password, 10);
+      updateData.password = await bcrypt.hash(password, 12);
     }
 
     // Update user
@@ -145,6 +158,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if ('error' in auth) return auth.error;
+
     const { id } = await params;
     const userId = parseInt(id);
 

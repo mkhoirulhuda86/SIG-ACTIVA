@@ -8,8 +8,10 @@ import { animate, stagger, random } from 'animejs';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Card, CardContent } from '@/app/components/ui/card';
+import TypedText from '@/app/components/TypedText';
 import { Badge } from '@/app/components/ui/badge';
 import { cn } from '@/lib/utils';
+import Image from 'next/image';
 
 export default function LoginPage() {
   const router       = useRouter();
@@ -29,7 +31,6 @@ export default function LoginPage() {
   const bgRef    = useRef<HTMLDivElement>(null);
   const cardRef  = useRef<HTMLDivElement>(null);
   const logoRef  = useRef<HTMLDivElement>(null);
-  const titleRef = useRef<HTMLHeadingElement>(null);
   const formRef  = useRef<HTMLFormElement>(null);
   const btnRef   = useRef<HTMLButtonElement>(null);
 
@@ -51,23 +52,6 @@ export default function LoginPage() {
         '-=0.35'
       );
     });
-
-    // Typewriter on title
-    const titleEl = titleRef.current;
-    if (titleEl) {
-      const text = 'Masuk';
-      titleEl.innerHTML = text
-        .split('')
-        .map(l => `<span style="display:inline-block;opacity:0">${l}</span>`)
-        .join('');
-      animate('#login-title span', {
-        opacity: [0, 1],
-        translateY: [10, 0],
-        duration: 400,
-        delay: stagger(60, { start: 550 }),
-        ease: 'outExpo',
-      });
-    }
 
     // Animated particles
     const container = bgRef.current;
@@ -187,7 +171,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8 overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center px-4 py-8 overflow-hidden" data-aos="fade-up">
       {/* Background */}
       <div ref={bgRef} className="fixed inset-0 -z-10 gradient-mesh overflow-hidden" />
       {/* Rings */}
@@ -200,7 +184,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div ref={logoRef} className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-24 h-24 mb-4 drop-shadow-xl">
-            <img src="/logo aplikasi.png" alt="SIG ACTIVA" className="w-24 h-24 object-contain" />
+            <Image src="/logo-aplikasi.png" alt="SIG ACTIVA" width={96} height={96} className="object-contain" priority />
           </div>
           <h1 className="text-2xl font-extrabold text-foreground tracking-tight">SIG ACTIVA</h1>
           <p className="text-xs text-muted-foreground mt-1 max-w-[220px] mx-auto leading-snug">
@@ -211,7 +195,9 @@ export default function LoginPage() {
         {/* Card */}
         <Card ref={cardRef as any} className="shadow-2xl border-0 bg-white/80 backdrop-blur-xl">
           <CardContent className="p-6 sm:p-8">
-            <h2 id="login-title" ref={titleRef} className="text-xl font-bold text-foreground mb-5">Masuk</h2>
+            <h2 id="login-title" className="text-xl font-bold text-foreground mb-5">
+              <TypedText text="Masuk" typeSpeed={36} startDelay={260} />
+            </h2>
 
             <form ref={formRef} onSubmit={handleLogin} className="space-y-4">
               {/* Email */}

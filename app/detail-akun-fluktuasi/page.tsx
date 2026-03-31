@@ -735,8 +735,159 @@ function PageSkeleton() {
 }
 
 // --- Pre-processed record type ----------------------------------------------
+// Each record represents one klasifikasi for one account in one periode,
+// with the amount aggregated from individual sheet rows (source of truth).
 type ProcessedRecord = AkunPeriodeRecord & { _parts: string[] };
 type KeywordRule = { type?: string; result?: string; accountCodes?: string };
+
+// Simple keyword matcher for client-side re-apply
+// Mirrors the server-side matchKeywords logic (first-match wins, priority-sorted)
+function clientMatchKlasifikasi(
+  sourceText: string,
+  docnoText: string,
+  keywords: KeywordRule[],
+  rowData?: Record<string, unknown>,
+): string {
+  const textLower = sourceText.toLowerCase();
+  const docnoStr  = docnoText.trim();
+  const relevant  = (keywords as any[])
+    .filter((k: any) => String(k.type ?? '') === 'klasifikasi')
+    .sort((a: any, b: any) => (b.priority ?? 0) - (a.priority ?? 0));
+
+  for (const kw of relevant) {
+    const kwStr = String(kw.keyword ?? '').trim();
+    const kwLow = kwStr.toLowerCase();
+    if (!kwStr) continue;
+
+    // NOT keywords — skip in positive pass
+    if (kwLow.startsWith('not:')) continue;
+
+    // docno: mode
+    if (kwLow.startsWith('docno:')) {
+      if (!docnoStr) continue;
+      const pattern = kwStr.slice(6).trim();
+      if (docnoStr.startsWith(pattern)) return String(kw.result ?? '');
+      continue;
+    }
+
+    // regex: mode
+    if (kwLow.startsWith('regex:')) {
+      try {
+        const m = sourceText.match(new RegExp(kwStr.slice(6).trim(), 'i'));
+        if (m) {
+          let r = String(kw.result ?? '');
+          if (!r || r.trim() === '{match}') r = m[0];
+          return r;
+        }
+      } catch { /* ignore */ }
+      continue;
+    }
+
+    // col: mode — skip (needs rowData column resolution, too complex here)
+    if (kwLow.startsWith('col:')) continue;
+
+    // normal includes
+    if (textLower.includes(kwLow)) return String(kw.result ?? '');
+  }
+
+  // NOT keywords pass
+  for (const kw of relevant) {
+    const kwStr = String(kw.keyword ?? '').trim();
+    const kwLow = kwStr.toLowerCase();
+    if (!kwLow.startsWith('not:')) continue;
+    const excls = kwStr.slice(4).split(/[,|]/).map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+    if (!excls.some((e: string) => textLower.includes(e))) return String(kw.result ?? '');
+  }
+
+  return '';
+}
+
+// Aggregate sheet rows into per-klasifikasi per-periode amounts for one account.
+// Returns map: "klasifikasi|periode" -> amount
+// periodeKlasiMap: fallback klasifikasi from akun-periodes for rows with empty __klasifikasi
+// periodeAmountMap: fallback total amount from rekap-amounts if __amount is all zero
+function aggregateSheetRowsByKlasifikasi(
+  rows: Record<string, unknown>[],
+  periodeKlasiMap?: Map<string, string>,
+  keywords?: KeywordRule[],
+  periodeAmountMap?: Map<string, number>, // total amount per periode from rekap-amounts
+): Map<string, number> {
+  const out = new Map<string, number>();
+
+  // First pass: try to aggregate from __amount
+  const countMap = new Map<string, number>(); // "klasifikasi|periode" -> row count (for proportional fallback)
+  let totalAmountFromRows = 0;
+
+  for (const row of rows) {
+    const rawKlasifikasi = String(row['__klasifikasi'] ?? '').trim();
+    const periode        = String(row['__periode']     ?? '').trim();
+    const amount         = Number(row['__amount']      ?? 0);
+    if (!periode) continue;
+
+    let klasifikasi = rawKlasifikasi;
+
+    // Re-apply keywords if __klasifikasi is empty
+    if (!klasifikasi && keywords?.length) {
+      const rawText   = String(row['__klasifikasi_raw'] ?? '').trim();
+      const docnoText = String(row['__docno_raw'] ?? '').trim();
+      if (rawText) klasifikasi = clientMatchKlasifikasi(rawText, docnoText, keywords, row);
+    }
+
+    // Fallback: distribute equally to all klasifikasi from akun-periodes
+    if (!klasifikasi) {
+      const fallback = periodeKlasiMap?.get(periode) ?? '';
+      const parts = fallback.split(';').map(s => s.trim()).filter(Boolean);
+      if (parts.length > 0 && amount !== 0) {
+        const share = amount / parts.length;
+        for (const part of parts) {
+          const key = `${part}|${periode}`;
+          out.set(key, (out.get(key) ?? 0) + share);
+          countMap.set(key, (countMap.get(key) ?? 0) + 1);
+        }
+        totalAmountFromRows += Math.abs(amount);
+      } else if (parts.length > 0) {
+        // Count rows even if amount=0 (for proportional fallback)
+        for (const part of parts) {
+          const key = `${part}|${periode}`;
+          countMap.set(key, (countMap.get(key) ?? 0) + 1);
+        }
+      }
+      continue;
+    }
+
+    const key = `${klasifikasi}|${periode}`;
+    if (amount !== 0) {
+      out.set(key, (out.get(key) ?? 0) + amount);
+      totalAmountFromRows += Math.abs(amount);
+    }
+    countMap.set(key, (countMap.get(key) ?? 0) + 1);
+  }
+
+  // If __amount was all zero but we have rekap-amounts totals, distribute proportionally by row count
+  if (totalAmountFromRows === 0 && periodeAmountMap && countMap.size > 0) {
+    // Group counts by periode
+    const periodeCountMap = new Map<string, Map<string, number>>(); // periode -> klasifikasi -> count
+    for (const [key, count] of countMap) {
+      const pipeIdx = key.lastIndexOf('|');
+      const klas = key.slice(0, pipeIdx);
+      const per  = key.slice(pipeIdx + 1);
+      if (!periodeCountMap.has(per)) periodeCountMap.set(per, new Map());
+      periodeCountMap.get(per)!.set(klas, count);
+    }
+    for (const [periode, klasCounts] of periodeCountMap) {
+      const totalAmount = periodeAmountMap.get(periode) ?? 0;
+      if (totalAmount === 0) continue;
+      const totalCount = [...klasCounts.values()].reduce((s, c) => s + c, 0);
+      for (const [klas, count] of klasCounts) {
+        const share = totalAmount * (count / totalCount);
+        const key = `${klas}|${periode}`;
+        out.set(key, (out.get(key) ?? 0) + share);
+      }
+    }
+  }
+
+  return out;
+}
 
 // --- Main Component ----------------------------------------------------------
 export default function DetailAkunFluktuasiPage() {
@@ -787,10 +938,11 @@ export default function DetailAkunFluktuasiPage() {
   const loadData = useCallback(async () => {
     try {
       // Source of truth for dashboard klasifikasi: akun-periode table.
-      const [resAkun, resRekapReasons, resKeywords] = await Promise.all([
+      const [resAkun, resRekapReasons, resKeywords, resSheetRowsMeta] = await Promise.all([
         fetch('/api/fluktuasi/akun-periodes'),
         fetch('/api/fluktuasi/rekap-amounts').catch(() => null),
         fetch('/api/fluktuasi/keywords').catch(() => null),
+        fetch('/api/fluktuasi/sheet-rows').catch(() => null), // metadata only (no rows)
       ]);
       const dataAkun = await resAkun.json();
       const sourceRows: AkunPeriodeRecord[] =
@@ -805,6 +957,22 @@ export default function DetailAkunFluktuasiPage() {
         resKeywords && 'ok' in resKeywords
           ? await resKeywords.json().catch(() => ({ success: false, data: [] }))
           : { success: false, data: [] as KeywordRule[] };
+
+      // Collect which account codes have persisted sheet rows
+      const sheetRowMetaData = resSheetRowsMeta && 'ok' in resSheetRowsMeta
+        ? await resSheetRowsMeta.json().catch(() => ({ success: false, data: [] }))
+        : { success: false, data: [] };
+      // Collect which account codes have persisted sheet rows
+      // Normalize: strip non-numeric suffix (e.g. "71510001 Beban Bunga" -> "71510001")
+      const accountsWithSheetRows = new Set<string>(
+        sheetRowMetaData?.success && Array.isArray(sheetRowMetaData.data)
+          ? sheetRowMetaData.data.flatMap((r: { accountCode: string }) => {
+              const raw = String(r.accountCode ?? '').trim();
+              const numeric = raw.match(/^(\d{5,})/)?.[1];
+              return numeric ? [raw, numeric] : [raw];
+            })
+          : []
+      );
 
       const scope = new Map<string, Set<string>>();
       if (dataKeywords?.success && Array.isArray(dataKeywords.data)) {
@@ -821,13 +989,14 @@ export default function DetailAkunFluktuasiPage() {
           scope.set(result, ex);
         }
       }
-      const reasonMap = new Map<string, { reasonMoM?: string; reasonYoY?: string; reasonYtD?: string }>();
+      const reasonMap = new Map<string, { amount?: number; reasonMoM?: string; reasonYoY?: string; reasonYtD?: string }>();
       if (dataRekapReasons?.success && Array.isArray(dataRekapReasons.data)) {
         for (const rr of dataRekapReasons.data as AkunPeriodeRecord[]) {
           const accountCode = String(rr.accountCode ?? '').trim();
           const periode = String(rr.periode ?? '').trim();
           if (!accountCode || !periode) continue;
           reasonMap.set(`${accountCode}|${periode}`, {
+            amount:    typeof (rr as any).amount === 'number' ? (rr as any).amount : undefined,
             reasonMoM: String((rr as any).reasonMoM ?? '').trim(),
             reasonYoY: String((rr as any).reasonYoY ?? '').trim(),
             reasonYtD: String((rr as any).reasonYtD ?? '').trim(),
@@ -853,30 +1022,188 @@ export default function DetailAkunFluktuasiPage() {
       }
       setFrameAccountsMap(frameAccounts);
 
-      const processed: ProcessedRecord[] = sourceRows.map((r) => {
-        const klasifikasiRaw = String(r.klasifikasi || '').trim() || '(Tanpa Klasifikasi)';
-        const accountCode = String(r.accountCode || '').trim();
-        const periode = String(r.periode || '').trim();
-        const mergedReason = reasonMap.get(`${accountCode}|${periode}`);
-        const fallbackReason = String(r.remark ?? '').trim();
-        return {
-          ...r,
-          accountCode,
-          periode,
-          amount: Number(r.amount || 0),
-          reasonMoM: String(mergedReason?.reasonMoM ?? r.reasonMoM ?? fallbackReason),
-          reasonYoY: String(mergedReason?.reasonYoY ?? r.reasonYoY ?? fallbackReason),
-          reasonYtD: String(mergedReason?.reasonYtD ?? r.reasonYtD ?? fallbackReason),
-          // Parse klasifikasi with account-specific filtering (e.g., 716* only kurs)
-          _parts: parseDetailKlasifikasiParts(klasifikasiRaw, accountCode).filter((k) => {
+      // Fetch sheet rows for accounts that have them, to get per-klasifikasi amounts
+      // Map: accountCode -> Map<"klasifikasi|periode", amount>
+      const sheetRowAmounts = new Map<string, Map<string, number>>();
+      // Try all accounts — if no sheet rows exist, fetch returns 404 and we skip
+      const accountsToFetch = [...new Set(sourceRows.map(r => String(r.accountCode ?? '').trim()).filter(Boolean))];
+
+      if (accountsToFetch.length > 0) {
+        // Fetch in parallel, max 10 at a time to avoid overwhelming the server
+        const BATCH = 10;
+        for (let i = 0; i < accountsToFetch.length; i += BATCH) {
+          const batch = accountsToFetch.slice(i, i + BATCH);
+          await Promise.all(batch.map(async (accountCode) => {
+            try {
+              const res = await fetch(`/api/fluktuasi/sheet-rows?accountCode=${encodeURIComponent(accountCode)}`);
+              if (!res.ok) return;
+              const data = await res.json();
+              if (!data.success || !Array.isArray(data.data?.rows)) return;
+              // Build fallback klasifikasi map from akun-periodes for unclassified rows
+              const akunRows = sourceRows.filter(r => r.accountCode === accountCode);
+              const periodeKlasiMap = new Map<string, string>();
+              const periodeAmountMap = new Map<string, number>();
+              for (const r of akunRows) {
+                periodeKlasiMap.set(String(r.periode ?? '').trim(), String(r.klasifikasi ?? '').trim());
+                // Use rekap-amounts if available, else akun-periodes amount
+                const rekapAmt = reasonMap.get(`${accountCode}|${String(r.periode ?? '').trim()}`)?.amount;
+                periodeAmountMap.set(String(r.periode ?? '').trim(), rekapAmt ?? Number(r.amount ?? 0));
+              }
+              sheetRowAmounts.set(accountCode, aggregateSheetRowsByKlasifikasi(data.data.rows, periodeKlasiMap, dataKeywords?.data as KeywordRule[] | undefined, periodeAmountMap));
+            } catch { /* best-effort */ }
+          }));
+        }
+      }
+
+      // Build processed records.
+      // For accounts with sheet rows: expand into one record per klasifikasi per periode.
+      // For accounts without sheet rows: fall back to akun-periodes with equal-split.
+      const processed: ProcessedRecord[] = [];
+
+      // Group sourceRows by accountCode for easy lookup
+      const sourceByAccount = new Map<string, AkunPeriodeRecord[]>();
+      for (const r of sourceRows) {
+        const code = String(r.accountCode ?? '').trim();
+        const arr = sourceByAccount.get(code) ?? [];
+        arr.push(r);
+        sourceByAccount.set(code, arr);
+      }
+
+      for (const [accountCode, accountRows] of sourceByAccount) {
+        const klasifikasiAmounts = sheetRowAmounts.get(accountCode);
+
+        if (klasifikasiAmounts && klasifikasiAmounts.size > 0) {
+          // Build one ProcessedRecord per unique klasifikasi+periode from sheet rows
+          const periodeSet = new Set(accountRows.map(r => String(r.periode ?? '').trim()).filter(Boolean));
+          const klasifikasiSet = new Set<string>();
+          for (const key of klasifikasiAmounts.keys()) {
+            const k = key.split('|')[0];
+            if (k) klasifikasiSet.add(k);
+          }
+
+          for (const periode of periodeSet) {
+            const mergedReason = reasonMap.get(`${accountCode}|${periode}`);
+            const baseRow = accountRows.find(r => r.periode === periode) ?? accountRows[0];
+            const fallbackReason = String(baseRow?.remark ?? '').trim();
+
+            let anyPushed = false;
+            for (const klasifikasi of klasifikasiSet) {
+              const amount = klasifikasiAmounts.get(`${klasifikasi}|${periode}`) ?? 0;
+              if (amount === 0) continue;
+
+              const parts = parseDetailKlasifikasiParts(klasifikasi, accountCode).filter((k) => {
+                const allowed = scope.get(String(k).trim().toLowerCase());
+                if (!allowed) return true;
+                return allowed.has(accountCode);
+              });
+
+              processed.push({
+                accountCode,
+                periode,
+                amount,
+                klasifikasi,
+                remark: baseRow?.remark ?? '',
+                reasonMoM: String(mergedReason?.reasonMoM ?? baseRow?.reasonMoM ?? fallbackReason),
+                reasonYoY: String(mergedReason?.reasonYoY ?? baseRow?.reasonYoY ?? fallbackReason),
+                reasonYtD: String(mergedReason?.reasonYtD ?? baseRow?.reasonYtD ?? fallbackReason),
+                _parts: parts.length > 0 ? parts : [klasifikasi],
+              });
+              anyPushed = true;
+            }
+
+            // If no sheet row amounts found for this periode, fall back to akun-periodes
+            if (!anyPushed && baseRow) {
+              const klasifikasiRaw = String(baseRow.klasifikasi || '').trim() || '(Tanpa Klasifikasi)';
+              const parts = parseDetailKlasifikasiParts(klasifikasiRaw, accountCode).filter((k) => {
+                const allowed = scope.get(String(k).trim().toLowerCase());
+                if (!allowed) return true;
+                return allowed.has(accountCode);
+              });
+              processed.push({
+                ...baseRow,
+                accountCode,
+                periode,
+                amount: mergedReason?.amount ?? Number(baseRow.amount || 0),
+                reasonMoM: String(mergedReason?.reasonMoM ?? baseRow.reasonMoM ?? fallbackReason),
+                reasonYoY: String(mergedReason?.reasonYoY ?? baseRow.reasonYoY ?? fallbackReason),
+                reasonYtD: String(mergedReason?.reasonYtD ?? baseRow.reasonYtD ?? fallbackReason),
+                _parts: parts,
+              });
+            }
+          }
+        } else {
+          // Fallback: use akun-periodes with equal-split (old behavior)
+          for (const r of accountRows) {
+            const klasifikasiRaw = String(r.klasifikasi || '').trim() || '(Tanpa Klasifikasi)';
+            const periode = String(r.periode || '').trim();
+            const mergedReason = reasonMap.get(`${accountCode}|${periode}`);
+            const fallbackReason = String(r.remark ?? '').trim();
+            const parts = parseDetailKlasifikasiParts(klasifikasiRaw, accountCode).filter((k) => {
+              const allowed = scope.get(String(k).trim().toLowerCase());
+              if (!allowed) return true;
+              return allowed.has(accountCode);
+            });
+            processed.push({
+              ...r,
+              accountCode,
+              periode,
+              amount: mergedReason?.amount ?? Number(r.amount || 0),
+              reasonMoM: String(mergedReason?.reasonMoM ?? r.reasonMoM ?? fallbackReason),
+              reasonYoY: String(mergedReason?.reasonYoY ?? r.reasonYoY ?? fallbackReason),
+              reasonYtD: String(mergedReason?.reasonYtD ?? r.reasonYtD ?? fallbackReason),
+              _parts: parts,
+            });
+          }
+        }
+      }
+
+      // Also add accounts from rekap-amounts that are NOT in akun-periodes
+      // These are accounts that only appear in the rekap sheet, not in individual account sheets
+      const processedAccountPeriodes = new Set(processed.map(r => `${r.accountCode}|${r.periode}`));
+      const extraFromRekap: ProcessedRecord[] = [];
+      if (dataRekapReasons?.success && Array.isArray(dataRekapReasons.data)) {
+        for (const rr of dataRekapReasons.data as any[]) {
+          const accountCode = String(rr.accountCode ?? '').trim();
+          const periode = String(rr.periode ?? '').trim();
+          if (!accountCode || !periode) continue;
+          if (!/^\d{5,}$/.test(accountCode)) continue;
+          if (EXCLUDED_PARENT_ACCOUNT_CODES_DETAIL.has(accountCode)) continue;
+          if (processedAccountPeriodes.has(`${accountCode}|${periode}`)) continue;
+          const amount = typeof rr.amount === 'number' ? rr.amount : 0;
+          if (amount === 0) continue;
+          // Determine klasifikasi from akun-periodes if available, else empty
+          const klasifikasiRaw = String(rr.klasifikasi ?? '').trim() || '(Tanpa Klasifikasi)';
+          const parts = parseDetailKlasifikasiParts(klasifikasiRaw, accountCode).filter((k) => {
             const allowed = scope.get(String(k).trim().toLowerCase());
             if (!allowed) return true;
             return allowed.has(accountCode);
-          }),
-        };
-      });
-
-      setRecords(processed);
+          });
+          extraFromRekap.push({
+            accountCode,
+            periode,
+            amount,
+            klasifikasi: klasifikasiRaw,
+            remark: '',
+            reasonMoM: String(rr.reasonMoM ?? ''),
+            reasonYoY: String(rr.reasonYoY ?? ''),
+            reasonYtD: String(rr.reasonYtD ?? ''),
+            _parts: parts.length > 0 ? parts : [klasifikasiRaw],
+          });
+          // Also add to frameAccounts
+          if (!EXCLUDED_PARENT_ACCOUNT_CODES_DETAIL.has(accountCode)) {
+            if (accountCode.startsWith('7151')) frameAccounts['beban-bunga'].add(accountCode);
+            else if (accountCode.startsWith('714') || accountCode.startsWith('7156')) frameAccounts['pendapatan-lain'].add(accountCode);
+            else if (accountCode.startsWith('713')) frameAccounts['pendapatan-bunga'].add(accountCode);
+            else if (accountCode.startsWith('716')) frameAccounts['selisih-kurs'].add(accountCode);
+          }
+        }
+      }
+      if (extraFromRekap.length > 0) {
+        setFrameAccountsMap({ ...frameAccounts });
+        setRecords([...processed, ...extraFromRekap]);
+      } else {
+        setRecords(processed);
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -1038,11 +1365,25 @@ export default function DetailAkunFluktuasiPage() {
       labelB = `YTD ${yearA - 1}`;
     }
 
-    const allowedCodes = new Set(
-      frameAccountsMap[activeAccountTab]?.size > 0
-        ? frameAccountsMap[activeAccountTab]
-        : activeTabDef.accountCodes.filter((code) => !EXCLUDED_PARENT_ACCOUNT_CODES.has(code))
-    );
+    // Build allowed codes: union of frameAccountsMap + all records matching this tab's prefix
+    // This ensures accounts from the rekap sheet that aren't in frameAccountsMap still appear
+    const tabPrefixMatch = (code: string): boolean => {
+      if (activeAccountTab === 'beban-bunga') return code.startsWith('7151');
+      if (activeAccountTab === 'pendapatan-lain') return code.startsWith('714') || code.startsWith('7156');
+      if (activeAccountTab === 'pendapatan-bunga') return code.startsWith('713');
+      if (activeAccountTab === 'selisih-kurs') return code.startsWith('716');
+      return false;
+    };
+    const allowedCodes = new Set<string>([
+      // From frameAccountsMap (built from akun-periodes)
+      ...(frameAccountsMap[activeAccountTab] ?? []),
+      // From hardcoded tab definition
+      ...activeTabDef.accountCodes.filter(code => !EXCLUDED_PARENT_ACCOUNT_CODES.has(code)),
+      // From actual records — catches any account not in the above two sources
+      ...records
+        .map(r => String(r.accountCode ?? '').trim())
+        .filter(code => /^\d{5,}$/.test(code) && !EXCLUDED_PARENT_ACCOUNT_CODES.has(code) && tabPrefixMatch(code)),
+    ]);
     const accountMap = new Map<string, { mapA: Map<string, number>; mapB: Map<string, number>; reasonMap: Map<string, Set<string>> }>();
 
     for (const code of allowedCodes) {
@@ -1063,7 +1404,7 @@ export default function DetailAkunFluktuasiPage() {
         .filter(Boolean);
       if (klasifikasiParts.length === 0) continue;
 
-      const share = r.amount / klasifikasiParts.length;
+      const share = klasifikasiParts.length === 1 ? r.amount : r.amount / klasifikasiParts.length;
       const reasonRaw = compMode === 'mom' ? r.reasonMoM : compMode === 'yoy' ? r.reasonYoY : r.reasonYtD;
       const reasonList = String(reasonRaw || '').split(';').map(s => s.trim()).filter(Boolean);
       if (reasonList.length > 0) {
@@ -1118,12 +1459,13 @@ export default function DetailAkunFluktuasiPage() {
         };
       })
       .sort((a, b) => {
-        // Sort by the order from frameAccountsMap, if available
-        const aIdx = [...(frameAccountsMap[activeAccountTab] || [])].indexOf(a.accountCode);
-        const bIdx = [...(frameAccountsMap[activeAccountTab] || [])].indexOf(b.accountCode);
+        // Sort by hardcoded tab order first, then numerically for unlisted accounts
+        const aIdx = activeTabDef.accountCodes.indexOf(a.accountCode);
+        const bIdx = activeTabDef.accountCodes.indexOf(b.accountCode);
         if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
-        // Fallback to hardcoded order
-        return activeTabDef.accountCodes.indexOf(a.accountCode) - activeTabDef.accountCodes.indexOf(b.accountCode);
+        if (aIdx >= 0) return -1; // hardcoded accounts first
+        if (bIdx >= 0) return 1;
+        return a.accountCode.localeCompare(b.accountCode); // unlisted: sort numerically
       });
 
     return { frames, labelA, labelB };
@@ -1383,7 +1725,7 @@ export default function DetailAkunFluktuasiPage() {
 
   // ── Main render ──────────────────────────────────────────────────────────
   return shell(
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto" data-aos="fade-up" data-aos-delay="80">
 
       <div className="px-3 sm:px-4 pt-3 pb-1">
         <Card className="border border-blue-100/80 bg-white/90 backdrop-blur shadow-sm">

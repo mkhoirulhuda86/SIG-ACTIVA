@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle, XCircle, Mail } from 'lucide-react';
 import Link from 'next/link';
 import { gsap } from 'gsap';
+import TypedText from '@/app/components/TypedText';
 
 export default function VerifyEmailPage() {
   const router = useRouter();
@@ -79,7 +80,7 @@ export default function VerifyEmailPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-gray-100 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-red-50 to-gray-100 flex items-center justify-center px-4" data-aos="fade-up">
       <div className="w-full max-w-md">
         {/* Logo & Header */}
         <div ref={headerRef} className="text-center mb-8">
@@ -87,7 +88,7 @@ export default function VerifyEmailPage() {
             <div className="text-white font-bold text-2xl">SIG</div>
           </div>
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            Verifikasi Email
+            <TypedText text="Verifikasi Email" typeSpeed={30} startDelay={220} />
           </h1>
           <p className="text-gray-600">
             SIG ACTIVA - PT Semen Indonesia Grup

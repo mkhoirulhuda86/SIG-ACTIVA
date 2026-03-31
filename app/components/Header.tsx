@@ -6,6 +6,7 @@ import { animate, stagger } from 'animejs';
 import { gsap } from 'gsap';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
+import TypedText from './TypedText';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
@@ -165,7 +166,12 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
     setNotificationCount(0);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore and continue clearing client state
+    }
     ['isAuthenticated','username','userName','userRole','userId'].forEach(k => localStorage.removeItem(k));
     window.location.href = '/login';
   };
@@ -191,10 +197,27 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
     try {
       beamsWindow.__beamsRegistrationPromise = (async () => {
         const PusherPushNotifications = await import('@pusher/push-notifications-web');
+        
+        if (!instanceId) {
+          throw new Error('NEXT_PUBLIC_BEAMS_INSTANCE_ID is not configured');
+        }
+        
         const beamsClient = new PusherPushNotifications.Client({ instanceId });
-        await beamsClient.start();
-        await beamsClient.addDeviceInterest('all-users');
-        await beamsClient.addDeviceInterest('hello');
+        
+        try {
+          await beamsClient.start();
+          console.log('[Beams] Client started successfully');
+        } catch (startErr) {
+          throw new Error(`Failed to start Beams client: ${startErr instanceof Error ? startErr.message : 'Unknown error'}`);
+        }
+        
+        try {
+          await beamsClient.addDeviceInterest('all-users');
+          await beamsClient.addDeviceInterest('hello');
+          console.log('[Beams] Device interests added successfully');
+        } catch (interestErr) {
+          throw new Error(`Failed to add device interests: ${interestErr instanceof Error ? interestErr.message : 'Unknown error'}`);
+        }
       })();
 
       await beamsWindow.__beamsRegistrationPromise;
@@ -259,7 +282,9 @@ export default function Header({ title, subtitle, onMenuClick }: HeaderProps) {
         </Button>
 
         <div>
-          <h1 className="text-base md:text-xl font-bold text-foreground leading-tight">{title}</h1>
+          <h1 className="text-base md:text-xl font-bold text-foreground leading-tight">
+            <TypedText text={title} typeSpeed={26} startDelay={80} />
+          </h1>
           <p className="text-xs text-muted-foreground hidden sm:block">{subtitle}</p>
         </div>
       </div>

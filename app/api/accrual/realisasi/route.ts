@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
 import { sendPushToAll } from '@/lib/webpush';
+import { requireFinanceRead, requireFinanceWrite } from '@/lib/api-auth';
+import { logAuditEvent } from '@/lib/audit';
 
 // POST - Add realisasi to a periode
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const body = await request.json();
     const { accrualPeriodeId, tanggalRealisasi, amount, headerText, lineText, keterangan, kdAkunBiaya, costCenter } = body;
 
@@ -34,6 +39,7 @@ export async function POST(request: NextRequest) {
       select: { accrualId: true },
     });
     broadcast('accrual', { id: periodeRef?.accrualId });
+    logAuditEvent({ request, user: auth.user, action: 'accrual.realisasi.create', target: String(accrualPeriodeId), success: true });
     sendPushToAll({ title: 'Realisasi Ditambahkan', body: 'Realisasi accrual baru berhasil disimpan', url: '/monitoring-accrual', priority: 'medium' }).catch(() => {});
     return NextResponse.json(realisasi, { status: 201 });
   } catch (error) {
@@ -48,6 +54,9 @@ export async function POST(request: NextRequest) {
 // GET - Get all realisasi for a periode
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireFinanceRead(request);
+    if ('error' in auth) return auth.error;
+
     const searchParams = request.nextUrl.searchParams;
     const periodeId = searchParams.get('periodeId');
 
@@ -80,6 +89,9 @@ export async function GET(request: NextRequest) {
 // DELETE - Delete a realisasi (single: ?id=x, bulk: ?ids=1,2,3)
 export async function DELETE(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
     const idsParam = searchParams.get('ids');
@@ -103,6 +115,7 @@ export async function DELETE(request: NextRequest) {
       });
 
       broadcast('accrual');
+      logAuditEvent({ request, user: auth.user, action: 'accrual.realisasi.bulk_delete', target: ids.join(','), success: true });
       sendPushToAll({ title: 'Realisasi Dihapus', body: `${result.count} realisasi berhasil dihapus`, url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
       return NextResponse.json({
         message: `${result.count} realisasi berhasil dihapus`,
@@ -129,6 +142,7 @@ export async function DELETE(request: NextRequest) {
     });
 
     broadcast('accrual', { id: realisasiRef?.accrualPeriode?.accrualId });
+    logAuditEvent({ request, user: auth.user, action: 'accrual.realisasi.delete', target: id, success: true });
     sendPushToAll({ title: 'Realisasi Dihapus', body: 'Satu realisasi berhasil dihapus', url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
     return NextResponse.json({ message: 'Realisasi deleted successfully' });
   } catch (error) {
@@ -143,6 +157,9 @@ export async function DELETE(request: NextRequest) {
 // PUT - Update a realisasi
 export async function PUT(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
     const body = await request.json();
@@ -183,6 +200,7 @@ export async function PUT(request: NextRequest) {
     });
 
     broadcast('accrual', { id: realisasiRef?.accrualPeriode?.accrualId });
+    logAuditEvent({ request, user: auth.user, action: 'accrual.realisasi.update', target: id, success: true });
     sendPushToAll({ title: 'Realisasi Diperbarui', body: 'Data realisasi accrual berhasil diperbarui', url: '/monitoring-accrual', priority: 'low' }).catch(() => {});
     return NextResponse.json(realisasi);
   } catch (error) {

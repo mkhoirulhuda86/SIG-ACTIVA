@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { toast } from 'sonner';
 import { useState, useMemo, useEffect, useRef, useCallback, startTransition } from 'react';
@@ -20,6 +20,7 @@ import { useGSAPCounter } from '@/hooks/useGSAP';
 
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
+import SwiperCardCarousel from '../components/SwiperCardCarousel';
 
 /* ─── types ──────────────────────────────────────────────────────────── */
 interface MaterialData {
@@ -550,11 +551,49 @@ export default function LaporanMaterialPage() {
                 </div>
 
                 {/* metric cards */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 p-3 sm:p-4 md:p-6 pb-0">
-                  <MetricCardAnimated icon={TrendingDown} label="Total Volume Selisih" value={dynamicStats.totalSelisih} sub={`Dari ${additionalMetrics.totalMaterials} material`} delay={0} />
-                  <MetricCardAnimated icon={Package}      label="Total Material"       value={additionalMetrics.totalMaterials} sub="Jenis Material Unik" delay={70} />
-                  <MetricCardAnimated icon={MapPin}       label="Total Lokasi"          value={additionalMetrics.totalLocations} sub="Locations" delay={140} />
-                  <MetricCardAnimated icon={Calculator}   label="Rata-rata Selisih"     value={additionalMetrics.avgSelisihPerMaterial} sub="Per Material" delay={210} />
+                <div className="p-3 sm:p-4 md:p-6 pb-0">
+                  <SwiperCardCarousel
+                    slideClassName="h-full"
+                    showPagination={false}
+                    breakpoints={{
+                      0: { slidesPerView: 2, spaceBetween: 12 },
+                      1024: { slidesPerView: 4, spaceBetween: 16 },
+                    }}
+                    items={[
+                      <MetricCardAnimated
+                        key="total-selisih"
+                        icon={TrendingDown}
+                        label="Total Volume Selisih"
+                        value={dynamicStats.totalSelisih}
+                        sub={`Dari ${additionalMetrics.totalMaterials} material`}
+                        delay={0}
+                      />,
+                      <MetricCardAnimated
+                        key="total-material"
+                        icon={Package}
+                        label="Total Material"
+                        value={additionalMetrics.totalMaterials}
+                        sub="Jenis Material Unik"
+                        delay={70}
+                      />,
+                      <MetricCardAnimated
+                        key="total-lokasi"
+                        icon={MapPin}
+                        label="Total Lokasi"
+                        value={additionalMetrics.totalLocations}
+                        sub="Locations"
+                        delay={140}
+                      />,
+                      <MetricCardAnimated
+                        key="rata-rata-selisih"
+                        icon={Calculator}
+                        label="Rata-rata Selisih"
+                        value={additionalMetrics.avgSelisihPerMaterial}
+                        sub="Per Material"
+                        delay={210}
+                      />,
+                    ]}
+                  />
                 </div>
 
                 {/* charts */}

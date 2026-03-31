@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
 import { sendPushToAll } from '@/lib/webpush';
+import { requireFinanceRead, requireFinanceWrite } from '@/lib/api-auth';
 
 // GET - Fetch all accrual data with periodes and realisasi
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireFinanceRead(request);
+    if ('error' in auth) return auth.error;
+
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search');
 
@@ -207,6 +211,9 @@ export async function GET(request: NextRequest) {
 // POST - Create new accrual entry with periodes
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const body = await request.json();
     const { 
       companyCode, noPo, kdAkr, alokasi, kdAkunBiaya, vendor, deskripsi, headerText, klasifikasi,
@@ -297,6 +304,9 @@ export async function POST(request: NextRequest) {
 // DELETE - Delete accrual entry (single id) atau bulk (ids=1,2,3)
 export async function DELETE(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
     const idsParam = searchParams.get('ids');
@@ -352,6 +362,9 @@ export async function DELETE(request: NextRequest) {
 // PATCH/PUT - Update accrual entry
 export async function PATCH(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
     const action = searchParams.get('action');

@@ -37,7 +37,7 @@ const loadExcelLibraries = async () => {
 };
 
 interface AccrualPeriode {
-  id: number;
+  id?: number;
   periodeKe: number;
   bulan: string;
   tahun: number;
@@ -2602,12 +2602,18 @@ export default function MonitoringAccrualPage() {
     const file = e.target.files?.[0];
     if (!file || !selectedPeriode) return;
 
+    const periodeId = selectedPeriode.id;
+    if (periodeId == null) {
+      toast.error('Periode belum memiliki id. Tidak bisa import realisasi.');
+      return;
+    }
+
     setUploadingExcel(true);
     try {
       // Kirim ke batch import API (support XML & Excel) - satu request, bukan N request
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('periodeId', selectedPeriode.id.toString());
+      formData.append('periodeId', periodeId.toString());
 
       const response = await fetch('/api/accrual/realisasi/import', {
         method: 'POST',
@@ -2633,7 +2639,6 @@ export default function MonitoringAccrualPage() {
       toast.info(message);
 
       // Background: refresh realisasi & accrual secara paralel (tanpa full-page loading)
-      const periodeId = selectedPeriode.id;
       const [realisasiRes, accrualRes] = await Promise.all([
         fetch(`/api/accrual/realisasi?periodeId=${periodeId}`),
         fetch('/api/accrual'),
@@ -2943,6 +2948,11 @@ export default function MonitoringAccrualPage() {
   const handleCostCenterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!costCenterModalPeriode) return;
+    const periodeId = costCenterModalPeriode.id;
+    if (periodeId == null) {
+      toast.error('Periode belum memiliki id. Tidak bisa simpan cost center.');
+      return;
+    }
     setSubmittingCostCenter(true);
     try {
       const isEditing = editingCostCenterId !== null;
@@ -2955,7 +2965,7 @@ export default function MonitoringAccrualPage() {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accrualPeriodeId: costCenterModalPeriode.id,
+          accrualPeriodeId: periodeId,
           costCenter: costCenterForm.costCenter || null,
           kdAkunBiaya: costCenterForm.kdAkunBiaya || null,
           amount: parseFloat(costCenterForm.amount),
@@ -2972,7 +2982,6 @@ export default function MonitoringAccrualPage() {
       toast.success(isEditing ? 'Rincian berhasil diupdate!' : 'Rincian berhasil ditambahkan!');
 
       // Refresh list + accrual data in parallel
-      const periodeId = costCenterModalPeriode.id;
       const [listRes, accrualRes] = await Promise.all([
         fetch(`/api/accrual/periode-costcenter?periodeId=${periodeId}`),
         fetch('/api/accrual'),
@@ -3093,11 +3102,18 @@ export default function MonitoringAccrualPage() {
   const handleCostCenterFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !costCenterModalPeriode) return;
+
+    const periodeId = costCenterModalPeriode.id;
+    if (periodeId == null) {
+      toast.error('Periode belum memiliki id. Tidak bisa import cost center.');
+      return;
+    }
+
     setUploadingCostCenterFile(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('periodeId', costCenterModalPeriode.id.toString());
+      formData.append('periodeId', periodeId.toString());
       const response = await fetch('/api/accrual/periode-costcenter/import', {
         method: 'POST',
         body: formData,
@@ -3114,7 +3130,6 @@ export default function MonitoringAccrualPage() {
       }
       toast.info(message);
 
-      const periodeId = costCenterModalPeriode.id;
       const [listRes, accrualRes] = await Promise.all([
         fetch(`/api/accrual/periode-costcenter?periodeId=${periodeId}`),
         fetch('/api/accrual'),
@@ -3439,8 +3454,10 @@ export default function MonitoringAccrualPage() {
 
                   <div className="flex flex-wrap gap-2 ml-auto">
                     {[
-                      { label: 'Import Accrual',    icon: <Upload size={13}/>,   onClick: () => setShowImportExcelModal(true) },
-                      { label: 'Import Realisasi',  icon: <Upload size={13}/>,   onClick: () => setShowImportGlobalModal(true) },
+                      ...(canEdit ? [
+                        { label: 'Import Accrual',    icon: <Upload size={13}/>,   onClick: () => setShowImportExcelModal(true) },
+                        { label: 'Import Realisasi',  icon: <Upload size={13}/>,   onClick: () => setShowImportGlobalModal(true) },
+                      ] : []),
                       { label: 'Per Item',          icon: <Download size={13}/>, onClick: handleDownloadAllItemsReport },
                       { label: 'Export Global',     icon: <Download size={13}/>, onClick: handleDownloadGlobalReport },
                     ].map((btn, i) => (
@@ -3870,6 +3887,7 @@ export default function MonitoringAccrualPage() {
                                             >
                                               Rincian Accrual
                                             </button>
+                                            {canEdit && (
                                             <button
                                               onClick={() => handleOpenQuickRincianModal(item, periode)}
                                               className="text-xs bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded transition-colors"
@@ -3877,6 +3895,8 @@ export default function MonitoringAccrualPage() {
                                             >
                                               + Input Rincian
                                             </button>
+                                            )}
+                                            {canEdit && (
                                             <button
                                               onClick={() => handleOpenRealisasiModal(periode, false)}
                                               className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded transition-colors"
@@ -3884,9 +3904,11 @@ export default function MonitoringAccrualPage() {
                                             >
                                               Input Realisasi
                                             </button>
+                                            )}
                                             <button
                                               onClick={(e) => {
                                                 const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                                if (periode.id == null) return;
                                                 if (openPeriodeJurnalDropdown?.periodeId === periode.id) {
                                                   setOpenPeriodeJurnalDropdown(null);
                                                 } else {
@@ -4339,7 +4361,7 @@ export default function MonitoringAccrualPage() {
               )}
 
               {/* Upload Excel/XML */}
-              {!realisasiViewOnly && (
+              {!realisasiViewOnly && canEdit && (
               <div className="bg-white rounded-lg border border-gray-200 p-5 mb-4">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">Import dari File</h3>
                 <div className="flex items-center gap-3">
@@ -4366,7 +4388,7 @@ export default function MonitoringAccrualPage() {
               )}
 
               {/* Form Input Realisasi */}
-              {!realisasiViewOnly && (
+              {!realisasiViewOnly && canEdit && (
               <form onSubmit={handleRealisasiSubmit} className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
                 <h3 className="text-sm font-semibold text-gray-700 mb-4">Tambah Realisasi Manual</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -4493,7 +4515,7 @@ export default function MonitoringAccrualPage() {
                       <span className="text-xs text-gray-500">({realisasiData.length} data)</span>
                     )}
                   </div>
-                  {!realisasiViewOnly && realisasiData.length > 0 && (
+                  {!realisasiViewOnly && canEdit && realisasiData.length > 0 && (
                     <div className="flex items-center gap-2">
                       <button
                         onClick={handleToggleSelectAllRealisasi}
@@ -4587,7 +4609,7 @@ export default function MonitoringAccrualPage() {
                               </div>
                               <div className="flex items-center gap-3">
                                 {/* Download Button untuk semua transaksi dalam group */}
-                                {!realisasiViewOnly && (
+                                {!realisasiViewOnly && canEdit && (
                                   <div className="relative">
                                     <button
                                       onClick={(e) => {
@@ -4619,7 +4641,7 @@ export default function MonitoringAccrualPage() {
                               <table className="w-full text-sm">
                                 <thead className="bg-gray-50 border-b border-gray-200">
                                   <tr>
-                                    {!realisasiViewOnly && (
+                                    {!realisasiViewOnly && canEdit && (
                                       <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 w-10">
                                         <input
                                           type="checkbox"
@@ -4646,7 +4668,7 @@ export default function MonitoringAccrualPage() {
                                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 bg-yellow-50">Cost Center</th>
                                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Header Text</th>
                                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Line Text</th>
-                                    {!realisasiViewOnly && (
+                                    {!realisasiViewOnly && canEdit && (
                                       <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700">Action</th>
                                     )}
                                   </tr>
@@ -4654,7 +4676,7 @@ export default function MonitoringAccrualPage() {
                                 <tbody className="divide-y divide-gray-100">
                                   {items.map((realisasi) => (
                                     <tr key={realisasi.id} className={`hover:bg-blue-50 transition-colors ${selectedRealisasiIds.has(realisasi.id) ? 'bg-blue-50' : ''}`}>
-                                      {!realisasiViewOnly && (
+                                      {!realisasiViewOnly && canEdit && (
                                         <td className="px-3 py-2 text-center">
                                           <input
                                             type="checkbox"
@@ -4679,7 +4701,7 @@ export default function MonitoringAccrualPage() {
                                           {realisasi.lineText || '-'}
                                         </div>
                                       </td>
-                                      {!realisasiViewOnly && (
+                                      {!realisasiViewOnly && canEdit && (
                                         <td className="px-4 py-2 text-center">
                                           <div className="flex items-center justify-center gap-2">
                                             <button
@@ -4809,7 +4831,7 @@ export default function MonitoringAccrualPage() {
                       <p className="font-semibold text-amber-700">{formatCurrency(Math.abs(costCenterModalPeriode.amountAccrual))}</p>
                     </div>
                   </div>
-                  {costCenterData.length === 0 && (
+                  {costCenterData.length === 0 && canEdit && (
                     <button
                       type="button"
                       onClick={() => setCostCenterForm({
@@ -4844,6 +4866,7 @@ export default function MonitoringAccrualPage() {
               </div>
 
               {/* Import dari File */}
+              {canEdit && (
               <div className="bg-white rounded-lg border border-gray-200 p-5 mb-4">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">Import dari File</h3>
                 <div className="flex items-center gap-3">
@@ -4870,8 +4893,10 @@ export default function MonitoringAccrualPage() {
                   XML SAP: kolom J (Amount) · K (Cost Center) · I (Kode Akun Biaya)
                 </p>
               </div>
+              )}
 
               {/* Form tambah/edit */}
+              {canEdit && (
               <form onSubmit={handleCostCenterSubmit} className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
                 <h3 className="text-sm font-semibold text-gray-700 mb-4">
                   {editingCostCenterId ? 'Edit Rincian' : 'Tambah Rincian'}
@@ -4960,6 +4985,7 @@ export default function MonitoringAccrualPage() {
                   )}
                 </div>
               </form>
+              )}
 
               {/* Daftar rincian */}
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -4971,7 +4997,7 @@ export default function MonitoringAccrualPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    {costCenterData.length > 0 && (
+                    {canEdit && costCenterData.length > 0 && (
                       <button
                         onClick={handleToggleSelectAllCostCenter}
                         className="text-xs px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded transition-colors"
@@ -4980,7 +5006,7 @@ export default function MonitoringAccrualPage() {
                         {selectedCostCenterIds.size === costCenterData.length ? '? Semua' : 'Pilih Semua'}
                       </button>
                     )}
-                    {selectedCostCenterIds.size > 0 && (
+                    {canEdit && selectedCostCenterIds.size > 0 && (
                       <>
                         <span className="text-xs text-gray-600">{selectedCostCenterIds.size} terpilih</span>
                         <button
@@ -5151,6 +5177,7 @@ export default function MonitoringAccrualPage() {
                                       </td>
                                       <td className="px-4 py-2 text-center">
                                         <div className="flex items-center justify-center gap-2">
+                                          {canEdit && (
                                           <button
                                             onClick={() => {
                                               setEditingCostCenterId(entry.id);
@@ -5168,13 +5195,16 @@ export default function MonitoringAccrualPage() {
                                           >
                                             <Edit2 size={16} />
                                           </button>
+                                          )}
+                                          {canEdit && (
                                           <button
                                             onClick={() => handleDeleteCostCenter(entry.id)}
-                                            className="text-red-600 hover:text-red-800 transition-colors p-1 hover:bg-red-50 rounded"
+                                            className="text-red-600 hover:text-red-800 transition-colors p1 hover:bg-red-50 rounded"
                                             title="Hapus"
                                           >
                                             <Trash2 size={16} />
                                           </button>
+                                          )}
                                         </div>
                                       </td>
                                     </tr>
@@ -5656,7 +5686,7 @@ export default function MonitoringAccrualPage() {
           onClick={() => setConfirmDialog(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl border border-red-100 p-6 mx-4 max-w-sm w-full"
+            className="bg-white rounded-2xl shadow-2xl border border-red-100 p-4 mx-4 max-w-sm w-[92vw]"
             style={{ transform: 'scale(0.88)', opacity: 0 }}
             ref={(el) => {
               if (el) {

@@ -1,9 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import { checkRateLimit } from '@/lib/rate-limit';
+import { createSessionToken, getSessionCookieName, getSessionMaxAgeSeconds } from '@/lib/session';
 
 export async function POST(request: NextRequest) {
   try {
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const ipRateLimit = checkRateLimit(`login:ip:${clientIp}`, 10, 60_000);
+    if (!ipRateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Terlalu banyak percobaan login. Coba lagi sebentar.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(ipRateLimit.retryAfterSec) },
+        }
+      );
+    }
+
     const { email, password } = await request.json();
 
     if (!email || !password) {
@@ -25,13 +39,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Login attempt:', {
-      email: user.email,
-      emailVerified: user.emailVerified,
-      isApproved: user.isApproved,
-      role: user.role,
-    });
-
     // Auto-verify dan approve admin yang sudah ada sebelumnya
     if (user.role === 'ADMIN_SYSTEM' && (!user.emailVerified || !user.isApproved)) {
       await prisma.user.update({
@@ -49,7 +56,6 @@ export async function POST(request: NextRequest) {
     // Auto-fix: Jika user sudah approved tapi email belum verified, auto verify
     // Ini untuk handle kasus dimana admin approve sebelum user klik link email
     if (user.isApproved && !user.emailVerified) {
-      console.log('⚠️ Auto-fixing: User approved but email not verified, verifying now...');
       await prisma.user.update({
         where: { id: user.id },
         data: {
@@ -62,7 +68,6 @@ export async function POST(request: NextRequest) {
 
     // Check if email is verified (skip for admin yang baru di-update)
     if (!user.emailVerified) {
-      console.log('❌ Email not verified for:', user.email);
       return NextResponse.json(
         { error: 'Email Anda belum diverifikasi. Silakan cek email untuk link verifikasi.' },
         { status: 403 }
@@ -71,7 +76,6 @@ export async function POST(request: NextRequest) {
 
     // Check if user is approved (skip for admin yang baru di-update)
     if (!user.isApproved) {
-      console.log('❌ User not approved:', user.email);
       return NextResponse.json(
         { error: 'Akun Anda belum disetujui oleh Admin System. Silakan hubungi administrator.' },
         { status: 403 }
@@ -88,8 +92,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const token = await createSessionToken({
+      uid: user.id,
+      role: user.role,
+      name: user.name,
+    });
+
     // Return user data (excluding password)
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       user: {
         id: user.id,
@@ -98,6 +108,16 @@ export async function POST(request: NextRequest) {
         role: user.role,
       },
     });
+    response.cookies.set({
+      name: getSessionCookieName(),
+      value: token,
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: getSessionMaxAgeSeconds(),
+    });
+    return response;
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(

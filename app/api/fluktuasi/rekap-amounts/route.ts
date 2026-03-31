@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { NextRequest } from 'next/server';
+import { requireFinanceRead } from '@/lib/api-auth';
 
 const parseNum = (val: unknown): number => {
   if (typeof val === 'number') return val;
@@ -76,8 +78,11 @@ function amountColToPeriode(ac: {
 // GET /api/fluktuasi/rekap-amounts
 // Returns per-account per-period amounts extracted from all stored FluktuasiImport.rekapSheetData.
 // Covers accounts that only appear in the REKAP sheet and not in individual account sheets.
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const auth = await requireFinanceRead(request);
+    if ('error' in auth) return auth.error;
+
     // Fetch all imports oldest-first so latest values overwrite older ones.
     const imports = await prisma.fluktuasiImport.findMany({
       select: { rekapSheetData: true, createdAt: true },

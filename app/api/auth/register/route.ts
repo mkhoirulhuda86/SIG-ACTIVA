@@ -3,9 +3,22 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { sendVerificationEmail } from '@/lib/email';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const ipRateLimit = checkRateLimit(`register:ip:${clientIp}`, 5, 60_000);
+    if (!ipRateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Terlalu banyak percobaan registrasi. Coba lagi sebentar.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(ipRateLimit.retryAfterSec) },
+        }
+      );
+    }
+
     const { username, email, password, name } = await request.json();
 
     if (!username || !email || !password || !name) {
@@ -20,6 +33,15 @@ export async function POST(request: NextRequest) {
     if (!emailRegex.test(email)) {
       return NextResponse.json(
         { error: 'Format email tidak valid' },
+        { status: 400 }
+      );
+    }
+
+    // Minimal 8 char, at least 1 uppercase, 1 lowercase, 1 number
+    const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!strongPasswordRegex.test(password)) {
+      return NextResponse.json(
+        { error: 'Password minimal 8 karakter dan harus mengandung huruf besar, huruf kecil, serta angka' },
         { status: 400 }
       );
     }
@@ -49,7 +71,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     // Generate verification token
     const verificationToken = crypto.randomBytes(32).toString('hex');

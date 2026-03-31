@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, FileText, TrendingUp, Clock, Users, X, ChevronRight, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, FileText, TrendingUp, Clock, Users, ShieldCheck, X, ChevronRight, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -43,6 +43,7 @@ const menuItems: MenuItem[] = [
   { icon: TrendingUp,      label: 'Monitoring Prepaid', href: '/monitoring-prepaid', requireAdmin: false, badge: null },
   { icon: Clock,           label: 'Monitoring Accrual', href: '/monitoring-accrual', requireAdmin: false, badge: null },
   { icon: Users,           label: 'User Management',    href: '/user-management',    requireAdmin: true,  badge: 'Admin' },
+  { icon: ShieldCheck,     label: 'Security Status',    href: '/security-status',    requireAdmin: true,  badge: 'Admin' },
 ];
 
 interface SidebarProps {
@@ -172,7 +173,7 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           <div className="flex items-center gap-3">
             <div className="w-14 h-14 flex items-center justify-center drop-shadow-sm shrink-0">
               <img
-                src="/logo aplikasi.png"
+                src="/logo-aplikasi.png"
                 alt="SIG ACTIVA Logo"
                 className="w-14 h-14 object-contain animate-floatUp"
               />
@@ -316,7 +317,7 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           <div className="flex items-center gap-2 px-2 py-2">
             <div className="w-7 h-7 rounded-full bg-white border border-sidebar-border flex items-center justify-center shrink-0 overflow-hidden">
               <img
-                src="/logo aplikasi.png"
+                src="/logo-aplikasi.png"
                 alt="SIG ACTIVA Footer Logo"
                 className="w-6 h-6 object-contain"
               />

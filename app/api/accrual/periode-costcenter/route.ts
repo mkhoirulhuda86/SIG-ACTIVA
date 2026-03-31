@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
+import { requireFinanceRead, requireFinanceWrite } from '@/lib/api-auth';
+import { logAuditEvent } from '@/lib/audit';
 
 // GET - List all cost center entries for a periode
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireFinanceRead(request);
+    if ('error' in auth) return auth.error;
+
     const periodeId = request.nextUrl.searchParams.get('periodeId');
     if (!periodeId) {
       return NextResponse.json({ error: 'Missing periodeId' }, { status: 400 });
@@ -25,6 +30,9 @@ export async function GET(request: NextRequest) {
 // POST - Add a cost center entry and recalculate amountAccrual
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const body = await request.json();
     const { accrualPeriodeId, costCenter, kdAkunBiaya, amount, headerText, lineText, keterangan } = body;
 
@@ -52,6 +60,7 @@ export async function POST(request: NextRequest) {
       select: { accrualId: true },
     });
     broadcast('accrual', { id: periodeRef?.accrualId });
+    logAuditEvent({ request, user: auth.user, action: 'accrual.costcenter.create', target: String(accrualPeriodeId), success: true });
     return NextResponse.json(entry, { status: 201 });
   } catch (error) {
     console.error('Error creating cost center entry:', error);
@@ -62,6 +71,9 @@ export async function POST(request: NextRequest) {
 // PUT - Update a cost center entry and recalculate
 export async function PUT(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const id = request.nextUrl.searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
@@ -87,6 +99,7 @@ export async function PUT(request: NextRequest) {
       select: { accrualId: true },
     });
     broadcast('accrual', { id: periodeRef?.accrualId });
+    logAuditEvent({ request, user: auth.user, action: 'accrual.costcenter.update', target: id ?? '', success: true });
     return NextResponse.json(entry);
   } catch (error) {
     console.error('Error updating cost center entry:', error);
@@ -97,6 +110,9 @@ export async function PUT(request: NextRequest) {
 // DELETE - Single (?id=X) or bulk (?ids=X,Y,Z)
 export async function DELETE(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const id = request.nextUrl.searchParams.get('id');
     const idsParam = request.nextUrl.searchParams.get('ids');
 
@@ -125,6 +141,7 @@ export async function DELETE(request: NextRequest) {
         select: { accrualId: true },
       }) : null;
       broadcast('accrual', periodeRef?.accrualId ? { id: periodeRef.accrualId } : {});
+      logAuditEvent({ request, user: auth.user, action: 'accrual.costcenter.bulk_delete', target: ids.join(','), success: true });
       return NextResponse.json({ message: `${result.count} entries deleted`, count: result.count });
     }
 
@@ -141,6 +158,7 @@ export async function DELETE(request: NextRequest) {
       select: { accrualId: true },
     });
     broadcast('accrual', { id: periodeRef?.accrualId });
+    logAuditEvent({ request, user: auth.user, action: 'accrual.costcenter.delete', target: id ?? '', success: true });
     return NextResponse.json({ message: 'Entry deleted' });
   } catch (error) {
     console.error('Error deleting cost center entry:', error);

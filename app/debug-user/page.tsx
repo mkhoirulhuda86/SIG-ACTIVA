@@ -2,6 +2,7 @@
 
 import { toast } from 'sonner';
 import { useState } from 'react';
+import TypedText from '@/app/components/TypedText';
 
 export default function DebugUser() {
   const [email, setEmail] = useState('');
@@ -68,10 +69,12 @@ export default function DebugUser() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black p-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black p-8" data-aos="fade-up">
       <div className="max-w-2xl mx-auto">
         <div className="bg-white/10 backdrop-blur-lg rounded-xl p-8 border border-white/20">
-          <h1 className="text-3xl font-bold text-white mb-6">🔍 Debug User Status</h1>
+          <h1 className="text-3xl font-bold text-white mb-6">
+            <TypedText text="🔍 Debug User Status" typeSpeed={28} startDelay={180} />
+          </h1>
           
           <div className="space-y-4">
             <div>

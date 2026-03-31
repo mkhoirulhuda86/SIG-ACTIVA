@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendAdminNotification } from '@/lib/email';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
-    const { token } = await request.json();
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const ipRateLimit = checkRateLimit(`verify-email:ip:${clientIp}`, 10, 60_000);
+    if (!ipRateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Terlalu banyak percobaan verifikasi. Coba lagi sebentar.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(ipRateLimit.retryAfterSec) },
+        }
+      );
+    }
 
-    console.log('🔍 Verify email request - Token:', token);
+    const { token } = await request.json();
 
     if (!token) {
       return NextResponse.json(
@@ -20,8 +31,6 @@ export async function POST(request: NextRequest) {
       where: { verificationToken: token },
     });
 
-    console.log('🔍 User found:', user ? `${user.email} (ID: ${user.id})` : 'NOT FOUND');
-
     if (!user) {
       return NextResponse.json(
         { error: 'Token verifikasi tidak valid atau sudah kadaluarsa' },
@@ -30,7 +39,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (user.emailVerified) {
-      console.log('⚠️ Email already verified for:', user.email);
       return NextResponse.json(
         { success: true, message: 'Email sudah diverifikasi sebelumnya' },
         { status: 200 }
@@ -38,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update user to verified
-    const updatedUser = await prisma.user.update({
+    await prisma.user.update({
       where: { id: user.id },
       data: {
         emailVerified: true,
@@ -46,18 +54,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    console.log('✅ Email verified successfully:', {
-      email: updatedUser.email,
-      emailVerified: updatedUser.emailVerified,
-      isApproved: updatedUser.isApproved,
-    });
-
     // Send notification to admin
     try {
       await sendAdminNotification(user.name, user.email, user.id);
-      console.log('✅ Admin notification sent');
     } catch (emailError) {
-      console.error('⚠️ Failed to send admin notification:', emailError);
+      console.error('Failed to send admin notification:', emailError);
       // Don't fail verification if email fails
     }
 
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
       message: 'Email berhasil diverifikasi! Akun Anda menunggu persetujuan dari Admin System.',
     });
   } catch (error) {
-    console.error('❌ Email verification error:', error);
+    console.error('Email verification error:', error);
     return NextResponse.json(
       { error: 'Terjadi kesalahan server' },
       { status: 500 }

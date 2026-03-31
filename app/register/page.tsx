@@ -9,7 +9,9 @@ import { animate, stagger, random } from 'animejs';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Card, CardContent } from '@/app/components/ui/card';
+import TypedText from '@/app/components/TypedText';
 import { cn } from '@/lib/utils';
+import Image from 'next/image';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -29,7 +31,6 @@ export default function RegisterPage() {
   const bgRef      = useRef<HTMLDivElement>(null);
   const cardRef    = useRef<HTMLDivElement>(null);
   const logoRef    = useRef<HTMLDivElement>(null);
-  const titleRef   = useRef<HTMLHeadingElement>(null);
   const formRef    = useRef<HTMLFormElement>(null);
   const btnRef     = useRef<HTMLButtonElement>(null);
   const infoRef    = useRef<HTMLDivElement>(null);
@@ -54,23 +55,6 @@ export default function RegisterPage() {
         '-=0.35'
       );
     });
-
-    /* Typewriter on heading */
-    const titleEl = titleRef.current;
-    if (titleEl) {
-      const text = 'Daftar Akun Baru';
-      titleEl.innerHTML = text
-        .split('')
-        .map(l => l === ' ' ? '<span style="display:inline-block">&nbsp;</span>' : `<span style="display:inline-block;opacity:0">${l}</span>`)
-        .join('');
-      animate('#register-title span', {
-        opacity: [0, 1],
-        translateY: [10, 0],
-        duration: 380,
-        delay: stagger(45, { start: 600 }),
-        ease: 'outExpo',
-      });
-    }
 
     /* Floating particles */
     const container = bgRef.current;
@@ -220,7 +204,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8 overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center px-4 py-8 overflow-hidden" data-aos="fade-up">
       {/* Background */}
       <div ref={bgRef} className="fixed inset-0 -z-10 gradient-mesh overflow-hidden" />
 
@@ -259,7 +243,7 @@ export default function RegisterPage() {
         {/* Logo & Header */}
         <div ref={logoRef} className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-28 h-28 mb-4 drop-shadow-xl">
-            <img src="/logo aplikasi.png" alt="SIG ACTIVA Logo" className="w-28 h-28 object-contain" />
+            <Image src="/logo-aplikasi.png" alt="SIG ACTIVA Logo" width={112} height={112} className="object-contain" priority />
           </div>
           <h1 className="text-2xl font-extrabold text-foreground tracking-tight">SIG ACTIVA</h1>
           <p className="text-xs text-muted-foreground mt-1 max-w-[240px] mx-auto leading-snug">
@@ -274,10 +258,9 @@ export default function RegisterPage() {
               <UserPlus size={22} className="text-primary" />
               <h2
                 id="register-title"
-                ref={titleRef}
                 className="text-xl font-bold text-foreground"
               >
-                Daftar Akun Baru
+                <TypedText text="Daftar Akun Baru" typeSpeed={32} startDelay={280} />
               </h2>
             </div>
 

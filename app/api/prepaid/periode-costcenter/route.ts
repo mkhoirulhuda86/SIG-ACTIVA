@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
+import { requireFinanceRead, requireFinanceWrite } from '@/lib/api-auth';
+import { logAuditEvent } from '@/lib/audit';
 
 // GET - List all cost center entries for a prepaid periode
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireFinanceRead(request);
+    if ('error' in auth) return auth.error;
+
     const periodeId = request.nextUrl.searchParams.get('periodeId');
     if (!periodeId) {
       return NextResponse.json({ error: 'Missing periodeId' }, { status: 400 });
@@ -25,6 +30,9 @@ export async function GET(request: NextRequest) {
 // POST - Add a cost center entry and recalculate amountPrepaid
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const body = await request.json();
     const { prepaidPeriodeId, costCenter, kdAkunBiaya, amount, headerText, lineText } = body;
 
@@ -50,6 +58,7 @@ export async function POST(request: NextRequest) {
       select: { prepaidId: true },
     });
     broadcast('prepaid', periodeRef1?.prepaidId ? { id: periodeRef1.prepaidId } : {});
+    logAuditEvent({ request, user: auth.user, action: 'prepaid.costcenter.create', target: String(prepaidPeriodeId), success: true });
     return NextResponse.json(entry, { status: 201 });
   } catch (error) {
     console.error('Error creating prepaid cost center entry:', error);
@@ -60,6 +69,9 @@ export async function POST(request: NextRequest) {
 // PUT - Update a cost center entry and recalculate
 export async function PUT(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const id = request.nextUrl.searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
@@ -84,6 +96,7 @@ export async function PUT(request: NextRequest) {
       select: { prepaidId: true },
     });
     broadcast('prepaid', periodeRef2?.prepaidId ? { id: periodeRef2.prepaidId } : {});
+    logAuditEvent({ request, user: auth.user, action: 'prepaid.costcenter.update', target: id ?? '', success: true });
     return NextResponse.json(entry);
   } catch (error) {
     console.error('Error updating prepaid cost center entry:', error);
@@ -94,6 +107,9 @@ export async function PUT(request: NextRequest) {
 // DELETE - Single (?id=X) or bulk (?ids=X,Y,Z)
 export async function DELETE(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const id = request.nextUrl.searchParams.get('id');
     const idsParam = request.nextUrl.searchParams.get('ids');
 
@@ -124,6 +140,7 @@ export async function DELETE(request: NextRequest) {
       } else {
         broadcast('prepaid');
       }
+      logAuditEvent({ request, user: auth.user, action: 'prepaid.costcenter.bulk_delete', target: ids.join(','), success: true });
       return NextResponse.json({ message: `${result.count} entries deleted`, count: result.count });
     }
 
@@ -140,6 +157,7 @@ export async function DELETE(request: NextRequest) {
       select: { prepaidId: true },
     });
     broadcast('prepaid', periodeRef4?.prepaidId ? { id: periodeRef4.prepaidId } : {});
+    logAuditEvent({ request, user: auth.user, action: 'prepaid.costcenter.delete', target: id ?? '', success: true });
     return NextResponse.json({ message: 'Entry deleted' });
   } catch (error) {
     console.error('Error deleting prepaid cost center entry:', error);

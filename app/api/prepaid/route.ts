@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
 import { sendPushToAll } from '@/lib/webpush';
+import { requireFinanceRead, requireFinanceWrite } from '@/lib/api-auth';
 
 const BULAN_MAP: Record<string, number> = {
   'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
@@ -11,6 +12,9 @@ const BULAN_MAP: Record<string, number> = {
 // GET - Mengambil semua data prepaid (no periodes payload) OR periodes for one item
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireFinanceRead(request);
+    if ('error' in auth) return auth.error;
+
     const { searchParams } = new URL(request.url);
     const type       = searchParams.get('type');
     const singleId   = searchParams.get('id');
@@ -128,6 +132,9 @@ export async function GET(request: NextRequest) {
 // POST - Membuat data prepaid baru
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const body = await request.json();
     const {
       companyCode,
@@ -230,6 +237,9 @@ export async function POST(request: NextRequest) {
 // PUT - Update prepaid
 export async function PUT(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -360,6 +370,9 @@ export async function PUT(request: NextRequest) {
 // DELETE - Menghapus prepaid (single id atau bulk ids=1,2,3)
 export async function DELETE(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const { searchParams } = new URL(request.url);
     const ids = searchParams.get('ids');
     const id = searchParams.get('id');

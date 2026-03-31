@@ -11,8 +11,22 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Check authentication status
-    const checkAuth = () => {
-      const auth = localStorage.getItem('isAuthenticated') === 'true';
+    const checkAuth = async () => {
+      const localAuth = localStorage.getItem('isAuthenticated') === 'true';
+      let serverAuth = false;
+
+      try {
+        const res = await fetch('/api/auth/me', { cache: 'no-store' });
+        serverAuth = res.ok;
+      } catch {
+        serverAuth = false;
+      }
+
+      const auth = localAuth && serverAuth;
+      if (localAuth && !serverAuth) {
+        localStorage.removeItem('isAuthenticated');
+      }
+
       setIsAuthenticated(auth);
       setIsChecking(false);
 

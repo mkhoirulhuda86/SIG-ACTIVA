@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
 import { sendPushToAll } from '@/lib/webpush';
 import { checkFluktuasiAlerts } from '@/lib/notificationChecker';
+import { requireFinanceRead, requireFinanceWrite } from '@/lib/api-auth';
+import { logAuditEvent } from '@/lib/audit';
 
 const dbErrorMessage = (error: unknown, fallback: string): string => {
   const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
@@ -18,6 +20,9 @@ const dbErrorMessage = (error: unknown, fallback: string): string => {
 // ─── GET: Ambil semua account-period records ─────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requireFinanceRead(req);
+    if ('error' in auth) return auth.error;
+
     const { searchParams } = new URL(req.url);
     const accountCode = searchParams.get('accountCode');
     const periode     = searchParams.get('periode');
@@ -53,6 +58,9 @@ export async function GET(req: NextRequest) {
 // ─── POST: Batch upsert account-period records ───────────────────────────────
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(req);
+    if ('error' in auth) return auth.error;
+
     const body = await req.json();
     const { records, uploadedBy = 'system', fileName = '' } = body as {
       records: {
@@ -138,6 +146,7 @@ export async function POST(req: NextRequest) {
     const success = results.length - failed;
 
     broadcast('fluktuasi');
+    logAuditEvent({ request: req, user: auth.user, action: 'fluktuasi.akun_periode.upsert_batch', success: true, detail: `saved=${success}, failed=${failed}` });
     sendPushToAll({ title: 'Data Fluktuasi Diperbarui', body: `${success} record fluktuasi berhasil disimpan`, url: '/fluktuasi-oi', priority: 'medium' }).catch(() => {});
     checkFluktuasiAlerts().catch(() => {});
     return NextResponse.json({
@@ -158,6 +167,9 @@ export async function POST(req: NextRequest) {
 // ─── DELETE: Hapus semua record (atau per accountCode) ───────────────────────
 export async function DELETE(req: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(req);
+    if ('error' in auth) return auth.error;
+
     const { searchParams } = new URL(req.url);
     const accountCode = searchParams.get('accountCode');
     const periode     = searchParams.get('periode');
@@ -170,6 +182,7 @@ export async function DELETE(req: NextRequest) {
     });
 
     broadcast('fluktuasi');
+    logAuditEvent({ request: req, user: auth.user, action: 'fluktuasi.akun_periode.delete', success: true, detail: `deleted=${deleted.count}` });
     sendPushToAll({ title: 'Data Fluktuasi Dihapus', body: `${deleted.count} record fluktuasi berhasil dihapus`, url: '/fluktuasi-oi', priority: 'low' }).catch(() => {});
     return NextResponse.json({
       success: true,

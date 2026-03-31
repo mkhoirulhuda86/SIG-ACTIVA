@@ -38,13 +38,13 @@ function PageSkeleton({ isMobileSidebarOpen, setMobileSidebar }: { isMobileSideb
     gsap.fromTo(cards, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.07, ease: 'power3.out' });
   }, []);
   return (
-    <div className="flex h-screen bg-[#f0f4fa] overflow-hidden">
+    <div className="flex h-dvh bg-[#f0f4fa] overflow-hidden">
       <div className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <Sidebar onClose={() => setMobileSidebar(false)} />
       </div>
-      <div className="flex-1 lg:ml-64 flex flex-col">
+      <div className="flex-1 lg:ml-64 flex flex-col min-h-0">
         <Header title="Overview Fluktuasi OI/EXP" subtitle="Memuat data…" onMenuClick={() => setMobileSidebar(true)} />
-        <div ref={skeletonRef} className="flex-1 overflow-hidden p-2 space-y-2">
+        <div ref={skeletonRef} className="flex-1 overflow-y-auto overscroll-contain p-2 space-y-2">
           <Card className="sk-card shadow-sm border border-blue-100 bg-[#eef5ff]">
             <div className="p-3 pb-1">
               <div className="flex items-center gap-2">
@@ -132,6 +132,7 @@ type ParsedRecord = {
 type RekapReasonRecord = {
   accountCode: string;
   periode: string;
+  amount?: number;
   reasonMoM?: string;
   reasonYoY?: string;
   reasonYtD?: string;
@@ -173,6 +174,44 @@ type FrameReasonRow = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const MONTHS_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+
+// Simple client-side keyword matcher (first-match wins, priority-sorted)
+function clientMatchKlasifikasi(
+  sourceText: string,
+  docnoText: string,
+  keywords: KeywordRule[],
+): string {
+  const textLower = sourceText.toLowerCase();
+  const docnoStr  = docnoText.trim();
+  const relevant  = (keywords as any[])
+    .filter((k: any) => String(k.type ?? '') === 'klasifikasi')
+    .sort((a: any, b: any) => (b.priority ?? 0) - (a.priority ?? 0));
+
+  for (const kw of relevant) {
+    const kwStr = String(kw.keyword ?? '').trim();
+    const kwLow = kwStr.toLowerCase();
+    if (!kwStr || kwLow.startsWith('not:') || kwLow.startsWith('col:')) continue;
+    if (kwLow.startsWith('docno:')) {
+      if (docnoStr.startsWith(kwStr.slice(6).trim())) return String(kw.result ?? '');
+      continue;
+    }
+    if (kwLow.startsWith('regex:')) {
+      try {
+        const m = sourceText.match(new RegExp(kwStr.slice(6).trim(), 'i'));
+        if (m) { let r = String(kw.result ?? ''); if (!r || r === '{match}') r = m[0]; return r; }
+      } catch { /* ignore */ }
+      continue;
+    }
+    if (textLower.includes(kwLow)) return String(kw.result ?? '');
+  }
+  for (const kw of relevant) {
+    const kwStr = String(kw.keyword ?? '').trim();
+    if (!kwStr.toLowerCase().startsWith('not:')) continue;
+    const excls = kwStr.slice(4).split(/[,|]/).map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+    if (!excls.some((e: string) => textLower.includes(e))) return String(kw.result ?? '');
+  }
+  return '';
+}
 
 const fmtCompact = (n: number): string => {
   const a = Math.abs(n);
@@ -576,7 +615,7 @@ export default function OverviewFluktuasiPage() {
   const loadData = useCallback(() => {
     // Basis klasifikasi dari tabel akun-periode + reason dari rekap-amounts.
     Promise.all([
-      fetch('/api/fluktuasi/akun-periodes?slim=1').then((r) => r.json()),
+      fetch('/api/fluktuasi/akun-periodes').then((r) => r.json()),
       fetch('/api/fluktuasi/rekap-amounts')
         .then((r) => r.json())
         .catch(() => ({ success: false, data: [] as RekapReasonRecord[] })),
@@ -586,12 +625,16 @@ export default function OverviewFluktuasiPage() {
       fetch('/api/fluktuasi/keywords')
         .then((r) => r.json())
         .catch(() => ({ success: false, data: [] as KeywordRule[] })),
+      fetch('/api/fluktuasi/sheet-rows')
+        .then((r) => r.json())
+        .catch(() => ({ success: false, data: [] })),
     ])
-      .then(([akunData, rekapData, rekapGroupData, kwResp]: [
+      .then(async ([akunData, rekapData, rekapGroupData, kwResp, sheetRowsMeta]: [
         { success: boolean; data: AkunPeriodeRecord[] },
         { success: boolean; data: RekapReasonRecord[] },
         RekapGroupResponse,
         { success?: boolean; data?: KeywordRule[] },
+        { success?: boolean; data?: { accountCode: string }[] },
       ]) => {
         const groupedAccounts = buildFrameAccountsFromRekap(rekapGroupData);
         setFrameAccountsFromRekap(groupedAccounts);
@@ -614,31 +657,140 @@ export default function OverviewFluktuasiPage() {
         }
         setKlasifikasiScopeMap(scope);
 
-        if (akunData.success && Array.isArray(akunData.data)) {
-          const reasonMap = new Map<string, { reasonMoM: string; reasonYoY: string; reasonYtD: string }>();
-          if (rekapData?.success && Array.isArray(rekapData.data)) {
-            for (const rr of rekapData.data) {
-              reasonMap.set(`${rr.accountCode}|${rr.periode}`, {
-                reasonMoM: String(rr.reasonMoM ?? ''),
-                reasonYoY: String(rr.reasonYoY ?? ''),
-                reasonYtD: String(rr.reasonYtD ?? ''),
-              });
-            }
-          }
+        if (!akunData.success || !Array.isArray(akunData.data)) return;
 
-          setRecords(akunData.data.map(r => {
-            const mergedReason = reasonMap.get(`${r.accountCode}|${r.periode}`);
-            return {
-              accountCode: r.accountCode,
-              periode:     r.periode,
-              amount:      r.amount,
-              klasifikasi: String(r.klasifikasi ?? '').trim(),
-              reasonMoM:   String(mergedReason?.reasonMoM ?? r.reasonMoM ?? ''),
-              reasonYoY:   String(mergedReason?.reasonYoY ?? r.reasonYoY ?? ''),
-              reasonYtD:   String(mergedReason?.reasonYtD ?? r.reasonYtD ?? ''),
-            };
-          }));
+        const reasonMap = new Map<string, { amount?: number; reasonMoM: string; reasonYoY: string; reasonYtD: string }>();
+        if (rekapData?.success && Array.isArray(rekapData.data)) {
+          for (const rr of rekapData.data) {
+            reasonMap.set(`${rr.accountCode}|${rr.periode}`, {
+              amount:    typeof rr.amount === 'number' ? rr.amount : undefined,
+              reasonMoM: String(rr.reasonMoM ?? ''),
+              reasonYoY: String(rr.reasonYoY ?? ''),
+              reasonYtD: String(rr.reasonYtD ?? ''),
+            });
+          }
         }
+
+        // Collect which account codes have persisted sheet rows
+        // Normalize: strip non-numeric suffix (e.g. "71510001 Beban Bunga" -> "71510001")
+        const accountsWithSheetRows = new Set<string>(
+          sheetRowsMeta?.success && Array.isArray(sheetRowsMeta.data)
+            ? sheetRowsMeta.data.flatMap((r: { accountCode: string }) => {
+                const raw = String(r.accountCode ?? '').trim();
+                const numeric = raw.match(/^(\d{5,})/)?.[1];
+                return numeric ? [raw, numeric] : [raw];
+              })
+            : []
+        );
+
+        // Map: "accountCode|klasifikasi|periode" -> amount (from sheet rows)
+        const sheetRowAmountMap = new Map<string, number>();
+
+        const allAccountCodes = [...new Set(akunData.data.map(r => r.accountCode))];
+        // Try all accounts — if no sheet rows exist, fetch returns 404 and we skip
+        const accountsToFetch = allAccountCodes;
+
+        if (accountsToFetch.length > 0) {
+          const BATCH = 10;
+          for (let i = 0; i < accountsToFetch.length; i += BATCH) {
+            const batch = accountsToFetch.slice(i, i + BATCH);
+            await Promise.all(batch.map(async (accountCode) => {
+              try {
+                const res = await fetch(`/api/fluktuasi/sheet-rows?accountCode=${encodeURIComponent(accountCode)}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.success || !Array.isArray(data.data?.rows)) return;
+                // Get klasifikasi parts from akun-periodes for this account (fallback for unclassified rows)
+                const akunRows = akunData.data.filter(r => r.accountCode === accountCode);
+                const periodeKlasiMap = new Map<string, string>();
+                for (const r of akunRows) {
+                  periodeKlasiMap.set(r.periode, String(r.klasifikasi ?? '').trim());
+                }
+                for (const row of data.data.rows as Record<string, unknown>[]) {
+                  const rawKlasifikasi = String(row['__klasifikasi'] ?? '').trim();
+                  const periode        = String(row['__periode']     ?? '').trim();
+                  const amount         = Number(row['__amount']      ?? 0);
+                  if (!periode || amount === 0) continue;
+
+                  let klasifikasi = rawKlasifikasi;
+
+                  // Re-apply keywords if __klasifikasi is empty
+                  if (!klasifikasi && kwResp?.data?.length) {
+                    const rawText   = String(row['__klasifikasi_raw'] ?? '').trim();
+                    const docnoText = String(row['__docno_raw'] ?? '').trim();
+                    if (rawText) {
+                      klasifikasi = clientMatchKlasifikasi(rawText, docnoText, kwResp.data as KeywordRule[]);
+                    }
+                  }
+
+                  if (!klasifikasi) {
+                    // Fallback: distribute equally to all klasifikasi from akun-periodes
+                    const fallback = periodeKlasiMap.get(periode) ?? '';
+                    const parts = fallback.split(';').map(s => s.trim()).filter(Boolean);
+                    if (parts.length > 0) {
+                      const share = amount / parts.length;
+                      for (const part of parts) {
+                        const key = `${accountCode}|${part}|${periode}`;
+                        sheetRowAmountMap.set(key, (sheetRowAmountMap.get(key) ?? 0) + share);
+                      }
+                    }
+                    continue;
+                  }
+
+                  const key = `${accountCode}|${klasifikasi}|${periode}`;
+                  sheetRowAmountMap.set(key, (sheetRowAmountMap.get(key) ?? 0) + amount);
+                }
+              } catch { /* best-effort */ }
+            }));
+          }
+        }
+
+        // Build expanded records: one per klasifikasi per periode per account
+        const expanded: ParsedRecord[] = [];
+        // Group source rows by accountCode+periode
+        const sourceMap = new Map<string, AkunPeriodeRecord>();
+        for (const r of akunData.data) {
+          sourceMap.set(`${r.accountCode}|${r.periode}`, r);
+        }
+
+        for (const r of akunData.data) {
+          const mergedReason = reasonMap.get(`${r.accountCode}|${r.periode}`);
+          const baseRecord: Omit<ParsedRecord, 'klasifikasi' | 'amount'> = {
+            accountCode: r.accountCode,
+            periode:     r.periode,
+            reasonMoM:   String(mergedReason?.reasonMoM ?? r.reasonMoM ?? ''),
+            reasonYoY:   String(mergedReason?.reasonYoY ?? r.reasonYoY ?? ''),
+            reasonYtD:   String(mergedReason?.reasonYtD ?? r.reasonYtD ?? ''),
+          };
+
+          const klasifikasiRaw = String(r.klasifikasi ?? '').trim();
+          const parts = klasifikasiRaw.split(';').map(s => s.trim()).filter(Boolean);
+          const fallbackAmount = mergedReason?.amount ?? r.amount;
+
+          if (accountsWithSheetRows.has(r.accountCode) && parts.length > 0) {
+            // Expand: one record per klasifikasi with its actual amount from sheet rows
+            let anyPushed = false;
+            for (const klasifikasi of parts) {
+              const sheetAmt = sheetRowAmountMap.get(`${r.accountCode}|${klasifikasi}|${r.periode}`);
+              if (sheetAmt === undefined) continue;
+              expanded.push({ ...baseRecord, klasifikasi, amount: sheetAmt });
+              anyPushed = true;
+            }
+            // If no sheet row amounts found for this periode, fall back to akun-periodes
+            if (!anyPushed) {
+              expanded.push({ ...baseRecord, klasifikasi: klasifikasiRaw, amount: fallbackAmount });
+            }
+          } else {
+            // Fallback: use total amount from akun-periodes
+            expanded.push({
+              ...baseRecord,
+              klasifikasi: klasifikasiRaw,
+              amount: fallbackAmount,
+            });
+          }
+        }
+
+        setRecords(expanded);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -766,7 +918,7 @@ export default function OverviewFluktuasiPage() {
         .filter((k) => isKlasifikasiAllowedInFrame(frameKey, k));
       if (parts.length === 0) continue;
 
-      const shareAbs = Math.abs(r.amount / parts.length);
+      const shareAbs = Math.abs(parts.length === 1 ? r.amount : r.amount / parts.length);
       for (const klasifikasi of parts) {
         const m = klasifikasiFrameTotals.get(klasifikasi) ?? new Map<FrameKey, number>();
         m.set(frameKey, (m.get(frameKey) ?? 0) + shareAbs);
@@ -796,7 +948,9 @@ export default function OverviewFluktuasiPage() {
         return !dominant || dominant === frame.key;
       });
       if (filteredParts.length === 0) continue;
-      const share = r.amount / filteredParts.length;
+      // If record has single klasifikasi (expanded from sheet rows), use full amount.
+      // If record has multiple klasifikasi (fallback from akun-periodes), split equally.
+      const share = filteredParts.length === 1 ? r.amount : r.amount / filteredParts.length;
 
       const reasonRaw = compMode === 'mom' ? r.reasonMoM : compMode === 'yoy' ? r.reasonYoY : r.reasonYtD;
       const reasonList = String(reasonRaw || '').split(';').map(s => s.trim()).filter(Boolean);
@@ -995,13 +1149,13 @@ export default function OverviewFluktuasiPage() {
 
   // ── Empty ──────────────────────────────────────────────────────────────────
   if (records.length === 0) return (
-    <div className="flex h-screen bg-[#f0f4fa] overflow-hidden">
+    <div className="flex h-dvh bg-[#f0f4fa] overflow-hidden">
       <div className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <Sidebar onClose={() => setMobileSidebar(false)} />
       </div>
-      <div className="flex-1 lg:ml-64 flex flex-col">
+      <div className="flex-1 lg:ml-64 flex flex-col min-h-0">
         <Header title="Overview Fluktuasi OI/EXP" subtitle="Dashboard ringkasan data fluktuasi" onMenuClick={() => setMobileSidebar(true)} />
-        <div className="flex-1 flex items-center justify-center p-8">
+        <div className="flex-1 overflow-y-auto overscroll-contain flex items-center justify-center p-8">
           <Card className="p-10 text-center space-y-4 shadow-lg">
             <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mx-auto shadow-inner">
               <TrendingUp size={36} className="text-blue-600" />
@@ -1016,7 +1170,7 @@ export default function OverviewFluktuasiPage() {
 
   // ── Full Dashboard ─────────────────────────────────────────────────────────
   return (
-    <div className="flex h-screen bg-[#f0f4fa] overflow-hidden">
+    <div className="flex h-dvh bg-[#f0f4fa] overflow-hidden">
       {isMobileSidebarOpen && (
         <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setMobileSidebar(false)} />
       )}
@@ -1024,7 +1178,7 @@ export default function OverviewFluktuasiPage() {
         <Sidebar onClose={() => setMobileSidebar(false)} />
       </div>
 
-      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen overflow-hidden">
+      <div className="flex-1 lg:ml-64 flex flex-col min-h-0">
 
         {/* Header */}
         <Header
@@ -1034,10 +1188,16 @@ export default function OverviewFluktuasiPage() {
         />
 
         {/* Content */}
-        <div ref={contentRef} className="flex-1 overflow-hidden p-1.5 sm:p-2 space-y-2 bg-gradient-to-b from-slate-50 to-[#edf3ff]">
+        <div
+          ref={contentRef}
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-1.5 sm:p-2 pb-24 sm:pb-2 space-y-2 bg-gradient-to-b from-slate-50 to-[#edf3ff] [padding-bottom:calc(env(safe-area-inset-bottom)+96px)] sm:[padding-bottom:8px]"
+        >
 
           {/* 4 Frames: masing-masing 1 histogram gabungan */}
-          <Card className="shadow-sm border border-blue-100/80 bg-white/90 backdrop-blur h-full flex flex-col">
+          <Card
+            className="shadow-sm border border-blue-100/80 bg-white/90 backdrop-blur flex flex-col"
+            data-aos="fade-up"
+          >
             <CardHeader className="p-2 pb-1 border-b border-slate-100">
               <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 <CardTitle className="text-[10px] sm:text-xs font-semibold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
@@ -1095,9 +1255,14 @@ export default function OverviewFluktuasiPage() {
                   <span>{accountFramesByMode.labelA || accountFramesByMode.tagA}</span>
                 </div>
               </div>
-              <div className="grid gap-1.5 grid-cols-1 lg:grid-cols-2 flex-1 min-h-0">
-                {accountFramesByMode.frames.map(frame => (
-                  <Card key={frame.key} className="anim-card border border-slate-200 shadow-sm bg-white flex flex-col min-h-0">
+              <div className="grid gap-1.5 grid-cols-1 md:grid-cols-2 flex-1 min-h-0">
+                {accountFramesByMode.frames.map((frame, idx) => (
+                  <Card
+                    key={frame.key}
+                    className="anim-card border border-slate-200 shadow-sm bg-white flex flex-col min-h-0"
+                    data-aos="fade-up"
+                    data-aos-delay={String(80 + idx * 70)}
+                  >
                     <CardHeader className="p-1.5 pb-0.5">
                       <CardTitle className="text-xs font-semibold uppercase tracking-wide text-red-600">{frame.title}</CardTitle>
                     </CardHeader>
@@ -1106,7 +1271,7 @@ export default function OverviewFluktuasiPage() {
                         <p className="text-xs text-slate-400 text-center py-10">Tidak ada data akun pada periode ini</p>
                       ) : (
                         <div className="h-full flex flex-col gap-0.5">
-                          <div className="flex-1 min-h-[200px] sm:min-h-[120px] w-full">
+                          <div className="flex-1 min-h-[160px] sm:min-h-[200px] w-full">
                             <ChartBar
                               data={buildOverviewChartData(
                                 frame.rows,

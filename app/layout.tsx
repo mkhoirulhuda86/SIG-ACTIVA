@@ -1,6 +1,7 @@
  import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import AuthGuard from "./components/AuthGuard";
+import AosProvider from "./components/AosProvider";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
@@ -26,9 +27,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <AuthGuard>
-          {children}
-        </AuthGuard>
+        <AosProvider>
+          <AuthGuard>
+            {children}
+          </AuthGuard>
+        </AosProvider>
         <Toaster richColors position="top-right" />
       </body>
     </html>

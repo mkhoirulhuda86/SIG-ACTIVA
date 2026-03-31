@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
+import { requireFinanceRead, requireFinanceWrite } from '@/lib/api-auth';
 
 const dbErrorMessage = (error: unknown, fallback: string): string => {
   const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
@@ -16,6 +17,9 @@ const dbErrorMessage = (error: unknown, fallback: string): string => {
 // GET: Ambil data fluktuasi terakhir
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requireFinanceRead(req);
+    if ('error' in auth) return auth.error;
+
     const { searchParams } = new URL(req.url);
     const uploadedBy = searchParams.get('uploadedBy') || 'system';
     
@@ -56,6 +60,9 @@ export async function GET(req: NextRequest) {
 // POST: Simpan data fluktuasi baru
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(req);
+    if ('error' in auth) return auth.error;
+
     const body = await req.json();
     const { fileName, sheetDataList, rekapSheetData, uploadedBy = 'system' } = body;
 
@@ -100,6 +107,9 @@ export async function POST(req: NextRequest) {
 // DELETE: Hapus data fluktuasi lama (optional, untuk cleanup)
 export async function DELETE(req: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(req);
+    if ('error' in auth) return auth.error;
+
     const { searchParams } = new URL(req.url);
     const uploadedBy = searchParams.get('uploadedBy') || 'system';
     const keepLast = parseInt(searchParams.get('keepLast') || '5', 10);

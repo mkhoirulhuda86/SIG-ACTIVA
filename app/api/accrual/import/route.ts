@@ -4,6 +4,8 @@ import { parseExcelFile, ExcelAccrualData } from '@/app/utils/excelParser';
 import { broadcast } from '@/lib/sse';
 import { sendPushToAll } from '@/lib/webpush';
 import { checkAccrualAlerts } from '@/lib/notificationChecker';
+import { requireFinanceWrite } from '@/lib/api-auth';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 // Vercel function timeout: 300 detik (5 menit) untuk Pro plan, atau sesuai kebutuhan
 export const maxDuration = 300;
@@ -11,6 +13,18 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const ipRateLimit = checkRateLimit(`accrual-import:ip:${clientIp}`, 4, 60_000);
+    if (!ipRateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Terlalu banyak import accrual. Coba lagi sebentar.' },
+        { status: 429, headers: { 'Retry-After': String(ipRateLimit.retryAfterSec) } }
+      );
+    }
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
     

@@ -8,6 +8,7 @@ import { animate, stagger } from 'animejs';
 import { Badge } from '../components/ui/badge';
 import { Separator } from '../components/ui/separator';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
+import SwiperCardCarousel from '../components/SwiperCardCarousel';
 
 const Sidebar = dynamic(() => import('../components/Sidebar'), { ssr: false });
 const Header  = dynamic(() => import('../components/Header'),  { ssr: false });
@@ -510,43 +511,62 @@ export default function UserManagementPage() {
             <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
 
           {/* ── Stat Cards ──────────────────────────────────────── */}
-          <div ref={statsRef} className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-            {/* Total Users */}
-            <div data-stat-card className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition-shadow"
-              onMouseEnter={e => gsap.to(e.currentTarget, { y: -3, duration: 0.2, ease: 'power2.out' })}
-              onMouseLeave={e => gsap.to(e.currentTarget, { y: 0, duration: 0.2, ease: 'power2.out' })}>
-              <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
-                <Users size={22} className="text-blue-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 font-medium">Total User</p>
-                <p className="text-2xl font-bold text-gray-800">{stats.total}</p>
-              </div>
-            </div>
-            {/* Approved */}
-            <div data-stat-card className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition-shadow"
-              onMouseEnter={e => gsap.to(e.currentTarget, { y: -3, duration: 0.2, ease: 'power2.out' })}
-              onMouseLeave={e => gsap.to(e.currentTarget, { y: 0, duration: 0.2, ease: 'power2.out' })}>
-              <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
-                <UserCheck size={22} className="text-green-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 font-medium">User Aktif</p>
-                <p className="text-2xl font-bold text-green-700">{stats.approved}</p>
-              </div>
-            </div>
-            {/* Pending */}
-            <div data-stat-card className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition-shadow"
-              onMouseEnter={e => gsap.to(e.currentTarget, { y: -3, duration: 0.2, ease: 'power2.out' })}
-              onMouseLeave={e => gsap.to(e.currentTarget, { y: 0, duration: 0.2, ease: 'power2.out' })}>
-              <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-                <UserX size={22} className="text-amber-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 font-medium">Pending Approval</p>
-                <p className="text-2xl font-bold text-amber-700">{stats.pending}</p>
-              </div>
-            </div>
+          <div ref={statsRef}>
+            <SwiperCardCarousel
+              slideClassName="h-full"
+              showPagination={false}
+              breakpoints={{
+                0: { slidesPerView: 1, spaceBetween: 12 },
+                640: { slidesPerView: 3, spaceBetween: 16 },
+              }}
+              items={[
+                <div
+                  key="stat-total"
+                  data-stat-card
+                  className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition-shadow"
+                  onMouseEnter={e => gsap.to(e.currentTarget, { y: -3, duration: 0.2, ease: 'power2.out' })}
+                  onMouseLeave={e => gsap.to(e.currentTarget, { y: 0, duration: 0.2, ease: 'power2.out' })}
+                >
+                  <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <Users size={22} className="text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium">Total User</p>
+                    <p className="text-2xl font-bold text-gray-800">{stats.total}</p>
+                  </div>
+                </div>,
+                <div
+                  key="stat-approved"
+                  data-stat-card
+                  className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition-shadow"
+                  onMouseEnter={e => gsap.to(e.currentTarget, { y: -3, duration: 0.2, ease: 'power2.out' })}
+                  onMouseLeave={e => gsap.to(e.currentTarget, { y: 0, duration: 0.2, ease: 'power2.out' })}
+                >
+                  <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+                    <UserCheck size={22} className="text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium">User Aktif</p>
+                    <p className="text-2xl font-bold text-green-700">{stats.approved}</p>
+                  </div>
+                </div>,
+                <div
+                  key="stat-pending"
+                  data-stat-card
+                  className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition-shadow"
+                  onMouseEnter={e => gsap.to(e.currentTarget, { y: -3, duration: 0.2, ease: 'power2.out' })}
+                  onMouseLeave={e => gsap.to(e.currentTarget, { y: 0, duration: 0.2, ease: 'power2.out' })}
+                >
+                  <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <UserX size={22} className="text-amber-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium">Pending Approval</p>
+                    <p className="text-2xl font-bold text-amber-700">{stats.pending}</p>
+                  </div>
+                </div>,
+              ]}
+            />
           </div>
 
           {/* ── Action Bar ──────────────────────────────────────── */}

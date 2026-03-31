@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
 import { sendPushToAll } from '@/lib/webpush';
+import { requireFinanceWrite } from '@/lib/api-auth';
+import { logAuditEvent } from '@/lib/audit';
 
 // PUT - Tandai periode sebagai telah diamortisasi
 export async function PUT(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const body = await request.json();
     const { periodeId, isAmortized, amortizedDate, amountPrepaid } = body;
 
@@ -71,6 +76,7 @@ export async function PUT(request: NextRequest) {
     }
 
     broadcast('prepaid', { id: periode.prepaidId });
+    logAuditEvent({ request, user: auth.user, action: 'prepaid.periode.update', target: String(periodeId), success: true });
     sendPushToAll({ title: 'Prepaid Diamortisasi', body: 'Periode prepaid berhasil ditandai sebagai diamortisasi', url: '/monitoring-prepaid', priority: 'medium' }).catch(() => {});
     return NextResponse.json(periode);
   } catch (error) {

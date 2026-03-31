@@ -21,15 +21,20 @@ export async function sendPushToAll(
   payload: PushPayload,
   interest = 'all-users'
 ) {
-  await beamsClient.publishToInterests([interest], {
-    web: {
-      notification: {
-        title: payload.title,
-        body: payload.body,
-        icon: '/favicon.ico',
-        deep_link: payload.url,
+  try {
+    await beamsClient.publishToInterests([interest], {
+      web: {
+        notification: {
+          title: payload.title,
+          body: payload.body,
+          icon: '/icon-192x192.png',
+        },
       },
-    },
-  });
+    });
+    console.log(`[Beams] Push notification sent to interest: ${interest}`);
+  } catch (error) {
+    console.error('[Beams] Failed to send push notification:', error);
+    throw error;
+  }
   return { interest };
 }

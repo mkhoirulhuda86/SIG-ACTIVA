@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const ipRateLimit = checkRateLimit(`users-check:ip:${clientIp}`, 10, 60_000);
+    if (!ipRateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Terlalu banyak request. Coba lagi sebentar.' },
+        { status: 429, headers: { 'Retry-After': String(ipRateLimit.retryAfterSec) } }
+      );
+    }
+
     const { email } = await request.json();
 
     if (!email) {
@@ -27,19 +37,18 @@ export async function POST(request: NextRequest) {
     });
 
     if (!user) {
-      return NextResponse.json(
-        { error: 'User tidak ditemukan' },
-        { status: 404 }
-      );
+      // Return generic status to reduce account enumeration risk
+      return NextResponse.json({
+        success: true,
+        user: { emailVerified: false, isApproved: false },
+      });
     }
 
     return NextResponse.json({
       success: true,
-      user,
-      status: {
-        emailVerified: user.emailVerified ? '✅ Verified' : '❌ Not Verified',
-        isApproved: user.isApproved ? '✅ Approved' : '❌ Not Approved',
-        canLogin: user.emailVerified && user.isApproved ? '✅ Can Login' : '❌ Cannot Login',
+      user: {
+        emailVerified: user.emailVerified,
+        isApproved: user.isApproved,
       },
     });
   } catch (error) {

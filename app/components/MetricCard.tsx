@@ -120,7 +120,7 @@ function MetricCard({ title, value, icon, color }: MetricCardProps) {
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       className={cn(
-        'cursor-default h-full border-0 shadow-md will-change-transform',
+        'cursor-default h-full border border-gray-200 shadow-md will-change-transform',
         `shadow-${color}-100/50`
       )}
     >

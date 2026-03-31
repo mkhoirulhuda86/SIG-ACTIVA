@@ -1212,6 +1212,8 @@ const buildTemplateReason = (
   rowValues: (string | number)[],
   currIdx: number,
   prevIdx: number,
+  klasifikasi?: string,
+  subBreakdown?: { klasifikasi: string; currAmount: number; prevAmount: number }[],
 ): string => {
   const name = accountName || 'Akun ini';
   const absPct = Math.abs(pct);
@@ -1219,98 +1221,42 @@ const buildTemplateReason = (
   if (gap === 0)
     return `Tidak ada fluktuasi ${side === 'mom' ? 'MoM' : 'YoY'} — nilai ${name} tidak berubah pada periode ini.`;
 
-  const dir     = gap > 0 ? 'Kenaikan' : 'Penurunan';
-  const dirLow  = gap > 0 ? 'kenaikan' : 'penurunan';
-  const abs     = Math.abs(gap);
-  const fmtAmt  = (n: number) => {
+  const dir    = gap > 0 ? 'Kenaikan' : 'Penurunan';
+  const dirLow = gap > 0 ? 'kenaikan' : 'penurunan';
+  const abs    = Math.abs(gap);
+  const fmtAmt = (n: number) => {
     const a = Math.abs(n);
     if (a >= 1_000_000_000) return `${FMT_RP.format(Math.round(a / 1_000_000_000 * 10) / 10)} M`;
     if (a >= 1_000_000)     return `${FMT_RP.format(Math.round(a / 1_000_000))} JT`;
     if (a >= 1_000)         return `${FMT_RP.format(Math.round(a / 1_000))} RB`;
     return FMT_RP.format(a);
   };
-  const fmtFull = (n: number) => {
-    const a = Math.abs(n);
-    if (a >= 1_000_000_000) return `${FMT_RP.format(Math.round(a / 1_000_000_000 * 10) / 10)} M`;
-    if (a >= 1_000_000)     return `${FMT_RP.format(Math.round(a / 1_000_000))} JT`;
-    return FMT_RP.format(a);
-  };
 
-  // Collect point (non-cumulative) periods in order
-  const pointCols = amountCols
-    .map((ac, i) => ({ ac, i, val: parseNum(rowValues[ac.colIdx]) }))
-    .filter(x => !x.ac.isCumulative);
-
-  const currAC = amountCols[currIdx];
-  const prevAC = amountCols[prevIdx];
-  const currVal = currAC ? parseNum(rowValues[currAC.colIdx]) : 0;
-  const prevVal = prevAC ? parseNum(rowValues[prevAC.colIdx]) : 0;
+  const currAC    = amountCols[currIdx];
+  const prevAC    = amountCols[prevIdx];
   const currLabel = currAC ? (currAC.dateLabel || currAC.label) : 'Periode ini';
   const prevLabel = prevAC ? (prevAC.dateLabel || prevAC.label) : 'Periode sebelumnya';
+  const modeLabel = side === 'mom' ? 'MoM' : 'YoY';
 
-  // Magnitude classification
-  const magn = absPct >= 50 ? 'sangat tajam'
-    : absPct >= 20 ? 'signifikan'
-    : absPct >= 5  ? 'moderat'
-    : 'minor';
+  // Header line: "Penurunan beban bunga pinjaman investasi senilai 3 M (MoM)"
+  const header = `${dir} ${name} senilai ${fmtAmt(abs)} (${FMT_PCT.format(absPct)}%) ${modeLabel} atas:`;
 
-  // Trend across ALL point periods
-  let trendLine = '';
-  if (pointCols.length >= 3) {
-    const vals = pointCols.map(x => x.val);
-    const nonZero = vals.filter(v => v !== 0);
-    const maxVal = Math.max(...nonZero);
-    const minVal = Math.min(...nonZero);
-    const firstNZ = nonZero[0] ?? 0;
-    const lastNZ  = nonZero[nonZero.length - 1] ?? 0;
-
-    // Count consecutive direction changes
-    let rises = 0, falls = 0;
-    for (let i = 1; i < vals.length; i++) {
-      if (vals[i] > vals[i - 1]) rises++;
-      else if (vals[i] < vals[i - 1]) falls++;
+  // Sub-breakdown lines per klasifikasi
+  if (subBreakdown && subBreakdown.length > 0) {
+    const breakdownLines = subBreakdown
+      .filter(b => b.currAmount !== 0 || b.prevAmount !== 0)
+      .map(b => {
+        const bGap = b.currAmount - b.prevAmount;
+        const sign = bGap > 0 ? '+' : '';
+        return `   - ${b.klasifikasi} ${fmtAmt(b.currAmount)} (${sign}${fmtAmt(bGap)})`;
+      });
+    if (breakdownLines.length > 0) {
+      return [header, ...breakdownLines].join('\n');
     }
-    const total = rises + falls;
-    const trendDesc = total === 0 ? 'stabil'
-      : rises === total ? 'naik konsisten'
-      : falls === total ? 'turun konsisten'
-      : rises > falls   ? 'cenderung naik'
-      : 'cenderung turun';
-
-    // Highest and lowest period labels
-    const maxIdx = pointCols.findIndex(x => x.val === maxVal);
-    const minIdx = pointCols.findIndex(x => x.val === minVal);
-    const maxLabel = pointCols[maxIdx]?.ac.dateLabel || '';
-    const minLabel = pointCols[minIdx]?.ac.dateLabel || '';
-
-    const periodSummary = pointCols
-      .filter(x => x.val !== 0)
-      .slice(-5) // last 5 to keep it readable
-      .map(x => `${x.ac.dateLabel || x.ac.label}: ${fmtFull(x.val)}`)
-      .join(', ');
-
-    trendLine = `Tren nilai ${name} ${trendDesc} sepanjang periode yang tersedia (${periodSummary}). ` +
-      `Nilai tertinggi tercatat pada ${maxLabel} sebesar ${fmtFull(maxVal)}, nilai terendah pada ${minLabel} sebesar ${fmtFull(minVal)}.`;
   }
 
-  // Direct period comparison bullet
-  const compLine = `Nilai ${currLabel} sebesar ${fmtFull(currVal)} ` +
-    `dibandingkan ${prevLabel} sebesar ${fmtFull(prevVal)}, ` +
-    `mencerminkan ${dirLow} sebesar ${fmtAmt(abs)} (${FMT_PCT.format(absPct)}%).`;
-
-  // Change rate context
-  const rateLine = `Perubahan sebesar ${FMT_PCT.format(absPct)}% tergolong ${magn} ` +
-    `untuk ${side === 'mom' ? 'perbandingan bulanan (MoM)' : 'perbandingan tahunan (YoY)'}.`;
-
-  const lines = [
-    `${dir} ${name} sebesar ${fmtAmt(abs)} (${FMT_PCT.format(absPct)}%) ` +
-      `pada ${currLabel} dibandingkan ${prevLabel}${side === 'mom' ? ' (MoM)' : ' (YoY)'}.`,
-    `   - ${compLine}`,
-    trendLine ? `   - ${trendLine}` : null,
-    `   - ${rateLine}`,
-  ].filter(Boolean);
-
-  return lines.join('\n');
+  // Fallback: no breakdown available
+  return `${header}\n   - (Data klasifikasi tidak tersedia)`;
 };
 
 const classifyRow = (values: any[], accountColIdx: number): RekapSheetRow['type'] => {
@@ -1528,6 +1474,7 @@ async function idbClearSheets() {
 // --- Component ----------------------------------------------------------------
 export default function FluktuasiOIPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [userRole, setUserRole] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [fileName, setFileName] = useState('');
   const [sheetDataList, setSheetDataList] = useState<SheetData[]>([]);
@@ -1681,6 +1628,7 @@ export default function FluktuasiOIPage() {
 
   // -- Load data from database on mount --------------------------------------
   useEffect(() => {
+    setUserRole(localStorage.getItem('userRole') || '');
     const loadData = async () => {
       // L1: in-memory (same session, instant)
       if (_sheetCache && _sheetCache.sheets.some(s => s.rows.length > 0)) {
@@ -1727,6 +1675,10 @@ export default function FluktuasiOIPage() {
     loadDbStats();
     loadPersistedSheetRowCodes();
   }, []);
+
+  // Check if user can edit (only ADMIN_SYSTEM and STAFF_ACCOUNTING)
+  const canEdit = userRole === 'ADMIN_SYSTEM' || userRole === 'STAFF_ACCOUNTING';
+
   // -- Load keywords ----------------------------------------------------------
   const loadKeywords = useCallback(async () => {
     try {
@@ -3646,23 +3598,85 @@ export default function FluktuasiOIPage() {
         if (ci === accountColIdx || amtColSet.has(ci) || ci >= firstAmtIdx) return false;
         return rekapSheetData.rows.some((r) => String(r.values[ci] ?? '').trim() !== '');
       }) ?? -1;
+
+    // Pre-build sub-breakdown per accountCode from sheetDataList
+    // Map: accountCode -> Map<klasifikasi, Map<periodeKey, amount>>
+    const acctKlasPeriodeMap = new Map<string, Map<string, Map<string, number>>>();
+    for (const sd of sheetDataList) {
+      const acctCode = (sd.sheetName.trim().match(/^(\d{5,})/)?.[1] ?? sd.sheetName.trim());
+      if (!acctCode) continue;
+      const klasPeriodeMap = new Map<string, Map<string, number>>();
+      for (const row of sd.rows) {
+        const klas   = String(row['__klasifikasi'] ?? '').trim() || String(row['__klasifikasi_raw'] ?? '').trim() || '(Lainnya)';
+        const per    = String(row['__periode'] ?? '').trim();
+        const amt    = parseNum(row['__amount'] ?? 0);
+        if (!per) continue;
+        if (!klasPeriodeMap.has(klas)) klasPeriodeMap.set(klas, new Map());
+        klasPeriodeMap.get(klas)!.set(per, (klasPeriodeMap.get(klas)!.get(per) ?? 0) + amt);
+      }
+      acctKlasPeriodeMap.set(acctCode, klasPeriodeMap);
+    }
+
+    // Helper: get sub-breakdown for a given account and two period keys
+    const getBreakdown = (
+      acctCode: string,
+      currPeriode: string,
+      prevPeriode: string,
+    ): { klasifikasi: string; currAmount: number; prevAmount: number }[] => {
+      const klasMap = acctKlasPeriodeMap.get(acctCode);
+      if (!klasMap) return [];
+      const result: { klasifikasi: string; currAmount: number; prevAmount: number }[] = [];
+      for (const [klas, periodeMap] of klasMap) {
+        const curr = periodeMap.get(currPeriode) ?? 0;
+        const prev = periodeMap.get(prevPeriode) ?? 0;
+        if (curr !== 0 || prev !== 0) result.push({ klasifikasi: klas, currAmount: curr, prevAmount: prev });
+      }
+      return result.sort((a, b) => Math.abs(b.currAmount) - Math.abs(a.currAmount));
+    };
+
+    // Helper: convert amountCol index to periode key (YYYY.MM)
+    const acToPeriode = (idx: number): string => {
+      const ac = amountCols[idx];
+      if (!ac) return '';
+      if (/^\d{4}\.\d{2}$/.test(ac.label)) return ac.label;
+      const yr = ac.yearLabel?.match(/20\d{2}/)?.[0] ?? '';
+      const text = ((ac.dateLabel ?? '') + ' ' + (ac.label ?? '')).toLowerCase();
+      const MONTHS: [string, number][] = [
+        ['jan',1],['feb',2],['mar',3],['apr',4],['mei',5],['may',5],
+        ['jun',6],['jul',7],['aug',8],['agu',8],['sep',9],['oct',10],['okt',10],['nov',11],['dec',12],['des',12],
+      ];
+      for (const [abbr, mo] of MONTHS) {
+        if (text.includes(abbr)) return `${yr}.${String(mo).padStart(2, '0')}`;
+      }
+      return '';
+    };
+
     const map = new Map<number, { mom: string; yoy: string; ytd: string }>();
     rekapDisplayRowsLive.forEach((row, idx) => {
       if (row.type !== 'detail') return;
-      const descVal = descColIdx >= 0 ? String(row.values[descColIdx] ?? '') : '';
+      const descVal    = descColIdx >= 0 ? String(row.values[descColIdx] ?? '') : '';
+      const acctCode   = String(row.values[accountColIdx] ?? '').trim();
+      const currPer    = acToPeriode(effMC);
+      const prevMoMPer = acToPeriode(effMP);
+      const prevYoYPer = acToPeriode(effYP);
+      const prevYtDPer = acToPeriode(effYtdP);
+
       const mom = Math.abs(row.gapMoM) !== 0
-        ? buildTemplateReason(row.gapMoM, row.pctMoM, descVal, 'mom', amountCols, row.values, effMC, effMP)
+        ? buildTemplateReason(row.gapMoM, row.pctMoM, descVal, 'mom', amountCols, row.values, effMC, effMP, undefined,
+            getBreakdown(acctCode, currPer, prevMoMPer))
         : '';
       const yoy = Math.abs(row.gapYoY) !== 0
-        ? buildTemplateReason(row.gapYoY, row.pctYoY, descVal, 'yoy', amountCols, row.values, effYC, effYP)
+        ? buildTemplateReason(row.gapYoY, row.pctYoY, descVal, 'yoy', amountCols, row.values, effYC, effYP, undefined,
+            getBreakdown(acctCode, currPer, prevYoYPer))
         : '';
       const ytd = Math.abs(row.gapYtD) !== 0
-        ? buildTemplateReason(row.gapYtD, row.pctYtD, descVal, 'yoy', amountCols, row.values, effYtdC, effYtdP)
+        ? buildTemplateReason(row.gapYtD, row.pctYtD, descVal, 'yoy', amountCols, row.values, effYtdC, effYtdP, undefined,
+            getBreakdown(acctCode, acToPeriode(effYtdC), prevYtDPer))
         : '';
       map.set(idx, { mom, yoy, ytd });
     });
     return map;
-  }, [rekapDisplayRowsLive, rekapSheetData, momSel, yoySel, ytdSel]);
+  }, [rekapDisplayRowsLive, rekapSheetData, sheetDataList, momSel, yoySel, ytdSel]);
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -3682,17 +3696,17 @@ export default function FluktuasiOIPage() {
           onMenuClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
         />
 
-        <div ref={pageContentRef} className="p-3 sm:p-4 md:p-6 lg:p-8 space-y-4 sm:space-y-6">
+        <div ref={pageContentRef} className="p-2 sm:p-3 md:p-4 lg:p-6 space-y-3 sm:space-y-4 md:space-y-6">
 
-          {/* -- Master Keywords Card ----------------------------------------- */}
-          <div data-animate-card className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+          {/* -- Master Keywords Card (only visible to ADMIN_SYSTEM & STAFF_ACCOUNTING) -- */}
+          {canEdit && <div data-animate-card className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <button
               onClick={() => setShowKeywordSection(v => !v)}
-              className="w-full p-5 flex flex-wrap items-center justify-between gap-3 hover:bg-gray-50 transition-colors text-left"
+              className="w-full p-3 sm:p-4 md:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 hover:bg-gray-50 transition-colors text-left"
             >
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800">Master Keywords</h2>
-                <p className="text-sm text-gray-500 mt-1">Kelola keyword untuk klasifikasi dan remark - digunakan otomatis saat upload file</p>
+              <div className="flex-1">
+                <h2 className="text-base sm:text-lg font-semibold text-gray-800">Master Keywords</h2>
+                <p className="text-xs sm:text-sm text-gray-500 mt-1">Kelola keyword untuk klasifikasi dan remark - digunakan otomatis saat upload file</p>
               </div>
               <ChevronDown
                 size={20}
@@ -3701,15 +3715,15 @@ export default function FluktuasiOIPage() {
             </button>
             {showKeywordSection && (
             <div className="border-t border-gray-200">
-            <div className="p-5 border-b border-gray-200">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="p-3 sm:p-4 md:p-5 border-b border-gray-200">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div />
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
                   {keywords.length === 0 && (
                     <button
                       onClick={handleLoadExamples}
-                      disabled={keywordReadOnlyMode}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
+                      disabled={keywordReadOnlyMode || !canEdit}
+                      className="inline-flex items-center justify-center sm:justify-start gap-2 px-3 sm:px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-xs sm:text-sm font-medium w-full sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <Download size={16} />
                       Load Contoh
@@ -3719,8 +3733,8 @@ export default function FluktuasiOIPage() {
                     <>
                       <button
                         onClick={handleReapplyKeywords}
-                        disabled={isReapplying || keywordReadOnlyMode}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={isReapplying || keywordReadOnlyMode || !canEdit}
+                        className="inline-flex items-center justify-center sm:justify-start gap-2 px-3 sm:px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-xs sm:text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed w-full sm:w-auto"
                         title="Re-proses klasifikasi seluruh data tersimpan menggunakan keyword saat ini"
                       >
                         <RotateCcw size={16} className={isReapplying ? 'animate-spin' : ''} />
@@ -3728,8 +3742,8 @@ export default function FluktuasiOIPage() {
                       </button>
                       <button
                         onClick={handleDeleteAllKeywords}
-                        disabled={keywordReadOnlyMode}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={keywordReadOnlyMode || !canEdit}
+                        className="inline-flex items-center justify-center sm:justify-start gap-2 px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-xs sm:text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed w-full sm:w-auto"
                       >
                         <Trash2 size={16} />
                         Hapus Semua
@@ -3747,8 +3761,8 @@ export default function FluktuasiOIPage() {
                       setNaturalInput('');
                       setShowKeywordModal(true);
                     }}
-                    disabled={keywordReadOnlyMode}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={keywordReadOnlyMode || !canEdit}
+                    className="inline-flex items-center justify-center sm:justify-start gap-2 px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-xs sm:text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed w-full sm:w-auto"
                   >
                     <span className="text-lg">+</span>
                     Tambah Keyword
@@ -3764,10 +3778,10 @@ export default function FluktuasiOIPage() {
 
               {keywords.length > 0 && (
                 <>
-                  <div className="flex flex-wrap gap-2 mt-4">
+                  <div className="flex flex-wrap gap-1 sm:gap-2 mt-3 sm:mt-4">
                     <button
                       onClick={() => { setKeywordFilter('all'); setKeywordPage(0); }}
-                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                      className={`px-2 sm:px-3 py-1.5 rounded-md text-xs font-medium transition ${
                         keywordFilter === 'all'
                           ? 'bg-gray-700 text-white'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -3777,7 +3791,7 @@ export default function FluktuasiOIPage() {
                     </button>
                     <button
                       onClick={() => { setKeywordFilter('klasifikasi'); setKeywordPage(0); }}
-                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                      className={`px-2 sm:px-3 py-1.5 rounded-md text-xs font-medium transition ${
                         keywordFilter === 'klasifikasi'
                           ? 'bg-blue-600 text-white'
                           : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
@@ -3787,10 +3801,10 @@ export default function FluktuasiOIPage() {
                     </button>
                     <button
                       onClick={() => { setKeywordFilter('remark'); setKeywordPage(0); }}
-                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                      className={`px-2 sm:px-3 py-1.5 rounded-md text-xs font-medium transition ${
                         keywordFilter === 'remark'
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-purple-50 text-purple-600 hover:bg-purple-100'
+                          ? 'bg-green-600 text-white'
+                          : 'bg-green-50 text-green-600 hover:bg-green-100'
                       }`}
                     >
                       Remark ({keywords.filter(k => k.type === 'remark').length})
@@ -3798,23 +3812,23 @@ export default function FluktuasiOIPage() {
                   </div>
                   
                   {/* Search Box */}
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    <div className="flex-1 min-w-[180px] max-w-sm">
+                  <div className="mt-3 flex flex-col sm:flex-row gap-2 sm:gap-3">
+                    <div className="flex-1 min-w-[180px] max-w-full">
                       <input
                         type="text"
                         value={keywordSearch}
                         onChange={(e) => { setKeywordSearch(e.target.value); setKeywordPage(0); }}
                         placeholder="Cari keyword / result..."
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        className="w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                       />
                     </div>
-                    <div className="flex-1 min-w-[180px] max-w-sm">
+                    <div className="flex-1 min-w-[180px] max-w-full">
                       <input
                         type="text"
                         value={keywordAkunSearch}
                         onChange={(e) => { setKeywordAkunSearch(e.target.value); setKeywordPage(0); }}
                         placeholder="Cari berdasarkan G/L Account..."
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-orange-400 text-sm"
+                        className="w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-orange-400 text-sm"
                       />
                     </div>
                   </div>
@@ -3827,29 +3841,29 @@ export default function FluktuasiOIPage() {
               )}
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div className="overflow-x-auto -mx-2 sm:mx-0">
+              <table className="w-full min-w-[600px]">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Keyword
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Type
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Result/Output
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Priority
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider hidden sm:table-cell">
                       Berlaku di Akun
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider hidden lg:table-cell">
                       Cek di Kolom
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Aksi
                     </th>
                   </tr>
@@ -3859,7 +3873,7 @@ export default function FluktuasiOIPage() {
                     if (keywords.length === 0) {
                       return (
                         <tr>
-                          <td colSpan={7} className="px-4 py-8 text-center">
+                          <td colSpan={5} className="px-4 py-8 text-center">
                             <div className="text-gray-400 mb-2">
                               <FileSpreadsheet className="mx-auto mb-2" size={40} />
                             </div>
@@ -3873,7 +3887,7 @@ export default function FluktuasiOIPage() {
                     if (filteredKeywords.length === 0) {
                       return (
                         <tr>
-                          <td colSpan={7} className="px-4 py-8 text-center">
+                          <td colSpan={5} className="px-4 py-8 text-center">
                             <p className="text-sm text-gray-500">Tidak ada keyword yang cocok dengan pencarian.</p>
                             <p className="text-xs text-gray-400 mt-1">Coba kata kunci pencarian lain atau ubah filter.</p>
                           </td>
@@ -3901,8 +3915,8 @@ export default function FluktuasiOIPage() {
                       })();
                       return (
                         <tr key={kw.id} className={`js-kw-row ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors`}>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                            <div className="flex items-center gap-2 flex-wrap">
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-sm font-medium text-gray-900">
+                            <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                               {isRegex && (
                                 <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700 font-mono">regex</span>
                               )}
@@ -3924,8 +3938,8 @@ export default function FluktuasiOIPage() {
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-center">
+                            <span className={`inline-flex px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${
                               kw.type === 'klasifikasi' 
                                 ? 'bg-blue-100 text-blue-800' 
                                 : 'bg-purple-100 text-purple-800'
@@ -3933,41 +3947,41 @@ export default function FluktuasiOIPage() {
                               {kw.type === 'klasifikasi' ? 'Klasifikasi' : 'Remark'}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-700">
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-sm text-gray-700">
                             {kw.result || <span className="text-gray-400 italic">{isRegex ? '{match}' : '—'}</span>}
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-sm font-semibold text-gray-700">
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-center">
+                            <span className="inline-flex items-center justify-center w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gray-100 text-xs sm:text-sm font-semibold text-gray-700">
                               {kw.priority}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-xs">
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs hidden sm:table-cell">
                             {kw.accountCodes
                               ? kw.accountCodes.split(',').filter(Boolean).map(c => (
-                                  <span key={c} className="inline-flex px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-mono mr-1 mb-1">{c.trim()}</span>
+                                  <span key={c} className="inline-flex px-1 py-0.5 rounded bg-blue-100 text-blue-700 font-mono mr-1 mb-1">{c.trim()}</span>
                                 ))
                               : <span className="text-gray-400 italic">Semua</span>}
                           </td>
-                          <td className="px-4 py-3 text-xs">
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-xs hidden lg:table-cell">
                             {kw.sourceColumn
                               ? parseSourceColumns(kw.sourceColumn).map((col) => (
-                                  <span key={col} className="inline-flex px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-mono mr-1 mb-1">{col}</span>
+                                  <span key={col} className="inline-flex px-1 py-0.5 rounded bg-amber-100 text-amber-800 font-mono mr-1 mb-1">{col}</span>
                                 ))
                               : <span className="text-gray-400 italic">Otomatis</span>}
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            <div className="flex items-center justify-center gap-2">
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-center">
+                            <div className="flex items-center justify-center gap-1 sm:gap-2">
                               <button
                                 onClick={() => handleEditKeyword(kw)}
-                                disabled={keywordReadOnlyMode}
-                                className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-xs font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                                disabled={keywordReadOnlyMode || !canEdit}
+                                className="px-2 sm:px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-xs font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                               >
                                 Edit
                               </button>
                               <button
                                 onClick={() => handleDeleteKeyword(kw.id)}
-                                disabled={keywordReadOnlyMode}
-                                className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-xs font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                                disabled={keywordReadOnlyMode || !canEdit}
+                                className="px-2 sm:px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition text-xs font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                               >
                                 Hapus
                               </button>
@@ -3975,7 +3989,7 @@ export default function FluktuasiOIPage() {
                           </td>
                         </tr>
                       );
-                    })
+                    });
                   })()}
                 </tbody>
               </table>
@@ -4001,17 +4015,17 @@ export default function FluktuasiOIPage() {
               }
               
               return (
-                <div className="px-5 py-4 border-t border-gray-200 bg-gray-50">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="px-3 sm:px-5 py-3 sm:py-4 border-t border-gray-200 bg-gray-50">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
                     <p className="text-xs sm:text-sm text-gray-600">
                       Menampilkan {keywordPage * KEYWORD_PAGE_SIZE + 1}–{Math.min((keywordPage + 1) * KEYWORD_PAGE_SIZE, filteredKeywords.length)} dari {filteredKeywords.length} keyword
                     </p>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-wrap">
                       {/* First Page */}
                       {keywordPage > 0 && (
                         <button
                           onClick={() => setKeywordPage(0)}
-                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition"
+                          className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition"
                         >
                           ««
                         </button>
@@ -4021,7 +4035,7 @@ export default function FluktuasiOIPage() {
                       {keywordPage > 0 && (
                         <button
                           onClick={() => setKeywordPage(keywordPage - 1)}
-                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition"
+                          className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition"
                         >
                           ‹
                         </button>
@@ -4029,7 +4043,7 @@ export default function FluktuasiOIPage() {
                       
                       {/* Start ellipsis */}
                       {startPage > 0 && (
-                        <span className="px-2 text-gray-500">...</span>
+                        <span className="px-1 sm:px-2 text-gray-500 text-xs">...</span>
                       )}
                       
                       {/* Page Numbers */}
@@ -4037,7 +4051,7 @@ export default function FluktuasiOIPage() {
                         <button
                           key={page}
                           onClick={() => setKeywordPage(page)}
-                          className={`px-3 py-1.5 text-sm border rounded-md transition ${
+                          className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm border rounded-md transition ${
                             page === keywordPage
                               ? 'bg-blue-600 text-white border-blue-600'
                               : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -4049,14 +4063,14 @@ export default function FluktuasiOIPage() {
                       
                       {/* End ellipsis */}
                       {endPage < totalPages - 1 && (
-                        <span className="px-2 text-gray-500">...</span>
+                        <span className="px-1 sm:px-2 text-gray-500 text-xs">...</span>
                       )}
                       
                       {/* Next */}
                       {keywordPage < totalPages - 1 && (
                         <button
                           onClick={() => setKeywordPage(keywordPage + 1)}
-                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition"
+                          className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition"
                         >
                           ›
                         </button>
@@ -4066,9 +4080,9 @@ export default function FluktuasiOIPage() {
                       {keywordPage < totalPages - 1 && (
                         <button
                           onClick={() => setKeywordPage(totalPages - 1)}
-                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition"
+                          className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition"
                         >
-                          »»
+                          »
                         </button>
                       )}
                     </div>
@@ -4078,7 +4092,7 @@ export default function FluktuasiOIPage() {
             })()}
             </div>
             )}
-          </div>
+          </div>}
 
           {/* -- Upload Card ------------------------------------------------ */}
           <div data-animate-card className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
@@ -4087,11 +4101,11 @@ export default function FluktuasiOIPage() {
               className="w-full p-5 flex flex-wrap items-center justify-between gap-3 hover:bg-gray-50 transition-colors text-left"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
-                  <FileSpreadsheet className="text-indigo-600" size={22} />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                  <FileSpreadsheet className="text-indigo-600" size={18} />
                 </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-800">Upload File Fluktuasi</h2>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-800">Upload File Fluktuasi</h2>
                   <p className="text-xs sm:text-sm text-gray-500">
                     File Excel: sheet kode akun (nama angka) + 1 sheet Rekap (nama teks)
                   </p>
@@ -4104,12 +4118,12 @@ export default function FluktuasiOIPage() {
             </button>
 
             {showUploadSection && (
-              <div className="px-5 pb-5 border-t border-gray-200 pt-4">
-                <div className="flex justify-end mb-4">
+              <div className="px-3 sm:px-5 pb-4 sm:pb-5 border-t border-gray-200 pt-3 sm:pt-4">
+                <div className="flex justify-end mb-3 sm:mb-4">
                   <button
                     onClick={handleDownload}
                     disabled={isProcessing || isDownloading || (!sheetDataList.length && !rekapSheetData)}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-sm text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-indigo-600 text-xs sm:text-sm text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {isDownloading
                       ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />Menyiapkan…</>
@@ -4117,18 +4131,20 @@ export default function FluktuasiOIPage() {
                   </button>
                 </div>
 
-                <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-300 ${
-                  isProcessing
-                    ? 'border-indigo-400 bg-indigo-50 scale-[0.99]'
-                    : 'border-gray-300 hover:border-indigo-400 hover:bg-indigo-50 hover:scale-[1.01]'
+                <label className={`flex flex-col items-center justify-center w-full h-24 sm:h-32 border-2 border-dashed rounded-lg transition-all duration-300 ${
+                  !canEdit
+                    ? 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-60'
+                    : isProcessing
+                    ? 'border-indigo-400 bg-indigo-50 scale-[0.99] cursor-default'
+                    : 'border-gray-300 hover:border-indigo-400 hover:bg-indigo-50 hover:scale-[1.01] cursor-pointer'
                 }`}>
-                  <Upload className="text-gray-400 mb-2" size={28} />
-                  <p className="text-sm text-gray-500">
+                  <Upload className="text-gray-400 mb-2" size={20} />
+                  <p className="text-xs sm:text-sm text-gray-500">
                     <span className="font-semibold text-gray-700">{fileName || 'Klik untuk upload'}</span>{' '}
                     {!fileName && 'atau drag & drop'}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">.xlsx / .xls</p>
-                  <input ref={fileInputRef} type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isProcessing} />
+                  <input ref={fileInputRef} type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isProcessing || !canEdit} />
                 </label>
 
                 {isProcessing && (
@@ -4192,7 +4208,7 @@ export default function FluktuasiOIPage() {
             </div>
           )}
           {hasSheetRows && (
-            <div data-animate-card ref={tableResultRef} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden flex flex-col" style={{ maxHeight: '80vh' }}>
+            <div data-animate-card ref={tableResultRef} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden flex flex-col">
               <div className="flex-shrink-0 flex items-center border-b border-gray-200 bg-gray-50">
                 <button className="flex-shrink-0 px-2 py-2 text-gray-400 hover:text-gray-600 disabled:opacity-30"
                   disabled={activeSheetIdx === 0} onClick={() => switchTab(Math.max(0, activeSheetIdx - 1))}>
@@ -4412,7 +4428,7 @@ export default function FluktuasiOIPage() {
                                   })}
                                   title="Hapus teks AI, kembalikan ke data sheet"
                                   className="px-1.5 py-0.5 text-[9px] rounded bg-red-50 text-red-500 hover:bg-red-100 whitespace-nowrap">
-                                  ? reset
+                                  ↺ reset
                                 </button>
                               )}
                             </>
@@ -4629,9 +4645,9 @@ export default function FluktuasiOIPage() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                  <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                    <table className="min-w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, position: 'relative', height: '80vh' }}>
+                  <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+                    <table className="w-full text-[11px]" style={{ borderCollapse: 'collapse', tableLayout: 'auto', minWidth: '1000px' }}>
                     <thead>
                       {/* -- Row 1: year group labels -- */}
                       <tr style={{ position: 'sticky', top: 0, zIndex: 10, height: '18px' }}>
@@ -4747,7 +4763,8 @@ export default function FluktuasiOIPage() {
                       </tr>
                     </thead>
                     <tbody ref={rekapBodyRef as React.Ref<HTMLTableSectionElement>}>
-                      {rekapPageRows.map((row, ri) => {
+                      {rekapPageRows.length > 0 ? (
+                        rekapPageRows.map((row, ri) => {
                         const globalRi  = rekapPage * REKAP_PAGE_SIZE + ri;
                         const s         = rekapRowStyle(row.type, globalRi);
                         const acctVal    = String(row.values[accountColIdx] ?? '');
@@ -4860,12 +4877,19 @@ export default function FluktuasiOIPage() {
                               {!hideMomYoy && rowHasData && hasYtdData ? fmtPct(row.pctYtD) : ''}
                             </td>
                             {/* Reason YtD */}
-                            {ReasonCell({ ri, globalRi, row, side: 'ytd',
-                              baseReason: row.reasonYtD ?? '', isSpecial: hideReason || !hasYtdData, s, descVal,
-                              templateReason: rekapTemplateReasons.get(globalRi)?.ytd ?? '' })}
+                            <ReasonCell ri={ri} globalRi={globalRi} row={row} side={'ytd'}
+                              baseReason={row.reasonYtD ?? ''} isSpecial={hideReason || !hasYtdData} s={s} descVal={descVal}
+                              templateReason={rekapTemplateReasons.get(globalRi)?.ytd ?? ''} />
                           </tr>
                         );
-                      })}
+                      })
+                      ) : (
+                        <tr>
+                          <td colSpan={20} className="px-4 py-8 text-center text-gray-500">
+                            Tidak ada data untuk ditampilkan
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                   </div>

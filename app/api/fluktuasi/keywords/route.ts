@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
+import { requireFinanceRead, requireFinanceWrite } from '@/lib/api-auth';
 
 const dbErrorMessage = (error: unknown): string => {
   const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
@@ -25,6 +26,9 @@ const normalizeSourceColumns = (raw: string): string => {
 // GET: Ambil semua keywords
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requireFinanceRead(req);
+    if ('error' in auth) return auth.error;
+
     const { searchParams } = new URL(req.url);
     const type = searchParams.get('type'); // 'klasifikasi' atau 'remark'
     
@@ -58,6 +62,9 @@ export async function GET(req: NextRequest) {
 // POST: Tambah keyword baru
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(req);
+    if ('error' in auth) return auth.error;
+
     const body = await req.json();
     const { keyword, type, result, priority = 0 } = body;
 
@@ -133,6 +140,9 @@ export async function POST(req: NextRequest) {
 // PUT: Update keyword
 export async function PUT(req: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(req);
+    if ('error' in auth) return auth.error;
+
     const body = await req.json();
     const { id, keyword, type, result, priority } = body;
 
@@ -211,6 +221,9 @@ export async function PUT(req: NextRequest) {
 // DELETE: Hapus keyword (id=<n>) atau semua (all=true)
 export async function DELETE(req: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(req);
+    if ('error' in auth) return auth.error;
+
     const { searchParams } = new URL(req.url);
     const id  = searchParams.get('id');
     const all = searchParams.get('all');

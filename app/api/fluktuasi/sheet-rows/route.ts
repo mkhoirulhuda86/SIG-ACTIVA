@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { requireFinanceRead, requireFinanceWrite } from '@/lib/api-auth';
+import { logAuditEvent } from '@/lib/audit';
 
 const dbErrorMessage = (error: unknown, fallback: string): string => {
   const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
@@ -16,6 +18,9 @@ const dbErrorMessage = (error: unknown, fallback: string): string => {
 // ─── GET: fetch rows for one or all accounts ─────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requireFinanceRead(req);
+    if ('error' in auth) return auth.error;
+
     const { searchParams } = new URL(req.url);
     const accountCode = searchParams.get('accountCode');
 
@@ -55,6 +60,9 @@ export async function GET(req: NextRequest) {
 // ─── POST: upsert rows for a single account ──────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(req);
+    if ('error' in auth) return auth.error;
+
     const body = await req.json();
     const {
       accountCode,
@@ -102,6 +110,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    logAuditEvent({ request: req, user: auth.user, action: 'fluktuasi.sheet_rows.upsert', target: accountCode, success: true });
     return NextResponse.json({ success: true, id: record.id });
   } catch (error) {
     console.error('Error upserting sheet rows:', error);
@@ -113,9 +122,13 @@ export async function POST(req: NextRequest) {
 }
 
 // ─── DELETE: wipe all sheet rows ─────────────────────────────────────────────
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(req);
+    if ('error' in auth) return auth.error;
+
     const { count } = await prisma.fluktuasiSheetRows.deleteMany();
+    logAuditEvent({ request: req, user: auth.user, action: 'fluktuasi.sheet_rows.delete_all', success: true, detail: `deleted=${count}` });
     return NextResponse.json({ success: true, deleted: count });
   } catch (error) {
     console.error('Error deleting sheet rows:', error);

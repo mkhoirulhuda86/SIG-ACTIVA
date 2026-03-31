@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { broadcast } from '@/lib/sse';
+import { requireAdmin } from '@/lib/api-auth';
 
 // GET all users
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if ('error' in auth) return auth.error;
+
     const idParam = request.nextUrl.searchParams.get('id');
     const users = await prisma.user.findMany({
       where: idParam ? { id: parseInt(idParam) } : undefined,
@@ -42,6 +46,9 @@ export async function GET(request: NextRequest) {
 // POST create new user
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if ('error' in auth) return auth.error;
+
     const { username, email, password, name, role } = await request.json();
 
     if (!username || !email || !password || !name || !role) {
@@ -85,7 +92,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create user - user yang dibuat admin langsung approved dan emailVerified
     const user = await prisma.user.create({

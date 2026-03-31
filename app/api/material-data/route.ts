@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { broadcast } from '@/lib/sse';
 import { sendPushToAll } from '@/lib/webpush';
 import { checkMaterialAlerts } from '@/lib/notificationChecker';
+import { requireFinanceRead, requireFinanceWrite } from '@/lib/api-auth';
 
 // Helper to transform raw/prisma rows into MaterialData API shape
 function transformRows(data: any[]) {
@@ -75,6 +76,9 @@ async function fetchLatestData(targetDate?: Date): Promise<any[]> {
 // GET - Fetch all material data or get list of import dates
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireFinanceRead(request);
+    if ('error' in auth) return auth.error;
+
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
     const importDate = searchParams.get('importDate');
@@ -131,6 +135,9 @@ export async function GET(request: NextRequest) {
 // POST - Save material data (keep only last 2 imports by date)
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const data = await request.json();
     
     // Use current timestamp truncated to minute
@@ -232,6 +239,9 @@ export async function POST(request: NextRequest) {
 // DELETE - Clear all material data or specific import date
 export async function DELETE(request: NextRequest) {
   try {
+    const auth = await requireFinanceWrite(request);
+    if ('error' in auth) return auth.error;
+
     const { searchParams } = new URL(request.url);
     const importDate = searchParams.get('importDate');
 
