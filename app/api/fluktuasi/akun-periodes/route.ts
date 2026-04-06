@@ -196,27 +196,27 @@ export async function POST(req: NextRequest) {
     };
 
     for (let i = 0; i < normalizedRecords.length; i += CHUNK_SIZE) {
-      const chunk = normalizedRecords.slice(i, i + CHUNK_SIZE);
+        const chunk = normalizedRecords.slice(i, i + CHUNK_SIZE);
 
-      try {
-        await prisma.$transaction(
-          chunk.map((r) => buildUpsert(r)),
-          { timeout: 30000 }
-        );
-        saved += chunk.length;
-      } catch (chunkError) {
-        console.warn(`Chunk ${Math.floor(i / CHUNK_SIZE) + 1} gagal, fallback row-by-row`, chunkError);
+        try {
+          await prisma.$transaction(
+            chunk.map((r) => buildUpsert(r))
+          );
+          saved += chunk.length;
+        } catch (chunkError) {
+          console.warn(`Chunk ${Math.floor(i / CHUNK_SIZE) + 1} gagal, fallback row-by-row`, chunkError);
 
-        for (const r of chunk) {
-          try {
-            await buildUpsert(r);
-            saved += 1;
-          } catch (rowError) {
-            failedItems.push({
-              accountCode: r.accountCode,
-              periode: r.periode,
-              error: rowError instanceof Error ? rowError.message : String(rowError),
-            });
+          for (const r of chunk) {
+            try {
+              await buildUpsert(r);
+              saved += 1;
+            } catch (rowError) {
+              failedItems.push({
+                accountCode: r.accountCode,
+                periode: r.periode,
+                error: rowError instanceof Error ? rowError.message : String(rowError),
+              });
+            }
           }
         }
       }
