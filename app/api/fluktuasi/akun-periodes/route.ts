@@ -22,6 +22,20 @@ const dbErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
+type IncomingRecord = {
+  accountCode: string;
+  periode: string;
+  amount: number;
+  klasifikasi: string;
+  remark: string;
+};
+
+type FailedItem = {
+  accountCode: string;
+  periode: string;
+  error: string;
+};
+
 // ─── GET: Ambil semua account-period records ─────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
@@ -30,25 +44,26 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const accountCode = searchParams.get('accountCode');
-    const periode     = searchParams.get('periode');
-    // "slim" mode: overview page only needs these 5 fields — skip heavy cols
+    const periode = searchParams.get('periode');
     const slim = searchParams.get('slim') === '1';
 
     const records = await prisma.fluktuasiAkunPeriode.findMany({
       where: {
         ...(accountCode ? { accountCode } : {}),
-        ...(periode     ? { periode }     : {}),
+        ...(periode ? { periode } : {}),
       },
-      // skip uploadedBy / fileName / createdAt / updatedAt / remark for slim
       select: slim
-        ? { accountCode: true, periode: true, amount: true, klasifikasi: true }
+        ? {
+            accountCode: true,
+            periode: true,
+            amount: true,
+            klasifikasi: true,
+          }
         : undefined,
-      // client sorts anyway — skip DB sort in slim mode to reduce query cost
       orderBy: slim ? undefined : [{ accountCode: 'asc' }, { periode: 'asc' }],
     });
 
     const res = NextResponse.json({ success: true, data: records });
-    // Allow CDN/browser to serve stale while revalidating (30 s fresh, 60 s stale)
     res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
     return res;
   } catch (error) {
@@ -68,13 +83,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { records, uploadedBy = 'system', fileName = '' } = body as {
-      records: {
-        accountCode: string;
-        periode: string;
-        amount: number;
-        klasifikasi: string;
-        remark: string;
-      }[];
+      records: IncomingRecord[];
       uploadedBy?: string;
       fileName?: string;
     };
@@ -86,18 +95,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Normalisasi + deduplicate berdasarkan accountCode + periode
-    const dedupedMap = new Map<string, {
-      accountCode: string;
-      periode: string;
-      amount: number;
-      klasifikasi: string;
-      remark: string;
-    }>();
+    const dedupedMap = new Map<string, IncomingRecord>();
 
     for (const r of records) {
       const accountCode = String(r.accountCode ?? '').trim();
       const periode = String(r.periode ?? '').trim();
+
       if (!accountCode || !periode) continue;
 
       dedupedMap.set(`${accountCode}__${periode}`, {
@@ -139,7 +142,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const existingMap = new Map<string, { amount: number; klasifikasi: string; remark: string }>();
+    const existingMap = new Map<
+      string,
+      { amount: number; klasifikasi: string; remark: string }
+    >();
+
     for (const row of existingRows) {
       existingMap.set(`${row.accountCode}__${row.periode}`, {
         amount: row.amount,
@@ -148,17 +155,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const failedItems: { accountCode: string; periode: string; error: string }[] = [];
+    const failedItems: FailedItem[] = [];
     let saved = 0;
-    const CHUNK_SIZE = 50;
+    const CHUNK_SIZE = 20;
 
-    const buildUpsert = (r: {
-      accountCode: string;
-      periode: string;
-      amount: number;
-      klasifikasi: string;
-      remark: string;
-    }) => {
+    const buildUpsert = (r: IncomingRecord) => {
       const existing = existingMap.get(`${r.accountCode}__${r.periode}`);
       const keepExistingAmount =
         !!existing && Number(r.amount) === 0 && Number(existing.amount) !== 0;
@@ -196,27 +197,27 @@ export async function POST(req: NextRequest) {
     };
 
     for (let i = 0; i < normalizedRecords.length; i += CHUNK_SIZE) {
-        const chunk = normalizedRecords.slice(i, i + CHUNK_SIZE);
+      const chunk = normalizedRecords.slice(i, i + CHUNK_SIZE);
 
-        try {
-          await prisma.$transaction(
-            chunk.map((r) => buildUpsert(r))
-          );
-          saved += chunk.length;
-        } catch (chunkError) {
-          console.warn(`Chunk ${Math.floor(i / CHUNK_SIZE) + 1} gagal, fallback row-by-row`, chunkError);
+      try {
+        await prisma.$transaction(chunk.map((r) => buildUpsert(r)));
+        saved += chunk.length;
+      } catch (chunkError) {
+        console.warn(
+          `Chunk ${Math.floor(i / CHUNK_SIZE) + 1} gagal, fallback row-by-row`,
+          chunkError,
+        );
 
-          for (const r of chunk) {
-            try {
-              await buildUpsert(r);
-              saved += 1;
-            } catch (rowError) {
-              failedItems.push({
-                accountCode: r.accountCode,
-                periode: r.periode,
-                error: rowError instanceof Error ? rowError.message : String(rowError),
-              });
-            }
+        for (const r of chunk) {
+          try {
+            await buildUpsert(r);
+            saved += 1;
+          } catch (rowError) {
+            failedItems.push({
+              accountCode: r.accountCode,
+              periode: r.periode,
+              error: rowError instanceof Error ? rowError.message : String(rowError),
+            });
           }
         }
       }
@@ -264,7 +265,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ─── DELETE: Hapus semua record (atau per accountCode) ───────────────────────
+// ─── DELETE: Hapus semua record (atau per accountCode/periode) ──────────────
 export async function DELETE(req: NextRequest) {
   try {
     const auth = await requireFinanceWrite(req);
@@ -272,18 +273,31 @@ export async function DELETE(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const accountCode = searchParams.get('accountCode');
-    const periode     = searchParams.get('periode');
+    const periode = searchParams.get('periode');
 
     const deleted = await prisma.fluktuasiAkunPeriode.deleteMany({
       where: {
         ...(accountCode ? { accountCode } : {}),
-        ...(periode     ? { periode }     : {}),
+        ...(periode ? { periode } : {}),
       },
     });
 
     broadcast('fluktuasi');
-    logAuditEvent({ request: req, user: auth.user, action: 'fluktuasi.akun_periode.delete', success: true, detail: `deleted=${deleted.count}` });
-    sendPushToAll({ title: 'Data Fluktuasi Dihapus', body: `${deleted.count} record fluktuasi berhasil dihapus`, url: '/fluktuasi-oi', priority: 'low' }).catch(() => {});
+    logAuditEvent({
+      request: req,
+      user: auth.user,
+      action: 'fluktuasi.akun_periode.delete',
+      success: true,
+      detail: `deleted=${deleted.count}`,
+    });
+
+    sendPushToAll({
+      title: 'Data Fluktuasi Dihapus',
+      body: `${deleted.count} record fluktuasi berhasil dihapus`,
+      url: '/fluktuasi-oi',
+      priority: 'low',
+    }).catch(() => {});
+
     return NextResponse.json({
       success: true,
       message: `${deleted.count} record berhasil dihapus`,
