@@ -2488,10 +2488,15 @@ export default function FluktuasiOIPage() {
             console.error('Gagal menyimpan akun periodes:', saveJson?.error ?? `HTTP ${saveRes.status}`);
             toast.error(`Gagal menyimpan akun periodes: ${String(saveJson?.error ?? '')}`);
           } else if (typeof saveJson.failed === 'number' && saveJson.failed > 0) {
-            // Partial failures can be hidden because API still returns {success:true}
-            // (append mode hides this by keeping old values, replace mode exposes it).
+            const detail = Array.isArray(saveJson.failedItems) && saveJson.failedItems.length > 0
+            ? ` Contoh gagal: ${saveJson.failedItems
+              .slice(0, 3)
+              .map((x: any) => `${x.accountCode}-${x.periode}`)
+              .join(', ')}`
+            : '';
+
             toast.info(
-              `Sebagian record gagal tersimpan (${saveJson.failed} dari ${recordsToUpsert.length}). Nilai bisa jadi tidak lengkap.`
+            `Sebagian record gagal tersimpan (${saveJson.failed} dari ${recordsToUpsert.length}).${detail}`
             );
             console.warn('Partial save failures:', saveJson);
           }

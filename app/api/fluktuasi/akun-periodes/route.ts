@@ -8,12 +8,17 @@ import { logAuditEvent } from '@/lib/audit';
 
 const dbErrorMessage = (error: unknown, fallback: string): string => {
   const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+
   if (/planLimitReached/i.test(message)) {
     return 'Koneksi database ditolak: limit paket Prisma sudah tercapai (planLimitReached).';
   }
   if (/P1001|Can\'t reach database server/i.test(message)) {
     return 'Koneksi database gagal (P1001): server database tidak terjangkau.';
   }
+  if (/timeout|timed out|Connection terminated unexpectedly/i.test(message)) {
+    return 'Koneksi database timeout saat memproses batch import.';
+  }
+
   return fallback;
 };
 
@@ -81,17 +86,49 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Preserve previously stored non-zero amounts when a newer upload sends 0
-    // for the same account+periode key.
-    const uniqKeys = [...new Set(records.map((r) => `${r.accountCode}__${r.periode}`))]
-      .map((k) => {
-        const [accountCode, periode] = k.split('__');
-        return { accountCode, periode };
+    // Normalisasi + deduplicate berdasarkan accountCode + periode
+    const dedupedMap = new Map<string, {
+      accountCode: string;
+      periode: string;
+      amount: number;
+      klasifikasi: string;
+      remark: string;
+    }>();
+
+    for (const r of records) {
+      const accountCode = String(r.accountCode ?? '').trim();
+      const periode = String(r.periode ?? '').trim();
+      if (!accountCode || !periode) continue;
+
+      dedupedMap.set(`${accountCode}__${periode}`, {
+        accountCode,
+        periode,
+        amount: Number(r.amount ?? 0),
+        klasifikasi: String(r.klasifikasi ?? '').trim(),
+        remark: String(r.remark ?? '').trim(),
       });
+    }
+
+    const normalizedRecords = [...dedupedMap.values()];
+
+    if (normalizedRecords.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Tidak ada record valid untuk disimpan' },
+        { status: 400 },
+      );
+    }
+
+    const uniqKeys = normalizedRecords.map((r) => ({
+      accountCode: r.accountCode,
+      periode: r.periode,
+    }));
 
     const existingRows = await prisma.fluktuasiAkunPeriode.findMany({
       where: {
-        OR: uniqKeys.map((k) => ({ accountCode: k.accountCode, periode: k.periode })),
+        OR: uniqKeys.map((k) => ({
+          accountCode: k.accountCode,
+          periode: k.periode,
+        })),
       },
       select: {
         accountCode: true,
@@ -111,49 +148,112 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Batch upsert: update if (accountCode, periode) exists, insert otherwise
-    const results = await Promise.allSettled(
-      records.map((r) => {
-        const existing = existingMap.get(`${r.accountCode}__${r.periode}`);
-        const keepExistingAmount = !!existing && Number(r.amount) === 0 && Number(existing.amount) !== 0;
-        const effectiveAmount = keepExistingAmount ? existing.amount : r.amount;
-        const effectiveKlasifikasi = String(r.klasifikasi ?? '').trim() || existing?.klasifikasi || '';
-        const effectiveRemark = String(r.remark ?? '').trim() || existing?.remark || '';
+    const failedItems: { accountCode: string; periode: string; error: string }[] = [];
+    let saved = 0;
+    const CHUNK_SIZE = 50;
 
-        return prisma.fluktuasiAkunPeriode.upsert({
-          where: { accountCode_periode: { accountCode: r.accountCode, periode: r.periode } },
-          update: {
-            amount:      effectiveAmount,
-            klasifikasi: effectiveKlasifikasi,
-            remark:      effectiveRemark,
-            uploadedBy,
-            fileName,
-          },
-          create: {
+    const buildUpsert = (r: {
+      accountCode: string;
+      periode: string;
+      amount: number;
+      klasifikasi: string;
+      remark: string;
+    }) => {
+      const existing = existingMap.get(`${r.accountCode}__${r.periode}`);
+      const keepExistingAmount =
+        !!existing && Number(r.amount) === 0 && Number(existing.amount) !== 0;
+
+      const effectiveAmount = keepExistingAmount ? existing.amount : r.amount;
+      const effectiveKlasifikasi =
+        String(r.klasifikasi ?? '').trim() || existing?.klasifikasi || '';
+      const effectiveRemark =
+        String(r.remark ?? '').trim() || existing?.remark || '';
+
+      return prisma.fluktuasiAkunPeriode.upsert({
+        where: {
+          accountCode_periode: {
             accountCode: r.accountCode,
-            periode:     r.periode,
-            amount:      effectiveAmount,
-            klasifikasi: effectiveKlasifikasi,
-            remark:      effectiveRemark,
-            uploadedBy,
-            fileName,
+            periode: r.periode,
           },
-        });
-      }),
-    );
+        },
+        update: {
+          amount: effectiveAmount,
+          klasifikasi: effectiveKlasifikasi,
+          remark: effectiveRemark,
+          uploadedBy,
+          fileName,
+        },
+        create: {
+          accountCode: r.accountCode,
+          periode: r.periode,
+          amount: effectiveAmount,
+          klasifikasi: effectiveKlasifikasi,
+          remark: effectiveRemark,
+          uploadedBy,
+          fileName,
+        },
+      });
+    };
 
-    const failed  = results.filter((r) => r.status === 'rejected').length;
-    const success = results.length - failed;
+    for (let i = 0; i < normalizedRecords.length; i += CHUNK_SIZE) {
+      const chunk = normalizedRecords.slice(i, i + CHUNK_SIZE);
+
+      try {
+        await prisma.$transaction(
+          chunk.map((r) => buildUpsert(r)),
+          { timeout: 30000 }
+        );
+        saved += chunk.length;
+      } catch (chunkError) {
+        console.warn(`Chunk ${Math.floor(i / CHUNK_SIZE) + 1} gagal, fallback row-by-row`, chunkError);
+
+        for (const r of chunk) {
+          try {
+            await buildUpsert(r);
+            saved += 1;
+          } catch (rowError) {
+            failedItems.push({
+              accountCode: r.accountCode,
+              periode: r.periode,
+              error: rowError instanceof Error ? rowError.message : String(rowError),
+            });
+          }
+        }
+      }
+    }
+
+    const failed = failedItems.length;
 
     broadcast('fluktuasi');
-    logAuditEvent({ request: req, user: auth.user, action: 'fluktuasi.akun_periode.upsert_batch', success: true, detail: `saved=${success}, failed=${failed}` });
-    sendPushToAll({ title: 'Data Fluktuasi Diperbarui', body: `${success} record fluktuasi berhasil disimpan`, url: '/fluktuasi-oi', priority: 'medium' }).catch(() => {});
+    logAuditEvent({
+      request: req,
+      user: auth.user,
+      action: 'fluktuasi.akun_periode.upsert_batch',
+      success: failed === 0,
+      detail: `saved=${saved}, failed=${failed}`,
+    });
+
+    sendPushToAll({
+      title: 'Data Fluktuasi Diperbarui',
+      body: `${saved} record fluktuasi berhasil disimpan`,
+      url: '/fluktuasi-oi',
+      priority: 'medium',
+    }).catch(() => {});
+
     checkFluktuasiAlerts().catch(() => {});
+
     return NextResponse.json({
       success: true,
-      message: `${success} record berhasil disimpan${failed ? `, ${failed} gagal` : ''}`,
-      saved: success,
+      partial: failed > 0,
+      message:
+        failed > 0
+          ? `${saved} record berhasil disimpan, ${failed} gagal`
+          : `${saved} record berhasil disimpan`,
+      saved,
       failed,
+      failedItems: failedItems.slice(0, 20),
+      totalReceived: records.length,
+      totalProcessed: normalizedRecords.length,
     });
   } catch (error) {
     console.error('Error upserting akun periodes:', error);

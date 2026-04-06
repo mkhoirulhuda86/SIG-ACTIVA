@@ -22,7 +22,7 @@ const poolMax = process.env.NODE_ENV === 'production'
   ? Math.min(configuredPoolMax, 2)
   : configuredPoolMax;
 const poolIdleTimeout = toPositiveInt(process.env.DB_POOL_IDLE_TIMEOUT_MS, 30_000);
-const poolConnectionTimeout = toPositiveInt(process.env.DB_POOL_CONNECTION_TIMEOUT_MS, 5_000);
+const poolConnectionTimeout = toPositiveInt(process.env.DB_POOL_CONNECTION_TIMEOUT_MS, 15_000);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
