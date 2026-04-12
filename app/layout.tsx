@@ -3,6 +3,7 @@ import "./globals.css";
 import AuthGuard from "./components/AuthGuard";
 import AosProvider from "./components/AosProvider";
 import { Toaster } from "sonner";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata: Metadata = {
   title: "Dashboard - SIG ACTIVA",
@@ -33,6 +34,7 @@ export default function RootLayout({
           </AuthGuard>
         </AosProvider>
         <Toaster richColors position="top-right" />
+        <SpeedInsights />
       </body>
     </html>
   );

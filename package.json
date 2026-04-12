@@ -28,6 +28,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@types/nodemailer": "^7.0.9",
     "@types/web-push": "^3.6.4",
+    "@vercel/speed-insights": "^2.0.0",
     "animejs": "^4.3.6",
     "aos": "^2.3.4",
     "bcryptjs": "^3.0.3",
