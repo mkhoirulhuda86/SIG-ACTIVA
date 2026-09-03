@@ -66,6 +66,35 @@ export function parseCompany2000Rincian(rows: PersistedSupportRow[]): { ADUM: Si
   return result;
 }
 
+export type Company2000SiTotals = {
+  adumTotal: Prisma.Decimal;
+  pasarTotal: Prisma.Decimal;
+};
+
+/** Parses the authoritative SI group totals and converts the workbook's thousand-rupiah unit to rupiah. */
+export function parseCompany2000SiTotals(rows: PersistedSupportRow[]): Company2000SiTotals {
+  const ordered = rows.filter((row) => row.logicalSourceCode === 'AUDIT_SI').sort((a, b) => a.sourceRowNumber - b.sourceRowNumber);
+  let adumTotal: Prisma.Decimal | null = null;
+  let pasarTotal: Prisma.Decimal | null = null;
+
+  const assignUnique = (current: Prisma.Decimal | null, value: Prisma.Decimal, label: string) => {
+    if (current && !current.equals(value)) throw new Error(`AUDIT_SI contains conflicting ${label} totals.`);
+    return value;
+  };
+
+  for (const row of ordered) {
+    const label = normalized(cell(row, 1));
+    if (label !== 'TOTAL ADUM' && label !== 'TOTAL PERNIAGAAN' && label !== 'TOTAL PASAR') continue;
+    const rupiah = decimal(cell(row, 2), `AUDIT_SI row ${row.sourceRowNumber}`).mul(1000).toDecimalPlaces(2);
+    if (label === 'TOTAL ADUM') adumTotal = assignUnique(adumTotal, rupiah, 'ADUM');
+    else pasarTotal = assignUnique(pasarTotal, rupiah, 'PASAR');
+  }
+
+  if (!adumTotal) throw new Error('AUDIT_SI Total Adum was not found.');
+  if (!pasarTotal) throw new Error('AUDIT_SI Total Perniagaan/Pasar was not found.');
+  return { adumTotal, pasarTotal };
+}
+
 /**
  * Parses eight-digit CC_DRV details and reconciles them to the persisted Grand Total when the
  * source contributes. CC derivatif is period-optional: no persisted rows, or a present sheet with

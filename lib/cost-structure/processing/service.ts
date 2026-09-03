@@ -6,6 +6,7 @@ import { backfillAuthoritativeBaselineMappings } from '@/lib/cost-structure/mapp
 import { backfillDeterministicFamilyMappings } from '@/lib/cost-structure/mappings/family-mapping-backfill';
 import { getPhaseDReport, refreshPeriodReadiness, runPhaseD } from '@/lib/cost-structure/reconciliation/service';
 import { runAutomaticCostStructureCalculation } from './automatic-calculation';
+import { revalidateCostUpload } from './revalidate-upload';
 import { deriveProcessStatus, executeNextProcessStage, type CostStructureProcessStatus, type ProcessBlocker, type ProcessingSnapshot } from './state-machine';
 
 export class CostStructureProcessNotFoundError extends Error {}
@@ -59,7 +60,7 @@ export async function getCostStructureProcessStatus(uploadId: number): Promise<C
   const phaseDStarted = upload.sourceRows.length > 0 || upload.validationIssues.some((issue) => phaseDProducedIssueCodes.has(issue.issueCode));
   const activeRun = upload.period.activeCalculationRun;
   const postCheckBlockers = activeRun?.status === 'SUCCESS'
-    ? activeRun.results.filter((control) => control.reconciliationStatus !== 'RECONCILED' || !control.reconciliationDifference?.isZero()).map((control) => ({ code: control.resultCode, message: `${control.resultCode} belum reconciled (difference ${control.reconciliationDifference?.toString() ?? 'N/A'}).` }))
+    ? activeRun.results.filter((control) => control.reconciliationStatus !== 'RECONCILED').map((control) => ({ code: control.resultCode, message: `${control.resultCode} belum reconciled (difference ${control.reconciliationDifference?.toString() ?? 'N/A'}).` }))
     : [];
   const latestRun = upload.calculationRuns[0] ?? null;
   const snapshot: ProcessingSnapshot = {
@@ -81,6 +82,7 @@ export async function getCostStructureProcessStatus(uploadId: number): Promise<C
 
 type AdvanceDependencies = {
   status(uploadId: number): Promise<CostStructureProcessStatus>;
+  revalidate(uploadId: number, userId: number): Promise<void>;
   reconcile(uploadId: number, userId: number): Promise<void>;
   calculate(periodId: number, uploadId: number, userId: number): Promise<void>;
   postCheck(periodId: number, userId: number): Promise<void>;
@@ -88,6 +90,7 @@ type AdvanceDependencies = {
 
 const dependencies: AdvanceDependencies = {
   status: getCostStructureProcessStatus,
+  revalidate: async (uploadId, userId) => { await revalidateCostUpload(uploadId, userId); },
   reconcile: async (uploadId, userId) => {
     // Exact authoritative COA mappings always outrank family inference.
     await backfillAuthoritativeBaselineMappings(uploadId, userId);
@@ -105,6 +108,7 @@ const dependencies: AdvanceDependencies = {
 export async function advanceCostStructureProcess(uploadId: number, userId: number, deps: AdvanceDependencies = dependencies) {
   const before = await deps.status(uploadId);
   return executeNextProcessStage(before, {
+    SOURCE_VALIDATION: () => deps.revalidate(uploadId, userId),
     RECONCILIATION: () => deps.reconcile(uploadId, userId),
     CALCULATION: () => deps.calculate(before.periodId, uploadId, userId),
     POST_CHECK: () => deps.postCheck(before.periodId, userId),

@@ -5,6 +5,7 @@ import { classifySourceRow } from './source-control-registry';
 import { reconcileCcGroup } from './reconcile-cc-group';
 import { calculateMappingCompleteness } from './mapping-completeness';
 import { isMappingBlockingAmount } from './money';
+import { applyCompany2000HistoricalSourcePolicy, evaluateCompany2000HistoricalSupport } from './company-2000-source-control-policy';
 import {
   buildIssueBatch,
   MAPPING_ISSUE_CODES,
@@ -34,13 +35,14 @@ function setSourceIssue(
   desired: DesiredIssueMap,
   source: string,
   code: string | null,
-  message: string | null
+  message: string | null,
+  severity: IssueSeverity = 'ERROR'
 ) {
   const context = `[${source}]`;
   desired.set(context, {
     sourceRowId: null,
     issueCode: code,
-    severity: 'ERROR',
+    severity,
     message: code && message ? `${context} ${message}` : null,
     resolutionType: 'CONTROL_RERUN_RESOLVED',
     updateMetadata: false,
@@ -143,18 +145,38 @@ export async function runPhaseD(uploadId: number) {
     if (!upload.isActiveVersion) throw new Error('Hanya upload aktif yang dapat direkonsiliasi.');
     if (upload.period.status === CostPeriodStatus.FINALIZED) throw new Error('Periode FINALIZED tidak dapat diubah.');
 
+    const historicalSupportEvidence = upload.period.company.companyCode === '2000'
+      ? evaluateCompany2000HistoricalSupport(upload.sourceRows.map((row) => ({
+          id: row.id,
+          logicalSourceCode: row.logicalSourceCode,
+          sourceRowNumber: row.sourceRowNumber,
+          rawData: row.rawDataJson,
+        })))
+      : null;
     const results = [];
     const desiredIssues: DesiredIssueMap = new Map();
     const sourceRowMappings: Array<{ id: number; coaId: number | null; mappingStatus: string }> = [];
     for (const source of required(upload.period.company.companyCode)) {
       const rows = upload.sourceRows.filter((row) => row.logicalSourceCode === source);
-      const result = reconcileCcGroup(rows.map((row) => ({
+      const rawResult = reconcileCcGroup(rows.map((row) => ({
         id: row.id,
         coaCodeRaw: row.coaCodeRaw,
         descriptionRaw: row.descriptionRaw,
         amount: row.amount?.toString() ?? null,
       })));
-      results.push({ logicalSourceCode: source, ...result });
+      const sourcePolicy = applyCompany2000HistoricalSourcePolicy(
+        upload.period.company.companyCode,
+        source,
+        rawResult,
+        historicalSupportEvidence
+      );
+      const result = sourcePolicy.result;
+      results.push({
+        logicalSourceCode: source,
+        ...result,
+        rawStatus: rawResult.status,
+        controlMode: sourcePolicy.fallbackUsed ? 'RINCIAN_SI' : 'DEBIT',
+      });
 
       const classified = rows.map((row) => ({
         row,
@@ -249,14 +271,22 @@ export async function runPhaseD(uploadId: number) {
         }
       }
 
-      const message = result.issueCode === 'CC_GROUP_TOTAL_NOT_FOUND'
-        ? 'Reported total unik tidak ditemukan.'
-        : result.issueCode === 'CC_GROUP_TOTAL_AMBIGUOUS'
-          ? 'Lebih dari satu kandidat reported total ditemukan.'
-          : result.issueCode
-            ? `Detail ${result.detailAmount} tidak sama dengan reported ${result.reportedAmount}; selisih ${result.difference}.`
-            : null;
-      setSourceIssue(desiredIssues, source, result.issueCode, message);
+      const message = sourcePolicy.fallbackUsed
+        ? sourcePolicy.warningMessage
+        : result.issueCode === 'CC_GROUP_TOTAL_NOT_FOUND'
+          ? 'Reported total unik tidak ditemukan.'
+          : result.issueCode === 'CC_GROUP_TOTAL_AMBIGUOUS'
+            ? 'Lebih dari satu kandidat reported total ditemukan.'
+            : result.issueCode
+              ? `Detail ${result.detailAmount} tidak sama dengan reported ${result.reportedAmount}; selisih ${result.difference}.`
+              : null;
+      setSourceIssue(
+        desiredIssues,
+        source,
+        sourcePolicy.fallbackUsed ? 'CC_GROUP_DEBIT_AUDIT_WARNING' : result.issueCode,
+        message,
+        sourcePolicy.fallbackUsed ? 'WARNING' : 'ERROR'
+      );
     }
 
     await persistSourceRowMappings(tx, sourceRowMappings);
@@ -287,9 +317,16 @@ export async function getPhaseDReport(uploadId: number) {
   if (!upload) return null;
 
   const requiredSources = required(upload.period.company.companyCode);
-  const sources = requiredSources.map((source) => ({
-    logicalSourceCode: source,
-    ...reconcileCcGroup(
+  const historicalSupportEvidence = upload.period.company.companyCode === '2000'
+    ? evaluateCompany2000HistoricalSupport(upload.sourceRows.map((row) => ({
+        id: row.id,
+        logicalSourceCode: row.logicalSourceCode,
+        sourceRowNumber: row.sourceRowNumber,
+        rawData: row.rawDataJson,
+      })))
+    : null;
+  const sources = requiredSources.map((source) => {
+    const rawResult = reconcileCcGroup(
       upload.sourceRows
         .filter((row) => row.logicalSourceCode === source)
         .map((row) => ({
@@ -297,8 +334,20 @@ export async function getPhaseDReport(uploadId: number) {
           descriptionRaw: row.descriptionRaw,
           amount: row.amount?.toString() ?? null,
         }))
-    ),
-  }));
+    );
+    const sourcePolicy = applyCompany2000HistoricalSourcePolicy(
+      upload.period.company.companyCode,
+      source,
+      rawResult,
+      historicalSupportEvidence
+    );
+    return {
+      logicalSourceCode: source,
+      ...sourcePolicy.result,
+      rawStatus: rawResult.status,
+      controlMode: sourcePolicy.fallbackUsed ? 'RINCIAN_SI' : 'DEBIT',
+    };
+  });
 
   const detail = upload.sourceRows.filter(
     (row) =>
