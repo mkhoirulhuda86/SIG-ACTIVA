@@ -29,6 +29,19 @@ jobs:
       - name: Apply OA patch
         run: python3 scripts/patch-company7000-oa-authoritative.py
 
+      - name: Fix deterministic adapter test COA ids
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('lib/cost-structure/calculations/company-7000-source-adapter.test.ts')
+          text = path.read_text()
+          old = "coaId: coaId === undefined ? (coaCode && /^\\d{8}$/.test(coaCode) ? Number(coaCode.slice(-5)) + 100 : null) : coaId,"
+          new = "coaId: coaId === undefined ? (coaCode && /^\\d{8}$/.test(coaCode) ? Number(coaCode) : null) : coaId,"
+          if old not in text:
+              raise SystemExit('adapter fixture coaId anchor not found')
+          path.write_text(text.replace(old, new))
+          PY
+
       - name: Install dependencies
         run: npm install
 
