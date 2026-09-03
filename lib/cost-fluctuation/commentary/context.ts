@@ -45,7 +45,7 @@ export async function resolveCommentaryTarget(periodId: number, comparisonType: 
   const target = locateCommentaryNode(analysis.hierarchy, analysisKey);
   if (!target) throw new Error('Analysis target is not part of the current hierarchy.');
   const level = target.node.nodeType;
-  if (level === 'COMPANY' || level === 'ANALYSIS_BASIS') throw new Error(`${level} commentary is not applicable.`);
+  if (level !== 'NATURE' && level !== 'COA') throw new Error(`${level} commentary is not applicable. Commentary hanya tersedia pada level Nature dan optional pada COA.`);
   if (target.groupId === null) throw new Error('Analysis target has no Cost Group context.');
   return {
     analysis,
@@ -53,6 +53,6 @@ export async function resolveCommentaryTarget(periodId: number, comparisonType: 
     analysisLineageKey: lineageKey(comparisonType, analysis.current.periods, analysis.comparison.periods),
     analysisLevel: level,
     coaId: level === 'COA' ? target.node.id : null,
-    calculatedItemKey: level === 'CALCULATED_ITEM' ? target.node.key : null,
+    calculatedItemKey: null,
   };
 }
