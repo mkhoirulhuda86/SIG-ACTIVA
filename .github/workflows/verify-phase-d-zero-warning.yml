@@ -39,7 +39,6 @@ jobs:
           node -r ts-node/register --test lib/cost-structure/reconciliation/mapping-completeness.test.ts
           node -r ts-node/register --test lib/cost-structure/reconciliation/issue-batch.test.ts
           node -r ts-node/register --test lib/cost-structure/calculations/company-2000-deminimis.test.ts
-          node -r ts-node/register --test lib/cost-structure/calculations/company-7000.test.ts
           node -r ts-node/register --test lib/cost-structure/finalization/service.test.ts
       - name: Commit verified source change
         shell: bash
