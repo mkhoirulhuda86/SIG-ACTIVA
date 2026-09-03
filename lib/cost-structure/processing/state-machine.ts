@@ -37,6 +37,9 @@ export type ProcessingSnapshot = {
     status: 'RUNNING' | 'SUCCESS' | 'FAILED';
     errorMessage?: string | null;
     belongsToUpload: boolean;
+    requiresRecalculation?: boolean;
+    runRuleSetVersion?: string | null;
+    currentRuleSetVersion?: string | null;
   };
   postCheckBlockers: ProcessBlocker[];
 };
@@ -49,6 +52,7 @@ export type CostStructureProcessStatus = {
   stages: ProcessStage[];
   canAdvance: boolean;
   canRetry: boolean;
+  requiresRecalculation: boolean;
   readyForFinalization: boolean;
 };
 
@@ -69,7 +73,13 @@ function waitingStages(from: ProcessStageKey) {
 /** Pure projection of persisted accounting state. It never advances or finalizes a period. */
 export function deriveProcessStatus(snapshot: ProcessingSnapshot): CostStructureProcessStatus {
   const completed: ProcessStage[] = [];
-  const result = (currentStage: ProcessStageKey, stage: ProcessStage, tail: ProcessStage[], canRetry = false): CostStructureProcessStatus => ({
+  const result = (
+    currentStage: ProcessStageKey,
+    stage: ProcessStage,
+    tail: ProcessStage[],
+    canRetry = false,
+    requiresRecalculation = false,
+  ): CostStructureProcessStatus => ({
     uploadId: snapshot.uploadId,
     periodId: snapshot.periodId,
     overallStatus: stage.status === 'BLOCKED' ? 'BLOCKED' : 'PROCESSING',
@@ -77,6 +87,7 @@ export function deriveProcessStatus(snapshot: ProcessingSnapshot): CostStructure
     stages: [...completed, stage, ...tail],
     canAdvance: stage.status === 'WAITING',
     canRetry,
+    requiresRecalculation,
     readyForFinalization: false,
   });
 
@@ -89,6 +100,7 @@ export function deriveProcessStatus(snapshot: ProcessingSnapshot): CostStructure
       stages: PROCESS_STAGE_KEYS.map((key) => ({ key, title: titles[key], status: 'COMPLETED' })),
       canAdvance: false,
       canRetry: false,
+      requiresRecalculation: false,
       readyForFinalization: false,
     };
   }
@@ -117,9 +129,8 @@ export function deriveProcessStatus(snapshot: ProcessingSnapshot): CostStructure
   }
   completed.push({ key: 'RECONCILIATION', title: titles.RECONCILIATION, status: 'COMPLETED' });
 
-  // Audit template snapshots such as GHOPO/DERIV/SI2000_DRV support export and
-  // downstream analytical audit. They are not Engine-1 calculation inputs and
-  // therefore must never block calculation/post-check/finalization readiness.
+  // Audit template snapshots support export/downstream analytical audit. They are not
+  // Engine-1 calculation inputs and must never block calculation/post-check/finalization.
   if (snapshot.auditReady) {
     completed.push({ key: 'AUDIT_READINESS', title: titles.AUDIT_READINESS, status: 'COMPLETED' });
   } else {
@@ -136,6 +147,23 @@ export function deriveProcessStatus(snapshot: ProcessingSnapshot): CostStructure
 
   if (!snapshot.calculation || !snapshot.calculation.belongsToUpload) {
     return result('CALCULATION', { key: 'CALCULATION', title: titles.CALCULATION, status: 'WAITING', message: 'Calculation siap dijalankan.' }, waitingStages('POST_CHECK'));
+  }
+  if (snapshot.calculation.status === 'SUCCESS' && snapshot.calculation.requiresRecalculation) {
+    const versionChanged = Boolean(
+      snapshot.calculation.runRuleSetVersion &&
+      snapshot.calculation.currentRuleSetVersion &&
+      snapshot.calculation.runRuleSetVersion !== snapshot.calculation.currentRuleSetVersion,
+    );
+    const message = versionChanged
+      ? `Calculation lama memakai ${snapshot.calculation.runRuleSetVersion}; recalculate dengan ${snapshot.calculation.currentRuleSetVersion} wajib dilakukan sebelum reconciliation.`
+      : 'Periode sudah di-reopen; calculation lama tidak boleh dipakai kembali. Jalankan Recalculate sebelum reconciliation.';
+    return result(
+      'CALCULATION',
+      { key: 'CALCULATION', title: titles.CALCULATION, status: 'WAITING', message },
+      waitingStages('POST_CHECK'),
+      false,
+      true,
+    );
   }
   if (snapshot.calculation.status === 'RUNNING') {
     return result('CALCULATION', { key: 'CALCULATION', title: titles.CALCULATION, status: 'RUNNING', message: 'Calculation sedang berjalan.' }, waitingStages('POST_CHECK'));
@@ -155,7 +183,17 @@ export function deriveProcessStatus(snapshot: ProcessingSnapshot): CostStructure
   }
 
   completed.push({ key: 'POST_CHECK', title: titles.POST_CHECK, status: 'COMPLETED' });
-  return { uploadId: snapshot.uploadId, periodId: snapshot.periodId, overallStatus: 'READY', currentStage: 'POST_CHECK', stages: completed, canAdvance: false, canRetry: false, readyForFinalization: true };
+  return {
+    uploadId: snapshot.uploadId,
+    periodId: snapshot.periodId,
+    overallStatus: 'READY',
+    currentStage: 'POST_CHECK',
+    stages: completed,
+    canAdvance: false,
+    canRetry: false,
+    requiresRecalculation: false,
+    readyForFinalization: true,
+  };
 }
 
 export type ProcessAdvanceActions = Partial<Record<ProcessStageKey, () => Promise<void>>>;
