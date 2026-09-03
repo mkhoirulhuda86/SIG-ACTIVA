@@ -1,4 +1,4 @@
-name: Verify Phase D zero warning
+name: Verify Phase D and post-control tolerance
 
 on:
   push:
@@ -31,19 +31,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx eslint lib/cost-structure/reconciliation/service.ts
+          npx eslint lib/cost-structure/reconciliation/service.ts lib/cost-structure/calculations/run-service.ts lib/cost-structure/finalization/policy.ts lib/cost-structure/finalization/service.test.ts
           npx eslint 'app/cost-structure/upload/[id]/phase-d-workspace.tsx' --rule 'react-hooks/set-state-in-effect: off'
-          export TS_NODE_COMPILER_OPTIONS='{"module":"CommonJS","moduleResolution":"node"}'
-          node -r ts-node/register --test lib/cost-structure/reconciliation/reconcile-cc-group.test.ts
-          node -r ts-node/register --test lib/cost-structure/reconciliation/mapping-completeness.test.ts
-          node -r ts-node/register --test lib/cost-structure/reconciliation/issue-batch.test.ts
-          npx tsc --noEmit
+          node --import tsx --test lib/cost-structure/reconciliation/reconcile-cc-group.test.ts
+          node --import tsx --test lib/cost-structure/reconciliation/mapping-completeness.test.ts
+          node --import tsx --test lib/cost-structure/reconciliation/issue-batch.test.ts
+          node --import tsx --test lib/cost-structure/calculations/company-2000-deminimis.test.ts
+          node --import tsx --test lib/cost-structure/calculations/company-7000.test.ts
+          node --import tsx --test lib/cost-structure/finalization/service.test.ts
       - name: Commit verified source change
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/cost-structure/reconciliation/service.ts 'app/cost-structure/upload/[id]/phase-d-workspace.tsx'
-          git commit -m 'fix(cost): distinguish zero-value mapping evidence'
+          git add lib/cost-structure/reconciliation/service.ts \
+                  'app/cost-structure/upload/[id]/phase-d-workspace.tsx' \
+                  lib/cost-structure/calculations/run-service.ts \
+                  lib/cost-structure/finalization/policy.ts \
+                  lib/cost-structure/finalization/service.test.ts
+          git commit -m 'fix(cost): align Rp1 reconciliation tolerance'
           git push origin HEAD:fix/phase-d-zero-warning-ui
