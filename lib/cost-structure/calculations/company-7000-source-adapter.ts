@@ -128,32 +128,80 @@ function specialCell(rows: AdapterSourceRow[], rowNumber: number, column: number
   return { row: matches[0], amount: decimal(rawValue(matches[0], `COLUMN_${column}`), label) };
 }
 
-function buildOa(input: Company7000AdapterInput, pasar: Map<string, AggregatedCoa>) {
+function selectOaStatComponent(input: Company7000AdapterInput, gl: string, role: 'SUMMARY' | 'TRANSACTION' | 'DERIVATIVE') {
   const stat = rowsFor(input, 'OA_STAT');
-  const select = (gl: string, role: 'SUMMARY' | 'TRANSACTION' | 'DERIVATIVE') => {
-    const matches = stat.filter((row) => {
-      if (normalized(rawValue(row, 'G/L Account', 'GL Account', 'COA', 'ROLE_GL')) !== gl || normalized(rawValue(row, 'Component Type', 'Role', 'SECTION', 'ROLE')) !== role) return false;
-      if (role !== 'TRANSACTION') return true;
-      const company = rawValue(row, 'Company Code', 'COMPANY_CODE');
-      const period = rawValue(row, 'Posting Period', 'POSTING_PERIOD');
-      return normalized(company) === input.companyCode && normalized(period) === String(input.fiscalPeriod);
-    });
-    if (!matches.length) {
-      if (role === 'TRANSACTION' || role === 'DERIVATIVE') return { rows: [] as AdapterSourceRow[], amount: zero() };
-      throw new Error(`OA ${gl} ${role} source component is missing.`);
-    }
-    return {
-      rows: matches,
-      amount: sum(matches.map((row) => decimal(rawValue(row, 'Amount in local currency', 'Amount', 'VALUE', 'ROLE_AMOUNT'), `OA ${gl} ${role}`))),
-    };
+  const matches = stat.filter((row) => {
+    if (normalized(rawValue(row, 'G/L Account', 'GL Account', 'COA', 'ROLE_GL')) !== gl || normalized(rawValue(row, 'Component Type', 'Role', 'SECTION', 'ROLE')) !== role) return false;
+    if (role !== 'TRANSACTION') return true;
+    const company = rawValue(row, 'Company Code', 'COMPANY_CODE');
+    const period = rawValue(row, 'Posting Period', 'POSTING_PERIOD');
+    return normalized(company) === input.companyCode && normalized(period) === String(input.fiscalPeriod);
+  });
+  if (!matches.length) {
+    if (role === 'TRANSACTION' || role === 'DERIVATIVE') return { rows: [] as AdapterSourceRow[], amount: zero() };
+    throw new Error(`OA ${gl} ${role} source component is missing.`);
+  }
+  return {
+    rows: matches,
+    amount: sum(matches.map((row) => decimal(rawValue(row, 'Amount in local currency', 'Amount', 'VALUE', 'ROLE_AMOUNT'), `OA ${gl} ${role}`))),
   };
+}
 
-  const summary6811 = select('68110001', 'SUMMARY');
-  const summary681405 = select('68140005', 'SUMMARY');
-  const tx681405 = select('68140005', 'TRANSACTION');
-  const summary681406 = select('68140006', 'SUMMARY');
-  const tx681406 = select('68140006', 'TRANSACTION');
-  const derivative = select('68140005', 'DERIVATIVE');
+export function deriveCompany7000OaFromRincian(rows: AdapterSourceRow[]) {
+  const rincianRows = rows.filter((row) => row.logicalSourceCode === 'AUDIT_RINCIAN' && row.sourceRowNumber >= 315 && row.sourceRowNumber <= 395);
+  if (!rincianRows.length) return null;
+
+  const coaColumns = new Set<number>();
+  for (const row of rincianRows) {
+    for (const [key, value] of Object.entries(rawRecord(row))) {
+      const match = /^COLUMN_(\d+)$/.exec(key);
+      if (match && OA_GLS.includes(String(value ?? '').trim() as typeof OA_GLS[number])) coaColumns.add(Number(match[1]));
+    }
+  }
+  if (coaColumns.size !== 1) throw new Error('OA_7000_EXISTING authoritative Rincian COA column is missing or ambiguous.');
+  const coaColumn = [...coaColumns][0];
+  const amountColumn = coaColumn + 4;
+  const allocations = new Map<string, { amount: Prisma.Decimal; rows: AdapterSourceRow[] }>();
+  const amounts: Prisma.Decimal[] = [];
+
+  for (const row of rincianRows) {
+    const amountRaw = rawValue(row, `COLUMN_${amountColumn}`);
+    const blankAmount = amountRaw == null || String(amountRaw).trim() === '';
+    const amount = blankAmount ? zero() : decimal(amountRaw, `AUDIT_RINCIAN row ${row.sourceRowNumber} OA amount`);
+    amounts.push(amount);
+    const coa = String(rawValue(row, `COLUMN_${coaColumn}`) ?? '').trim();
+    if (!amount.isZero() && !/^\d{8}$/.test(coa)) throw new Error(`OA_7000_EXISTING authoritative Rincian row ${row.sourceRowNumber} has non-zero amount without an 8-digit COA.`);
+    if (!/^\d{8}$/.test(coa)) continue;
+    const current = allocations.get(coa) ?? { amount: zero(), rows: [] as AdapterSourceRow[] };
+    current.amount = current.amount.add(amount);
+    current.rows.push(row);
+    allocations.set(coa, current);
+  }
+
+  const total = money(sum(amounts));
+  const normalizedAllocations = new Map([...allocations].map(([coa, value]) => [coa, { amount: money(value.amount), rows: value.rows }]));
+  const allocationAudit = [...normalizedAllocations].map(([coa, value]) => ({ coa, amount: value.amount.toString(), sourceRowIds: value.rows.map((row) => row.id) }));
+  return {
+    components: [dep(total, 'AUDIT_RINCIAN', rincianRows, {
+      role: 'AUTHORITATIVE_OA',
+      businessRule: "SUM('rincian biaya'!F315:F395)",
+      authoritativeRange: 'rincian biaya!F315:F395',
+      coaColumn: `COLUMN_${coaColumn}`,
+      amountColumn: `COLUMN_${amountColumn}`,
+      allocations: allocationAudit,
+    })],
+    pasarAllocations: normalizedAllocations,
+    allocationSourceLogicalCode: 'AUDIT_RINCIAN' as const,
+  };
+}
+
+function buildLegacyOa(input: Company7000AdapterInput, pasar: Map<string, AggregatedCoa>) {
+  const summary6811 = selectOaStatComponent(input, '68110001', 'SUMMARY');
+  const summary681405 = selectOaStatComponent(input, '68140005', 'SUMMARY');
+  const tx681405 = selectOaStatComponent(input, '68140005', 'TRANSACTION');
+  const summary681406 = selectOaStatComponent(input, '68140006', 'SUMMARY');
+  const tx681406 = selectOaStatComponent(input, '68140006', 'TRANSACTION');
+  const derivative = selectOaStatComponent(input, '68140005', 'DERIVATIVE');
   const cc6811 = pasar.get('68110001');
   const cc6817 = pasar.get('68170002');
   if (!cc6811 || !cc6817) throw new Error('OA direct CC_PASAR components are missing.');
@@ -173,7 +221,14 @@ function buildOa(input: Company7000AdapterInput, pasar: Map<string, AggregatedCo
     ['68140006', { amount: money(summary681406.amount.add(tx681406.amount)), rows: uniqueRows([...summary681406.rows, ...tx681406.rows]) }],
     ['68170002', { amount: money(cc6817.amount), rows: uniqueRows([...cc6817.rows]) }],
   ]);
-  return { components, pasarAllocations, derivative: { amount: derivative.amount, rows: derivative.rows } };
+  return { components, pasarAllocations, derivative: { amount: derivative.amount, rows: derivative.rows }, allocationSourceLogicalCode: 'OA_STAT' as const };
+}
+
+function buildOa(input: Company7000AdapterInput, pasar: Map<string, AggregatedCoa>) {
+  const authoritative = deriveCompany7000OaFromRincian(input.rows);
+  if (!authoritative) return buildLegacyOa(input, pasar);
+  const derivative = selectOaStatComponent(input, '68140005', 'DERIVATIVE');
+  return { ...authoritative, derivative: { amount: derivative.amount, rows: derivative.rows } };
 }
 
 export function buildCompany7000Input(input: Company7000AdapterInput): Company7000Input {
@@ -285,7 +340,7 @@ export function buildCompany7000Input(input: Company7000AdapterInput): Company70
       adum: adumAmount.toString(),
       pasarRaw: rawPasarAmount.toString(),
       pasarFinal: pasarAmount.toString(),
-      ...(oaPasarAllocation ? { pasarAllocationRuleCode: 'OA_7000_EXISTING' } : {}),
+      ...(oaPasarAllocation ? { pasarAllocationRuleCode: 'OA_7000_EXISTING', pasarAllocationSourceLogicalCode: oa.allocationSourceLogicalCode } : {}),
       derivativeExcluded: derivative.toString(),
       ...(coa === '68140005' ? { derivativeRuleCode: 'DERIVATIVE_EXCLUDED_7000', derivativeAbsentTreatedAsZero: oa.derivative.rows.length === 0 } : {}),
     }));

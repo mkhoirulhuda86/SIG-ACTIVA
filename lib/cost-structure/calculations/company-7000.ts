@@ -57,8 +57,14 @@ function assertFormulaDependencies(input: Company7000Input) {
   if (input.formulaDependencies.oaComponents.length === 0) throw new Error('OA_7000_EXISTING requires verified OA components.');
   input.formulaDependencies.coalComponents.forEach((item, index) => assertDependency(item, 'COAL', `Batubara component ${index + 1}`));
   input.formulaDependencies.coalInboundComponents.forEach((item, index) => assertDependency(item, 'COAL', `Batubara Inbound component ${index + 1}`));
-  input.formulaDependencies.oaComponents.forEach((item, index) => assertDependency(item, ['OA_STAT', 'CC_PASAR'], `OA component ${index + 1}`, item.sourceReference?.absentTreatedAsZero === true));
-  if (!input.formulaDependencies.oaComponents.some((item) => item.logicalSourceCode === 'OA_STAT')) throw new Error('OA_7000_EXISTING requires OA_STAT lineage.');
+  const authoritativeRincian = input.formulaDependencies.oaComponents.some((item) => item.logicalSourceCode === 'AUDIT_RINCIAN');
+  if (authoritativeRincian) {
+    if (input.formulaDependencies.oaComponents.some((item) => item.logicalSourceCode !== 'AUDIT_RINCIAN')) throw new Error('OA_7000_EXISTING authoritative Rincian lineage must not be mixed with legacy OA sources.');
+    input.formulaDependencies.oaComponents.forEach((item, index) => assertDependency(item, 'AUDIT_RINCIAN', `OA authoritative Rincian component ${index + 1}`));
+  } else {
+    input.formulaDependencies.oaComponents.forEach((item, index) => assertDependency(item, ['OA_STAT', 'CC_PASAR'], `OA component ${index + 1}`, item.sourceReference?.absentTreatedAsZero === true));
+    if (!input.formulaDependencies.oaComponents.some((item) => item.logicalSourceCode === 'OA_STAT')) throw new Error('OA_7000_EXISTING legacy fallback requires OA_STAT lineage.');
+  }
 }
 
 export function calculateCompany7000(input: Company7000Input) {

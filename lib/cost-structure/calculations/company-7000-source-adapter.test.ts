@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Prisma } from '@prisma/client';
 import { calculateCompany7000 } from './company-7000';
-import { buildCompany7000Input, deriveCompany7000TotalHpp, type AdapterMapping, type AdapterSourceRow } from './company-7000-source-adapter';
+import { buildCompany7000Input, deriveCompany7000OaFromRincian, deriveCompany7000TotalHpp, type AdapterMapping, type AdapterSourceRow } from './company-7000-source-adapter';
 import type { Company7000NatureTarget } from './types';
 
 const D = (value: Prisma.Decimal.Value) => new Prisma.Decimal(value);
@@ -38,7 +38,7 @@ const natures: Company7000NatureTarget[] = [
 let nextId = 1000;
 const row = (source: string, coaCode: string | null, amount: string | null, sourceRowNumber: number, rawData: Record<string, unknown> = {}, coaId?: number | null): AdapterSourceRow => ({
   id: nextId++, uploadId: 77, uploadVersion: 1, logicalSourceCode: source, sourceRowNumber,
-  coaId: coaId === undefined ? (coaCode && /^\d{8}$/.test(coaCode) ? Number(coaCode.slice(-5)) + 100 : null) : coaId,
+  coaId: coaId === undefined ? (coaCode && /^\d{8}$/.test(coaCode) ? Number(coaCode) : null) : coaId,
   coaCode, description: coaCode, amount: amount === null ? null : D(amount), rawData,
 });
 const mappings: AdapterMapping[] = [];
@@ -156,4 +156,59 @@ test('adapter still fails closed when required OA summary component is missing',
   const value = fixture();
   value.rows = value.rows.filter((item) => !(item.logicalSourceCode === 'OA_STAT' && (item.rawData as Record<string, unknown>).ROLE_GL === '68140005' && (item.rawData as Record<string, unknown>).ROLE === 'SUMMARY'));
   assert.throws(() => buildCompany7000Input(value), /68140005 SUMMARY source component is missing/);
+});
+
+
+test('Company 7000 authoritative Rincian OA reproduces Jan-Jun regression values and July control exactly', () => {
+  const cases = [
+    { period: 3, values: ['3716214178', '10094520554', '14452383785', '-61269091'], expected: '28201849426.00' },
+    { period: 5, values: ['2482012325', '33284583512', '32027815656', '103007785'], expected: '67897419278.00' },
+    { period: 6, values: ['2715416078', '31848948493', '28806721700', '103007785'], expected: '63474094056.00' },
+    { period: 7, values: ['1488708636', '36586156368', '33890854236', '103007785'], expected: '72068727025.00' },
+  ];
+  for (const item of cases) {
+    nextId = 9000 + item.period * 100;
+    const rows = [
+      row('AUDIT_RINCIAN', null, null, 315, { COLUMN_1: '68110001', COLUMN_5: item.values[0] }, null),
+      row('AUDIT_RINCIAN', null, null, 339, { COLUMN_1: '68140005', COLUMN_5: item.values[1] }, null),
+      row('AUDIT_RINCIAN', null, null, 340, { COLUMN_1: '68140006', COLUMN_5: item.values[2] }, null),
+      row('AUDIT_RINCIAN', null, null, 350, { COLUMN_1: '68170002', COLUMN_5: item.values[3] }, null),
+      row('AUDIT_RINCIAN', null, null, 351, { COLUMN_1: '68180001', COLUMN_5: '' }, null),
+    ];
+    const derived = deriveCompany7000OaFromRincian(rows);
+    assert.ok(derived, `period ${item.period} authoritative OA should be detected`);
+    assert.equal(derived.components[0].amount.toFixed(2), item.expected, `period ${item.period}`);
+    assert.equal(derived.components[0].logicalSourceCode, 'AUDIT_RINCIAN');
+    assert.equal(derived.components[0].sourceReference?.authoritativeRange, 'rincian biaya!F315:F395');
+  }
+});
+
+test('adapter prefers authoritative Rincian OA for formula and HPP allocation while retaining derivative isolation', () => {
+  const value = fixture();
+  value.rows.push(
+    row('AUDIT_RINCIAN', null, null, 315, { COLUMN_1: '68110001', COLUMN_5: '12' }, null),
+    row('AUDIT_RINCIAN', null, null, 339, { COLUMN_1: '68140005', COLUMN_5: '7' }, null),
+    row('AUDIT_RINCIAN', null, null, 340, { COLUMN_1: '68140006', COLUMN_5: '8' }, null),
+    row('AUDIT_RINCIAN', null, null, 350, { COLUMN_1: '68170002', COLUMN_5: '20' }, null),
+  );
+  const input = buildCompany7000Input(value);
+  assert.deepEqual(input.formulaDependencies.oaComponents.map((item) => item.logicalSourceCode), ['AUDIT_RINCIAN']);
+  const result = calculateCompany7000(input);
+  assert.equal(result.formulaResults.oa.toFixed(2), '47.00');
+  const expected = new Map([['68110001', '88.00'], ['68140005', '7.00'], ['68140006', '12.00'], ['68170002', '10.00']]);
+  for (const [coa, amount] of expected) {
+    const line = input.sourceLines.find((item) => item.ruleCode === 'BASE_HPP_BY_COA_7000' && item.coaCode === coa);
+    assert.ok(line, `missing authoritative HPP allocation line ${coa}`);
+    assert.equal(line.amount.toFixed(2), amount);
+    assert.equal(line.sourceReference?.pasarAllocationSourceLogicalCode, 'AUDIT_RINCIAN');
+  }
+});
+
+test('authoritative Rincian OA fails closed when a non-zero authoritative row cannot be assigned to an 8-digit COA', () => {
+  nextId = 9900;
+  const rows = [
+    row('AUDIT_RINCIAN', null, null, 315, { COLUMN_1: '68110001', COLUMN_5: '1' }, null),
+    row('AUDIT_RINCIAN', null, null, 316, { COLUMN_1: 'TOTAL', COLUMN_5: '2' }, null),
+  ];
+  assert.throws(() => deriveCompany7000OaFromRincian(rows), /non-zero amount without an 8-digit COA/);
 });

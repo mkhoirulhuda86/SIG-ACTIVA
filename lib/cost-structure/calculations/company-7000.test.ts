@@ -86,9 +86,19 @@ test('formula dependencies fail closed when source contract or lineage is missin
   const missingCoal = golden(); missingCoal.formulaDependencies.coalComponents = [];
   assert.throws(() => calculateCompany7000(missingCoal), /exactly two verified COAL components/);
   const wrongSource = golden(); wrongSource.formulaDependencies.oaComponents[0].logicalSourceCode = 'CC_PASAR';
-  assert.throws(() => calculateCompany7000(wrongSource), /must resolve from OA_STAT/);
+  assert.throws(() => calculateCompany7000(wrongSource), /legacy fallback requires OA_STAT lineage/);
   const missingLineage = golden(); missingLineage.formulaDependencies.cogsMortar.sourceRowIds = [];
   assert.throws(() => calculateCompany7000(missingLineage), /requires source-row lineage/);
 });
 
 test('identical Company 7000 reruns are deterministic', () => assert.deepEqual(calculateCompany7000(golden()), calculateCompany7000(golden())));
+
+
+test('engine accepts authoritative AUDIT_RINCIAN OA lineage and rejects mixed authoritative/legacy OA lineage', () => {
+  const authoritative = golden();
+  authoritative.formulaDependencies.oaComponents = [dep('72068727025', 'AUDIT_RINCIAN', [930, 931, 932, 933])];
+  assert.equal(calculateCompany7000(authoritative).formulaResults.oa.toFixed(2), '72068727025.00');
+  const mixed = golden();
+  mixed.formulaDependencies.oaComponents = [dep('1', 'AUDIT_RINCIAN', [940]), dep('2', 'OA_STAT', [941])];
+  assert.throws(() => calculateCompany7000(mixed), /must not be mixed/);
+});
