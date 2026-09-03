@@ -1,20 +1,28 @@
 name: Verify Phase D zero warning
+
 on:
   push:
-    branches: [fix/phase-d-zero-warning-ui]
+    branches:
+      - fix/phase-d-zero-warning-ui
+
 permissions:
   contents: write
+
 jobs:
-  verify:
-    runs-on: ubuntu-latest
+  patch-test-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Apply source patch
         shell: bash
         run: |
+          set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
@@ -58,8 +66,8 @@ jobs:
           );
         }
 """
-          if old not in s:
-              raise SystemExit('service replacement target not found')
+          if s.count(old) != 1:
+              raise SystemExit('expected one service mapping issue block')
           service.write_text(s.replace(old, new, 1))
 
           ui = Path('app/cost-structure/upload/[id]/phase-d-workspace.tsx')
@@ -79,10 +87,9 @@ function amountIsZero(value: string): boolean {
   return Number.isFinite(amount) && amount === 0;
 }
 """
-          if old not in s:
-              raise SystemExit('ui helper replacement target not found')
+          if s.count(old) != 1:
+              raise SystemExit('expected one amount helper block')
           s = s.replace(old, new, 1)
-
           old = """  const nonBlockingUnmapped = useMemo(
     () => unmappedItems.filter((item) => !amountIsBlocking(item.totalAmount)),
     [unmappedItems]
@@ -97,33 +104,38 @@ function amountIsZero(value: string): boolean {
     [unmappedItems]
   );
 """
-          if old not in s:
-              raise SystemExit('ui queue replacement target not found')
+          if s.count(old) != 1:
+              raise SystemExit('expected one non-blocking queue block')
           s = s.replace(old, new, 1)
-
           old = """                {nonBlockingUnmapped.length > 0 && <div className=\"rounded-lg bg-muted p-3 text-sm text-muted-foreground\">{nonBlockingUnmapped.length} COA masih UNMAPPED dengan total absolut ≤ Rp1. Item de-minimis ini tetap tercatat untuk audit tetapi tidak memblokir rekonsiliasi.</div>}
 """
           new = """                {deMinimisUnmapped.length > 0 && <div className=\"rounded-lg bg-muted p-3 text-sm text-muted-foreground\">{deMinimisUnmapped.length} COA masih UNMAPPED dengan total non-zero absolut ≤ Rp1. Item de-minimis ini tetap tercatat untuk audit tetapi tidak memblokir rekonsiliasi.</div>}
                 {zeroUnmapped.length > 0 && <div className=\"rounded-lg bg-muted/60 p-3 text-sm text-muted-foreground\">{zeroUnmapped.length} COA bernilai tepat Rp0 hanya dipertahankan sebagai audit evidence. Item Rp0 bukan error, bukan de-minimis exception, dan tidak memerlukan mapping manual.</div>}
 """
-          if old not in s:
-              raise SystemExit('ui banner replacement target not found')
+          if s.count(old) != 1:
+              raise SystemExit('expected one non-blocking banner')
           ui.write_text(s.replace(old, new, 1))
           PY
           git diff --check
+          git diff -- lib/cost-structure/reconciliation/service.ts 'app/cost-structure/upload/[id]/phase-d-workspace.tsx'
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Targeted tests
-        run: node --import tsx --test lib/cost-structure/reconciliation/reconcile-cc-group.test.ts lib/cost-structure/reconciliation/mapping-completeness.test.ts lib/cost-structure/reconciliation/issue-batch.test.ts
-      - name: Changed-file lint
-        run: npx eslint 'lib/cost-structure/reconciliation/service.ts' 'app/cost-structure/upload/[id]/phase-d-workspace.tsx'
-      - name: TypeScript
-        run: npx tsc --noEmit
-      - name: Commit verified source
+      - name: Verify patch
         shell: bash
         run: |
-          git config user.name 'hudavariausaha'
-          git config user.email 'huda.variausaha@gmail.com'
+          set -euo pipefail
+          npx eslint lib/cost-structure/reconciliation/service.ts 'app/cost-structure/upload/[id]/phase-d-workspace.tsx'
+          export TS_NODE_COMPILER_OPTIONS='{"module":"CommonJS","moduleResolution":"node"}'
+          node -r ts-node/register --test lib/cost-structure/reconciliation/reconcile-cc-group.test.ts
+          node -r ts-node/register --test lib/cost-structure/reconciliation/mapping-completeness.test.ts
+          node -r ts-node/register --test lib/cost-structure/reconciliation/issue-batch.test.ts
+          npx tsc --noEmit
+      - name: Commit verified source change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add lib/cost-structure/reconciliation/service.ts 'app/cost-structure/upload/[id]/phase-d-workspace.tsx'
           git commit -m 'fix(cost): distinguish zero-value mapping evidence'
           git push origin HEAD:fix/phase-d-zero-warning-ui
