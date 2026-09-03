@@ -1,6 +1,7 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
 import { getAuditSnapshotReadiness } from '@/lib/cost-structure/audit-hydration/readiness';
+import { getCurrentEngine1RuleSetVersion } from '@/lib/cost-structure/calculations/rule-set';
 import { reconcileCostStructure } from '@/lib/cost-structure/finalization/service';
 import { backfillAuthoritativeBaselineMappings } from '@/lib/cost-structure/mappings/authoritative-baseline-backfill';
 import { backfillDeterministicFamilyMappings } from '@/lib/cost-structure/mappings/family-mapping-backfill';
@@ -22,7 +23,7 @@ export async function getCostStructureProcessStatus(uploadId: number): Promise<C
       period: { include: { company: { select: { companyCode: true } }, activeCalculationRun: { include: { results: { where: { resultType: 'CONTROL' }, select: { resultCode: true, reconciliationDifference: true, reconciliationStatus: true } } } } } },
       validationIssues: { where: { resolved: false, severity: 'ERROR' }, orderBy: { createdAt: 'asc' }, select: { issueCode: true, message: true } },
       sourceRows: { where: { mappingStatus: { notIn: ['UNMAPPED', 'AUDIT_ONLY'] } }, take: 1, select: { id: true } },
-      calculationRuns: { orderBy: { runNumber: 'desc' }, take: 1, select: { uploadId: true, status: true, errorMessage: true } },
+      calculationRuns: { orderBy: { runNumber: 'desc' }, take: 1, select: { uploadId: true, status: true, errorMessage: true, ruleSetVersion: true, completedAt: true } },
     },
   });
   if (!upload) throw new CostStructureProcessNotFoundError('Upload tidak ditemukan.');
@@ -59,6 +60,11 @@ export async function getCostStructureProcessStatus(uploadId: number): Promise<C
   const structuralIssues = upload.validationIssues.filter((issue) => !phaseDResolvableIssueCodes.has(issue.issueCode));
   const phaseDStarted = upload.sourceRows.length > 0 || upload.validationIssues.some((issue) => phaseDProducedIssueCodes.has(issue.issueCode));
   const activeRun = upload.period.activeCalculationRun;
+  const currentRuleSetVersion = getCurrentEngine1RuleSetVersion(upload.period.company.companyCode);
+  const activeRequiresRecalculation = Boolean(activeRun?.status === 'SUCCESS' && (
+    activeRun.ruleSetVersion !== currentRuleSetVersion ||
+    (upload.period.reopenedAt && (!activeRun.completedAt || activeRun.completedAt < upload.period.reopenedAt))
+  ));
   const postCheckBlockers = activeRun?.status === 'SUCCESS'
     ? activeRun.results.filter((control) => control.reconciliationStatus !== 'RECONCILED').map((control) => ({ code: control.resultCode, message: `${control.resultCode} belum reconciled (difference ${control.reconciliationDifference?.toString() ?? 'N/A'}).` }))
     : [];
@@ -74,7 +80,21 @@ export async function getCostStructureProcessStatus(uploadId: number): Promise<C
     reconciliationBlockers: phaseDStarted ? report.blockers.map((message) => ({ code: 'RECONCILIATION_BLOCKER', message })) : [],
     auditReady: audit.ready,
     auditMissing: audit.missing,
-    calculation: activeRun ? { status: activeRun.status, errorMessage: activeRun.errorMessage, belongsToUpload: activeRun.uploadId === uploadId } : latestRun ? { status: latestRun.status, errorMessage: latestRun.errorMessage, belongsToUpload: latestRun.uploadId === uploadId } : null,
+    calculation: activeRun ? {
+      status: activeRun.status,
+      errorMessage: activeRun.errorMessage,
+      belongsToUpload: activeRun.uploadId === uploadId,
+      requiresRecalculation: activeRequiresRecalculation,
+      runRuleSetVersion: activeRun.ruleSetVersion,
+      currentRuleSetVersion,
+    } : latestRun ? {
+      status: latestRun.status,
+      errorMessage: latestRun.errorMessage,
+      belongsToUpload: latestRun.uploadId === uploadId,
+      requiresRecalculation: latestRun.status === 'SUCCESS' && latestRun.ruleSetVersion !== currentRuleSetVersion,
+      runRuleSetVersion: latestRun.ruleSetVersion,
+      currentRuleSetVersion,
+    } : null,
     postCheckBlockers,
   };
   return deriveProcessStatus(snapshot);
