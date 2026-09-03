@@ -34,53 +34,36 @@ test('COM-001 keeps separate MOM YOY YTD reasons', () => {
   assert.deepEqual(['MOM', 'YOY', 'YTD'].map((comparison) => save(null, comparison, `reason-${comparison}`).reason), ['reason-MOM', 'reason-YOY', 'reason-YTD']);
 });
 
-test('COM-002 initial DRAFT saves again with monotonic append-only history then submits', () => {
+test('direct save is append-only and remains editable without approval', () => {
   let row = save(null, 'MOM', 'reason');
   row = save(row, 'MOM', 'revised');
-  row = act(row, 'SUBMIT');
-  assert.equal(row.status, 'SUBMITTED');
-  assert.deepEqual(row.history, ['DRAFT', 'DRAFT', 'SUBMITTED']);
-  assert.equal(row.version, 3);
-  assert.deepEqual(row.audits, ['SAVE_COMMENTARY', 'SAVE_COMMENTARY', 'SUBMIT_COMMENTARY']);
+  assert.equal(row.status, 'DRAFT');
+  assert.deepEqual(row.history, ['DRAFT', 'DRAFT']);
+  assert.equal(row.version, 2);
+  assert.deepEqual(row.audits, ['SAVE_COMMENTARY', 'SAVE_COMMENTARY']);
 });
 
-test('COM-003 return requires note and writes audit/history', () => {
+test('legacy submitted/reviewed states can be replaced by a direct save', () => {
+  const submitted = act(save(null, 'MOM', 'reason'), 'SUBMIT');
+  const reviewed = act(submitted, 'REVIEW');
+  assert.equal(save(submitted, 'MOM', 'edited after submit').status, 'DRAFT');
+  assert.equal(save(reviewed, 'MOM', 'edited after legacy review').status, 'DRAFT');
+});
+
+test('save requires nonblank commentary', () => {
+  assert.throws(() => save(null, 'MOM', ''), /nonblank commentary/);
+});
+
+test('legacy maker/checker transitions remain audit-compatible but are not required by current UI', () => {
   const submitted = act(save(null, 'MOM', 'reason'), 'SUBMIT');
   assert.throws(() => act(submitted, 'RETURN', 2, ''));
-  const returned = act(submitted, 'RETURN');
-  assert.equal(returned.status, 'RETURNED');
-  assert.equal(returned.audits.at(-1), 'RETURN_COMMENTARY');
-});
-
-test('COM-003 maker cannot return own submitted commentary', () => {
-  const submitted = act(save(null, 'MOM', 'reason'), 'SUBMIT');
   assert.throws(() => act(submitted, 'RETURN', 1), /Maker\/checker/);
   assert.equal(act(submitted, 'RETURN', 2).status, 'RETURNED');
+  assert.throws(() => act(submitted, 'REVIEW', 1), /Maker/);
+  assert.equal(act(submitted, 'REVIEW', 2).status, 'REVIEWED');
 });
 
-test('COM-004 returned must save draft before resubmit and retains versions', () => {
-  let row = act(act(save(null, 'MOM', 'reason'), 'SUBMIT'), 'RETURN');
-  assert.throws(() => act(row, 'SUBMIT'));
-  row = save(row, 'MOM', 'fixed');
-  row = act(row, 'SUBMIT');
-  assert.deepEqual(row.history, ['DRAFT', 'SUBMITTED', 'RETURNED', 'DRAFT', 'SUBMITTED']);
-});
-
-test('COM-005 actual maker user id cannot review own commentary', () => {
-  const row = act(save(null, 'MOM', 'reason'), 'SUBMIT');
-  assert.throws(() => act(row, 'REVIEW', 1), /Maker/);
-  assert.equal(act(row, 'REVIEW', 2).audits.at(-1), 'REVIEW_COMMENTARY');
-});
-
-test('SUBMITTED and REVIEWED are immutable through save and invalid transitions fail', () => {
-  const submitted = act(save(null, 'MOM', 'reason'), 'SUBMIT');
-  assert.throws(() => save(submitted, 'MOM', 'edit'));
-  const reviewed = act(submitted, 'REVIEW');
-  assert.throws(() => save(reviewed, 'MOM', 'edit'));
-  assert.throws(() => act(reviewed, 'RETURN'));
-});
-
-test('submit requires nonblank reason and calculated item has no fake COA', () => {
-  assert.throws(() => act(save(null, 'MOM', ''), 'SUBMIT'));
-  assert.equal(save(null, 'MOM', 'calculated explanation', null).coaId, null);
+test('COA commentary remains a real target with no fabricated COA on non-COA rows', () => {
+  assert.equal(save(null, 'MOM', 'nature explanation', null).coaId, null);
+  assert.equal(save(null, 'MOM', 'coa explanation', 123).coaId, 123);
 });
