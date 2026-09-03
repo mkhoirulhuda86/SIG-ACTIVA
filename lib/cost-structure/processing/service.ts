@@ -70,7 +70,7 @@ export async function getCostStructureProcessStatus(uploadId: number): Promise<C
     uploadStatus: upload.status,
     periodStatus: upload.period.status,
     validationBlockers: structuralIssues.map(issueBlocker),
-    reconciliationReady: report.ready,
+    reconciliationReady: report.ready && ['SOURCE_RECONCILED', 'CALCULATED', 'COST_STRUCTURE_RECONCILED', 'FINALIZED'].includes(upload.period.status),
     reconciliationBlockers: phaseDStarted ? report.blockers.map((message) => ({ code: 'RECONCILIATION_BLOCKER', message })) : [],
     auditReady: audit.ready,
     auditMissing: audit.missing,
