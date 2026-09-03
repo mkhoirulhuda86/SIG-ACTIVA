@@ -128,4 +128,30 @@ describe('parseWorkbook raw support-source lineage', () => {
     assert.equal(parsed.rows.find((row) => row.logicalSourceCode === 'TB' && row.coaCodeRaw === '61110002')?.amount, '5');
     assert.equal(parsed.rows.some((row) => row.logicalSourceCode === 'TB' && row.sourceRowNumber === 3), false);
   });
+
+  it('skips a repeated SAP header and prefers authoritative raw columns over CE/Act Amt helpers', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const tb = workbook.addWorksheet('tb');
+    tb.addRows([['Account', 'Description', 'Amount'], ['61110002', 'Limestone', 5]]);
+    workbook.addWorksheet('cc_prod');
+    for (const name of ['cc_adm', 'cc pasar']) {
+      const sheet = workbook.addWorksheet(name);
+      for (let i = 1; i < 13; i += 1) sheet.addRow([]);
+      sheet.addRow(['CE', 'Act Amt', 'Group CE', 'Cost Elements', 'Act. Costs']);
+      sheet.addRow(['Cost Ele', 'Act. Costs', 'Group CE', 'Cost Elements', 'Act. Costs']);
+      sheet.addRow(['61110002', 10, '6', '61110002  LIMEST. CONSUMPT.', 10]);
+      sheet.addRow(['Debit', 10, 'D', '*  Debit', 10]);
+    }
+    const parsed = await parseWorkbook(
+      new Uint8Array(await workbook.xlsx.writeBuffer() as ArrayBuffer),
+      '2000'
+    );
+    assert.equal(parsed.issues.some((issue) => issue.issueCode === 'SOURCE_ROW_INVALID_AMOUNT'), false);
+    assert.equal(parsed.issues.some((issue) => issue.issueCode === 'SOURCE_ROW_MISSING_COA'), false);
+    const adum = parsed.rows.filter((row) => row.logicalSourceCode === 'CC_ADUM');
+    assert.equal(adum.some((row) => row.sourceRowNumber === 14), false);
+    assert.equal(adum.find((row) => row.coaCodeRaw === '61110002')?.amount, '10');
+    assert.equal(adum.find((row) => row.descriptionRaw === '*  Debit')?.amount, '10');
+  });
+
 });

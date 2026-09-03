@@ -2,6 +2,7 @@ import 'server-only';
 import { CostMappingAction, CostPeriodStatus, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { isMappingBlockingAmount } from '@/lib/cost-structure/reconciliation/money';
+import { deriveCompany7000CcProdMappingCandidates } from './company-7000-derived-cc-prod';
 import {
   coaFamilyPrefixes,
   exactTargetsAgreeWithFamily,
@@ -78,6 +79,24 @@ export async function backfillDeterministicFamilyMappings(uploadId: number, user
       candidates.set(key, existing);
     }
 
+    // Company 7000 calculation can require a CC_PROD mapping for a COA that exists
+    // only in TB, because base HPP is derived from TB - ADUM - PASAR. Feed those
+    // deterministic residual requirements through the same guarded family inference.
+    if (upload.period.company.companyCode === '7000') {
+      for (const derived of deriveCompany7000CcProdMappingCandidates(upload.sourceRows)) {
+        const key = candidateKey('CC_PROD', derived.coaCode);
+        const existing = candidates.get(key);
+        if (!existing || isMappingBlockingAmount(derived.total.toString())) {
+          candidates.set(key, {
+            source: 'CC_PROD',
+            coaCode: derived.coaCode,
+            description: derived.description,
+            total: derived.total,
+          });
+        }
+      }
+    }
+
     for (const [key, item] of [...candidates]) {
       if (!isMappingBlockingAmount(item.total.toString())) candidates.delete(key);
     }
@@ -102,7 +121,7 @@ export async function backfillDeterministicFamilyMappings(uploadId: number, user
       orderBy: { periodStart: 'asc' },
     });
 
-    const occurrence = new Map<string, { earliest: Date | null; touchesFinalized: boolean }>();
+    const occurrence = new Map<string, { earliest: Date | null }>();
     for (const period of yearPeriods) {
       const activeUpload = period.uploads[0];
       if (!activeUpload) continue;
@@ -115,9 +134,11 @@ export async function backfillDeterministicFamilyMappings(uploadId: number, user
       }
       for (const [key, total] of totals) {
         if (!isMappingBlockingAmount(total.toString())) continue;
-        const state = occurrence.get(key) ?? { earliest: null, touchesFinalized: false };
-        if (period.status === CostPeriodStatus.FINALIZED) state.touchesFinalized = true;
-        else if (!state.earliest || period.periodStart < state.earliest) state.earliest = period.periodStart;
+        const state = occurrence.get(key) ?? { earliest: null };
+        if (
+          period.status !== CostPeriodStatus.FINALIZED &&
+          (!state.earliest || period.periodStart < state.earliest)
+        ) state.earliest = period.periodStart;
         occurrence.set(key, state);
       }
     }
@@ -168,8 +189,6 @@ export async function backfillDeterministicFamilyMappings(uploadId: number, user
 
     for (const [key, item] of candidates) {
       const state = occurrence.get(key);
-      if (state?.touchesFinalized) { skipped += 1; continue; }
-
       let coa = await tx.costCoa.findUnique({ where: { coaCode: item.coaCode } });
       if (!coa) {
         coa = await tx.costCoa.create({

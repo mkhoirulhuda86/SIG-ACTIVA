@@ -24,7 +24,21 @@ const text = (value: unknown): string | null => {
   return String(value).trim() || null;
 };
 
-const indexOf = (row: string[], aliases: string[]) => row.findIndex((value) => aliases.includes(normalizeLabel(value)));
+const indexOf = (row: string[], aliases: string[]) => {
+  const normalized = row.map((value) => normalizeLabel(value));
+  for (const alias of aliases) {
+    const index = normalized.indexOf(alias);
+    if (index >= 0) return index;
+  }
+  return -1;
+};
+
+function isRepeatedSemanticHeader(values: unknown[], coaIndex: number, amountIndex: number) {
+  if (coaIndex < 0 || amountIndex < 0) return false;
+  const coaLabel = normalizeLabel(text(values[coaIndex]) ?? '');
+  const amountLabel = normalizeLabel(text(values[amountIndex]) ?? '');
+  return COA.includes(coaLabel) && AMOUNT.includes(amountLabel);
+}
 
 function normalizedControlLabel(value: string | null): string {
   return (value || '')
@@ -243,6 +257,9 @@ export async function parseWorkbook(bytes: Uint8Array, companyCode: string): Pro
     for (let rowIndex = headerRow; rowIndex < sheet.rows.length; rowIndex += 1) {
       const values = sheet.rows[rowIndex] || [];
       if (values.every((value) => text(value) === null)) continue;
+      // Some SAP exports repeat the semantic header immediately below a helper/formula
+      // header. It is layout metadata, not an accounting row.
+      if (isRepeatedSemanticHeader(values, coa, amount)) continue;
 
       const coaRaw = coa >= 0 ? extractCoa(values[coa], coaHeader) : null;
       const descriptionRaw = desc >= 0
