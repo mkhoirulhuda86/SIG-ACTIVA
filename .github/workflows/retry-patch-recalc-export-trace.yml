@@ -1,0 +1,66 @@
+name: Retry recalculate and export traceability patch
+
+on:
+  push:
+    branches:
+      - fix/recalculate-export-traceability
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply embedded patch
+        shell: bash
+        run: |
+          python <<'RUNNER'
+          from pathlib import Path
+          import textwrap
+          workflow = Path('.github/workflows/patch-recalc-export-trace.yml').read_text()
+          marker = "python <<'PY'\n"
+          if marker not in workflow:
+              raise SystemExit('embedded patch marker missing')
+          script = workflow.split(marker, 1)[1].split("\n          PY", 1)[0]
+          exec(compile(textwrap.dedent(script), '<embedded-patch>', 'exec'), {})
+          Path('.github/workflows/retry-patch-recalc-export-trace.yml').unlink()
+          RUNNER
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Targeted regression tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/sig_activa_ci
+        run: >-
+          node -r ts-node/register --test
+          lib/cost-structure/processing/state-machine.test.ts
+          lib/cost-structure/export/service.test.ts
+          lib/cost-structure/parsers/audit-reference.test.ts
+          lib/cost-structure/calculations/company-7000-source-adapter.test.ts
+          lib/cost-structure/calculations/company-7000.test.ts
+      - name: Full cost-structure test suite
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/sig_activa_ci
+        run: npm test
+      - name: Lint
+        run: npm run lint
+      - name: TypeScript check
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/sig_activa_ci
+        run: npx tsc --noEmit
+      - name: Commit tested patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(cost): require recalc and restore export traceability [patched]"
+          git push origin HEAD:fix/recalculate-export-traceability
