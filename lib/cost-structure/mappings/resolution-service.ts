@@ -2,6 +2,7 @@ import 'server-only';
 import { CostMappingAction, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { boundBeforeProtectedPeriod, overlapping, previousDay, validToBeforeNext } from './effective-mapping';
+import { requireLockedCostGroupCode } from './source-cost-group-policy';
 import { refreshPeriodReadiness, runPhaseD } from '../reconciliation/service';
 
 export type ResolveMappingInput = {
@@ -9,7 +10,6 @@ export type ResolveMappingInput = {
   logicalSourceCode: string;
   coaCodeRaw: string;
   mappingAction: 'INCLUDE' | 'EXCLUDE' | 'RECLASS';
-  costGroupId?: number;
   natureId?: number;
   note?: string;
   reason?: string;
@@ -36,15 +36,17 @@ export async function resolveSourceMapping(input: ResolveMappingInput, userId: n
     let group = null;
     let nature = null;
     if (action !== 'EXCLUDE') {
-      if (!input.costGroupId || !input.natureId) throw new Error('Cost Group dan Nature wajib dipilih.');
+      if (!input.natureId) throw new Error('Nature wajib dipilih. Cost Group ditentukan otomatis dari source.');
+      const groupCode = requireLockedCostGroupCode(input.logicalSourceCode);
       group = await tx.costGroup.findFirst({
-        where: { id: input.costGroupId, companyId: upload.period.companyId, active: true },
+        where: { companyId: upload.period.companyId, code: groupCode, active: true },
       });
+      if (!group) throw new Error(`MAPPING_TARGET_INVALID: Cost Group ${groupCode} aktif tidak ditemukan untuk company ini.`);
       nature = await tx.costNature.findFirst({
-        where: { id: input.natureId, costGroupId: input.costGroupId, active: true, calculationType: 'MAPPED' },
+        where: { id: input.natureId, costGroupId: group.id, active: true, calculationType: 'MAPPED' },
       });
-      if (!group || !nature) {
-        throw new Error('MAPPING_TARGET_INVALID: target harus aktif, satu company/group, dan bertipe MAPPED.');
+      if (!nature) {
+        throw new Error(`MAPPING_TARGET_INVALID: Nature harus aktif, bertipe MAPPED, dan berada pada Cost Group ${groupCode}.`);
       }
     }
 
@@ -155,6 +157,7 @@ export async function resolveSourceMapping(input: ResolveMappingInput, userId: n
           sourceLogicalCode: input.logicalSourceCode,
           coaCode: input.coaCodeRaw,
           costGroupId: group?.id ?? null,
+          costGroupCode: group?.code ?? null,
           natureId: nature?.id ?? null,
           mappingAction: action,
           validFrom: effective.toISOString(),
