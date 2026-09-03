@@ -67,11 +67,6 @@ function writeRawMatrix(sheet: ExcelJS.Worksheet, rows: SourceRow[]) {
 
 function writeNormalizedSource(sheet: ExcelJS.Worksheet, rows: SourceRow[]) {
   const rawKeys = [...new Set(rows.flatMap((row) => Object.keys(record(row.rawDataJson))))].filter((key) => !key.startsWith('ROLE_') && !['ROLE', 'COMPANY_CODE', 'POSTING_PERIOD'].includes(key));
-  const columnKeys = rawKeys.filter((key) => columnIndex(key) !== null);
-  if (columnKeys.length) {
-    writeRawMatrix(sheet, rows);
-    return;
-  }
   const preferred = ['Source Row', 'COA', 'Description', 'Amount'];
   const headers = [...preferred, ...rawKeys];
   sheet.addRow(headers);
@@ -214,6 +209,26 @@ function addSourceSheet(workbook: ExcelJS.Workbook, name: string, rows: SourceRo
   if (rows.every((row) => AUDIT_TEMPLATE_CODES.has(row.logicalSourceCode))) writeRawMatrix(sheet, rows); else writeNormalizedSource(sheet, rows);
 }
 
+function uniqueReferenceSheetName(workbook: ExcelJS.Workbook, originalName: string) {
+  const clean = (originalName.trim() || 'reference').slice(0, 31);
+  if (!workbook.getWorksheet(clean)) return clean;
+  for (let index = 1; index < 1000; index += 1) {
+    const suffix = `_${index}`;
+    const candidate = `ref_${clean}`.slice(0, 31 - suffix.length) + suffix;
+    if (!workbook.getWorksheet(candidate)) return candidate;
+  }
+  throw new Error(`Nama worksheet referensi tidak dapat dibuat unik: ${originalName}`);
+}
+
+function addPersistedReferenceSheets(workbook: ExcelJS.Workbook, rows: SourceRow[]) {
+  const grouped = new Map<string, SourceRow[]>();
+  for (const row of rows) grouped.set(row.originalSheetName, [...(grouped.get(row.originalSheetName) ?? []), row]);
+  for (const [originalName, sourceRows] of grouped) {
+    const sheet = workbook.addWorksheet(uniqueReferenceSheetName(workbook, originalName));
+    writeRawMatrix(sheet, sourceRows);
+  }
+}
+
 export async function buildCostStructureExport(periodId: number) {
   const run = await loadExportRun(periodId);
   if (!run) throw new Error('Active SUCCESS calculation run tidak ditemukan.');
@@ -244,12 +259,14 @@ export async function buildCostStructureExport(periodId: number) {
   } else {
     writeCompany2000Si(workbook, run);
     const rincian = workbook.addWorksheet('rincian biaya'); writeRawMatrix(rincian, requireAuditRows(allRows, 'AUDIT_RINCIAN', 'rincian biaya'));
+    addSourceSheet(workbook, 'tb', rowsByCode(allRows, 'TB'), true);
     addSourceSheet(workbook, 'cc prod', rowsByCode(allRows, 'CC_PROD'));
     addSourceSheet(workbook, 'cc ADM', rowsByCode(allRows, 'CC_ADUM'), true);
     addSourceSheet(workbook, 'cc pasar', rowsByCode(allRows, 'CC_PASAR'), true);
     addSourceSheet(workbook, 'cc derivatif', rowsByCode(allRows, 'AUDIT_CC_DRV'));
   }
   writeFormulaAudit(workbook, run);
+  addPersistedReferenceSheets(workbook, rowsByCode(allRows, 'AUDIT_REFERENCE'));
   // Styling is static and style-only; all values above came from the active persisted SUCCESS run.
   applyWorkbookStyleBlueprint(workbook, getWorkbookStyleBlueprint(run.period.company.companyCode));
 

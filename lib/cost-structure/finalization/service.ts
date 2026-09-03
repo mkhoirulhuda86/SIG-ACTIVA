@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { getCurrentEngine1RuleSetVersion } from '@/lib/cost-structure/calculations/rule-set';
 import {
   assertFinalizationReady,
   assertReconciliationReady,
@@ -16,7 +17,7 @@ async function loadSnapshot(periodId: number, db: SnapshotDb = prisma): Promise<
     where: { id: periodId },
     include: {
       company: { select: { companyCode: true } },
-      activeCalculationRun: { select: { id: true, status: true, isActive: true, uploadId: true, upload: { select: { isActiveVersion: true } } } },
+      activeCalculationRun: { select: { id: true, status: true, isActive: true, uploadId: true, ruleSetVersion: true, completedAt: true, upload: { select: { isActiveVersion: true } } } },
     },
   });
   if (!period) return null;
@@ -36,14 +37,20 @@ async function loadSnapshot(periodId: number, db: SnapshotDb = prisma): Promise<
       where: { uploadId, issueCode: { in: ['CC_GROUP_NOT_RECONCILED', 'SOURCE_NOT_RECONCILED'] }, resolved: false },
     }) : 0,
   ]);
-  return {
-    companyCode: period.company.companyCode,
+  const currentRuleSetVersion = getCurrentEngine1RuleSetVersion(period.company.companyCode);
+const runRequiresRecalculation = Boolean(period.activeCalculationRun && (
+  period.activeCalculationRun.ruleSetVersion !== currentRuleSetVersion ||
+  (period.reopenedAt && (!period.activeCalculationRun.completedAt || period.activeCalculationRun.completedAt < period.reopenedAt))
+));
+return {
+  companyCode: period.company.companyCode,
     periodStatus: period.status,
     run: period.activeCalculationRun ? {
       id: period.activeCalculationRun.id,
       status: period.activeCalculationRun.status,
       isActive: period.activeCalculationRun.isActive,
       uploadIsActiveVersion: period.activeCalculationRun.upload.isActiveVersion,
+      requiresRecalculation: runRequiresRecalculation,
     } : null,
     unresolvedErrors,
     sourceReconciled: reconciliationErrors === 0,

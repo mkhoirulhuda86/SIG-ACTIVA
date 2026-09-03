@@ -69,6 +69,7 @@ export interface SheetStyleBlueprint {
 export interface WorkbookStyleBlueprint {
   /** Identifies the template/style dataset without changing the exporter architecture. */
   templateVersion: string;
+  sourceTemplatePeriod?: string;
   companyCode: '2000' | '7000';
   exactTemplateFidelity: boolean;
   sheets: Readonly<Record<string, SheetStyleBlueprint>>;

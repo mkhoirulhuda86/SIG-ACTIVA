@@ -15,7 +15,7 @@ export class FinalizationError extends Error {}
 export type FinalizationSnapshot = {
   companyCode: string;
   periodStatus: string;
-  run: null | { id: number; status: string; isActive: boolean; uploadIsActiveVersion: boolean };
+  run: null | { id: number; status: string; isActive: boolean; uploadIsActiveVersion: boolean; requiresRecalculation?: boolean };
   unresolvedErrors: number;
   sourceReconciled: boolean;
   mappingComplete: boolean;
@@ -42,6 +42,7 @@ export function assertPersistedControlsReady(snapshot: FinalizationSnapshot, all
   if (!snapshot.run || snapshot.run.status !== 'SUCCESS') throw new FinalizationError('Active calculation run harus SUCCESS.');
   if (!snapshot.run.isActive) throw new FinalizationError('Calculation run tidak aktif.');
   if (!snapshot.run.uploadIsActiveVersion) throw new FinalizationError('Active calculation run masih terikat ke upload versi lama. Proses upload aktif harus dihitung terlebih dahulu.');
+  if (snapshot.run.requiresRecalculation) throw new FinalizationError('Active calculation run stale; jalankan Recalculate sebelum reconciliation/finalization.');
   if (snapshot.unresolvedErrors > 0) throw new FinalizationError('Masih ada validation ERROR yang belum diselesaikan.');
   if (!snapshot.sourceReconciled) throw new FinalizationError('Source reconciliation belum lulus.');
   if (!snapshot.mappingComplete) throw new FinalizationError('Mapping completeness belum lulus.');

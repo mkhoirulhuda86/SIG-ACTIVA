@@ -140,6 +140,7 @@ function requireSheet(name: string) {
 export const company2000ExactStyleBlueprint: WorkbookStyleBlueprint = {
   companyCode: '2000',
   templateVersion: 'company-2000-jul-2026-active-upload-v2-exact-style-v1',
+  sourceTemplatePeriod: '2026-07',
   exactTemplateFidelity: true,
   sheets: {
     SI: convertSheet(requireSheet('SI'), []),

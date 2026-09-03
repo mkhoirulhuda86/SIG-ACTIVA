@@ -13,7 +13,7 @@ const AUDIT_ONLY = new Set<LogicalSourceCode>(['AUDIT_SI', 'AUDIT_GHOPO', 'AUDIT
 const CONTROL_LABELS = new Set(['TOTAL', 'GRAND TOTAL', 'SUBTOTAL', 'DEBIT', 'OVER/UNDERABSORPTION', 'OVER/UND']);
 
 type SheetMatrix = unknown[][];
-type MatchedSheet = { name: string; rows: SheetMatrix };
+type MatchedSheet = { name: string; rows: SheetMatrix; startRow: number };
 
 const text = (value: unknown): string | null => {
   if (value == null) return null;
@@ -97,6 +97,11 @@ function sheetMatrix(workbook: XLSX.WorkBook, sheetName: string): SheetMatrix {
   }) as SheetMatrix;
 }
 
+function sheetStartRow(workbook: XLSX.WorkBook, sheetName: string): number {
+  const ref = workbook.Sheets[sheetName]?.['!ref'];
+  return ref ? XLSX.utils.decode_range(ref).s.r + 1 : 1;
+}
+
 function hasMeaningfulRows(rows: SheetMatrix): boolean {
   return rows.some((row) => row.some((value) => text(value) !== null));
 }
@@ -106,6 +111,7 @@ function preserveRawRows(sheet: MatchedSheet, code: LogicalSourceCode): ParsedSo
   let semanticHeaders: string[] = [];
   let oaRole: 'SUMMARY' | 'DERIVATIVE' | 'TRANSACTION' = 'SUMMARY';
   sheet.rows.forEach((values, index) => {
+    const sourceRowNumber = sheet.startRow + index;
     if (values.every((value) => text(value) === null)) return;
     const rawDataJson: Record<string, string | null> = Object.fromEntries(values.map((value, columnIndex) => [`COLUMN_${columnIndex + 1}`, text(value)]));
     const labels = values.map((value) => normalizeLabel(text(value) ?? ''));
@@ -154,7 +160,7 @@ function preserveRawRows(sheet: MatchedSheet, code: LogicalSourceCode): ParsedSo
       const costElement = rawDataJson['COST ELEMENT TEXT'] ?? rawDataJson['COST ELEMENT'];
       if (costElement) rawDataJson['COST ELEMENT TEXT'] = costElement;
     }
-    if (code === 'CLINKER_PURCHASE' && index + 1 >= 63 && index + 1 <= 69 && rawDataJson.COLUMN_6 === null) {
+    if (code === 'CLINKER_PURCHASE' && sourceRowNumber >= 63 && sourceRowNumber <= 69 && rawDataJson.COLUMN_6 === null) {
       // The locked workbook rule is Excel SUM(F63:F69): the seven rows must exist, while blank
       // cells inside that range have Excel's numeric-zero semantics.
       rawDataJson.COLUMN_6 = '0';
@@ -162,7 +168,7 @@ function preserveRawRows(sheet: MatchedSheet, code: LogicalSourceCode): ParsedSo
     rows.push({
       logicalSourceCode: code,
       originalSheetName: sheet.name,
-      sourceRowNumber: index + 1,
+      sourceRowNumber,
       coaCodeRaw: null,
       descriptionRaw: null,
       amountRaw: null,
@@ -185,7 +191,7 @@ export async function parseWorkbook(bytes: Uint8Array, companyCode: string): Pro
     if (normalizeLabel(sheetName) === 'META') continue;
     const definition = detectSource(sheetName, companyCode);
     if (!definition) continue;
-    const sheet = { name: sheetName, rows: sheetMatrix(workbook, sheetName) };
+    const sheet = { name: sheetName, rows: sheetMatrix(workbook, sheetName), startRow: sheetStartRow(workbook, sheetName) };
     matched.set(definition.code, [...(matched.get(definition.code) || []), sheet]);
   }
 
@@ -284,7 +290,7 @@ export async function parseWorkbook(bytes: Uint8Array, companyCode: string): Pro
       rows.push({
         logicalSourceCode: definition.code,
         originalSheetName: sheet.name,
-        sourceRowNumber: rowIndex + 1,
+        sourceRowNumber: sheet.startRow + rowIndex,
         coaCodeRaw: coaRaw,
         descriptionRaw,
         amountRaw,
@@ -301,13 +307,25 @@ export async function parseWorkbook(bytes: Uint8Array, companyCode: string): Pro
       // Report totals/subtotals are intentionally COA-less and must remain available for Phase D
       // reconciliation. They are not malformed detail rows.
       if (COA_REQUIRED.has(definition.code) && !coaRaw && !controlRow) {
-        issues.push({ issueCode: 'SOURCE_ROW_MISSING_COA', severity: 'ERROR', message: `COA kosong pada ${sheet.name} baris ${rowIndex + 1}.`, rowIndex: rows.length - 1 });
+        issues.push({ issueCode: 'SOURCE_ROW_MISSING_COA', severity: 'ERROR', message: `COA kosong pada ${sheet.name} baris ${sheet.startRow + rowIndex}.`, rowIndex: rows.length - 1 });
       }
       if (amountRaw !== null && parsedAmount === null) {
         issues.push({ issueCode: 'SOURCE_ROW_INVALID_AMOUNT', severity: 'ERROR', message: `Amount tidak valid pada ${sheet.name} baris ${rowIndex + 1}.`, rowIndex: rows.length - 1 });
       }
     }
     sources.push({ code: definition.code, sheetName: sheet.name, rowCount: count });
+  }
+
+  // Preserve every other non-empty worksheet as audit-only reference data. This is a
+  // second pass on purpose: known Engine-1 parsing above remains byte-for-byte behaviorally
+  // unchanged, while export/audit can still reproduce workbook reference sheets.
+  for (const sheetName of workbook.SheetNames) {
+    if (normalizeLabel(sheetName) === 'META' || detectSource(sheetName, companyCode)) continue;
+    const sheet = { name: sheetName, rows: sheetMatrix(workbook, sheetName), startRow: sheetStartRow(workbook, sheetName) };
+    if (!hasMeaningfulRows(sheet.rows)) continue;
+    const referenceRows = preserveRawRows(sheet, 'AUDIT_REFERENCE');
+    rows.push(...referenceRows);
+    sources.push({ code: 'AUDIT_REFERENCE', sheetName: sheet.name, rowCount: referenceRows.length });
   }
 
   return { rows, issues, sources };

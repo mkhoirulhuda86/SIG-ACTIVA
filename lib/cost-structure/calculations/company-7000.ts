@@ -3,7 +3,7 @@ import { isMappingBlockingAmount } from '../reconciliation/money';
 import { DERIVATIVE_SOURCE_CODES } from './constants';
 import type { Company7000GroupCode, Company7000NatureTarget, EngineActualLine, FormulaDependency, ResolvedAdjustment, ResolvedSourceLine } from './types';
 
-export const ENGINE1_7000_RULE_SET_VERSION = 'ENGINE1_7000_V1';
+export const ENGINE1_7000_RULE_SET_VERSION = 'ENGINE1_7000_V2';
 export const COMPANY_7000_GROUPS = ['HPP', 'ADUM', 'PASAR'] as const;
 export const COMPANY_7000_MAPPED_SOURCES = ['CC_PROD', 'CC_ADUM', 'CC_PASAR', 'CC_WHRPG', 'CLINKER_PURCHASE', 'SOLAR_PP_ORDER'] as const;
 export const COMPANY_7000_RULES = {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getCurrentUserRole, isAdmin } from '@/app/utils/rolePermissions';
 import { costStructureProcessApi, ProcessApiError } from './api';
 import { shouldAttemptMappingRecovery, shouldAutoAdvance } from './presentation';
 import { ProcessTracker } from './process-tracker';
@@ -17,6 +18,7 @@ export default function ProcessWorkflow({ uploadId, onProcessChange }: { uploadI
   const [process, setProcess] = useState<CostStructureProcess | null>(null);
   const [error, setError] = useState<WorkflowError | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [admin, setAdmin] = useState(false);
   const [auditMessage, setAuditMessage] = useState('');
   const requestInFlight = useRef(false);
   const networkAttempt = useRef(0);
@@ -65,8 +67,14 @@ export default function ProcessWorkflow({ uploadId, onProcessChange }: { uploadI
     const skipImmediateRecovery = window.sessionStorage.getItem(refreshKey) === '1';
     if (skipImmediateRecovery) window.sessionStorage.removeItem(refreshKey);
     mappingRecoveryAttemptedForUpload.current = skipImmediateRecovery ? uploadId : null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load, uploadId]);
+  useEffect(() => {
+  const role = getCurrentUserRole();
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  setAdmin(role !== null && isAdmin(role));
+}, []);
   useEffect(() => {
     if (!process || requestInFlight.current) return;
 
@@ -127,12 +135,10 @@ export default function ProcessWorkflow({ uploadId, onProcessChange }: { uploadI
 
   if (!process) return <section className="min-w-0 rounded-xl border bg-card p-4 sm:p-6">{error ? <InlineError error={error} retry={load} /> : <p className="flex items-center gap-2 text-sm text-muted-foreground"><span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />Memuat status proses…</p>}</section>;
 
-  const auditStage = process.stages.find((stage) => stage.key === 'AUDIT_READINESS');
-  const auditNeedsPreparation = auditStage?.status === 'NOT_APPLICABLE';
   return <div className="min-w-0 space-y-3">
     <ProcessTracker process={process} submitting={submitting} onRetry={advance} onFinalize={finalize} />
     {process.requiresRecalculation && <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-950"><div className="min-w-0"><p className="font-semibold">Calculation lama harus dihitung ulang</p><p className="mt-1 break-words text-xs">Reopen atau perubahan rule Engine 1 membuat run sebelumnya stale. Reconciliation/finalization ditahan sampai run baru berhasil.</p></div><button type="button" disabled={submitting} onClick={() => void advance()} className="rounded-md bg-red-700 px-3 py-2 font-semibold text-white disabled:opacity-50">{submitting ? 'Menghitung ulang…' : 'Recalculate'}</button></div>}
-    <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3 text-sm"><div className="min-w-0"><p className="font-medium">{auditNeedsPreparation ? 'Audit/reference export belum lengkap' : 'Audit/reference export tersimpan'}</p><p className="mt-1 break-words text-xs text-muted-foreground">Refresh membaca ulang hanya AUDIT_* dan sheet referensi dari workbook authoritative yang hash-nya terverifikasi; Engine 1 dan calculation run tidak diubah.</p></div><button type="button" disabled={submitting} onClick={() => void hydrateAudit()} className="rounded-md border border-primary px-3 py-2 font-medium text-primary disabled:opacity-50">{submitting ? 'Menyiapkan…' : auditNeedsPreparation ? 'Siapkan referensi export' : 'Refresh referensi export'}</button></div>
+    {admin && <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3 text-sm"><div className="min-w-0"><p className="font-medium">Referensi workbook untuk export</p><p className="mt-1 break-words text-xs text-muted-foreground">Refresh membaca ulang hanya AUDIT_* dan sheet referensi dari workbook authoritative yang hash-nya terverifikasi; Engine 1 dan calculation run tidak diubah.</p></div><button type="button" disabled={submitting} onClick={() => void hydrateAudit()} className="rounded-md border border-primary px-3 py-2 font-medium text-primary disabled:opacity-50">{submitting ? 'Menyiapkan…' : 'Refresh referensi export'}</button></div>}
     {auditMessage && <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{auditMessage}</p>}
     {error && <InlineError error={error} retry={advance} />}
   </div>;

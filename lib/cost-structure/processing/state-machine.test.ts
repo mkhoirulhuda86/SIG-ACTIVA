@@ -157,7 +157,10 @@ test('automatic calculation is serialized and skips an existing SUCCESS run for 
   assert.match(service, /runAutomaticCostStructureCalculation\(periodId, uploadId, userId\)/);
   assert.match(service, /deps\.calculate\(before\.periodId, uploadId, userId\)/);
   assert.match(automatic, /pg_advisory_xact_lock/);
-  assert.match(automatic, /activeRun\?\.status === 'SUCCESS' && activeRun\.uploadId === uploadId/);
+  assert.match(automatic, /activeRun\?\.status === 'SUCCESS'/);
+  assert.match(automatic, /activeRun\.uploadId === uploadId/);
+  assert.match(automatic, /activeRun\.ruleSetVersion === currentRuleSetVersion/);
+  assert.match(automatic, /!predatesReopen/);
   assert.match(automatic, /upload\.periodId !== periodId \|\| !upload\.isActiveVersion/);
   assert.match(manualRoute, /runCostStructureCalculation\(id, auth\.user\.uid\)/);
   assert.doesNotMatch(manualRoute, /runAutomaticCostStructureCalculation/);

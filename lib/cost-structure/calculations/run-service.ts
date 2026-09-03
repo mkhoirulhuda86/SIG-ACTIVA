@@ -31,7 +31,7 @@ export async function runCompany7000Calculation(periodId: number, startedById: n
   if (!period) throw new Error('Periode tidak ditemukan.');
   if (period.company.companyCode !== '7000') throw new Error('Company 7000 calculation requires Company 7000.');
   if (period.status === 'FINALIZED') throw new Error('Periode FINALIZED tidak dapat dihitung ulang.');
-  if (!['SOURCE_RECONCILED', 'CALCULATED'].includes(period.status)) throw new Error('Periode belum SOURCE_RECONCILED.');
+  if (!['SOURCE_RECONCILED', 'CALCULATED', 'COST_STRUCTURE_RECONCILED'].includes(period.status)) throw new Error('Periode belum eligible untuk calculation/recalculation.');
   const upload = period.uploads[0];
   if (!upload?.isActiveVersion) throw new Error('Upload aktif untuk periode tidak ditemukan.');
 
@@ -159,7 +159,7 @@ export async function runCompany2000Calculation(periodId: number, startedById: n
   if (!period) throw new Error('Periode tidak ditemukan.');
   if (period.company.companyCode !== '2000') throw new Error('Phase E hanya mendukung Company 2000.');
   if (period.status === 'FINALIZED') throw new Error('Periode FINALIZED tidak dapat dihitung ulang.');
-  if (!['SOURCE_RECONCILED', 'CALCULATED'].includes(period.status)) throw new Error('Periode belum SOURCE_RECONCILED.');
+  if (!['SOURCE_RECONCILED', 'CALCULATED', 'COST_STRUCTURE_RECONCILED'].includes(period.status)) throw new Error('Periode belum eligible untuk calculation/recalculation.');
   const upload = period.uploads[0];
   if (!upload || upload.periodId !== period.id || !upload.isActiveVersion) throw new Error('Upload aktif untuk periode tidak ditemukan.');
   const readiness = await getPhaseDReport(upload.id);

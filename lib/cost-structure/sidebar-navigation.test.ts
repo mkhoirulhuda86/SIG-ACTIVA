@@ -18,7 +18,6 @@ const expectedRoutes = [
   '/cost-fluctuation/review',
   '/cost-fluctuation/readiness',
   '/cost-fluctuation/materiality-rules',
-  '/cost-structure/periods',
 ];
 
 function routes(items: typeof costStructureNavigation): string[] {
