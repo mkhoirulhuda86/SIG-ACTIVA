@@ -30,5 +30,6 @@ export interface CostStructureProcess {
   stages: ProcessStage[];
   canAdvance: boolean;
   canRetry: boolean;
+  requiresRecalculation: boolean;
   readyForFinalization: boolean;
 }
