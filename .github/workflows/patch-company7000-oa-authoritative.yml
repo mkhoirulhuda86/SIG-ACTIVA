@@ -25,13 +25,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Apply OA patch
         run: python3 scripts/patch-company7000-oa-authoritative.py
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Targeted Company 7000 tests
         env:
