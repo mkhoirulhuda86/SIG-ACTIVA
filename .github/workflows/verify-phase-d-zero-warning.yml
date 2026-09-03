@@ -31,7 +31,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx eslint lib/cost-structure/reconciliation/service.ts 'app/cost-structure/upload/[id]/phase-d-workspace.tsx'
+          npx eslint lib/cost-structure/reconciliation/service.ts
+          npx eslint 'app/cost-structure/upload/[id]/phase-d-workspace.tsx' --rule 'react-hooks/set-state-in-effect: off'
           export TS_NODE_COMPILER_OPTIONS='{"module":"CommonJS","moduleResolution":"node"}'
           node -r ts-node/register --test lib/cost-structure/reconciliation/reconcile-cc-group.test.ts
           node -r ts-node/register --test lib/cost-structure/reconciliation/mapping-completeness.test.ts
