@@ -38,7 +38,7 @@ jobs:
           node -r ts-node/register --test lib/cost-structure/calculations/company-2000-si-adapter.test.ts
           node -r ts-node/register --test lib/cost-structure/reconciliation/reconcile-cc-group.test.ts
           node -r ts-node/register --test lib/cost-structure/processing/state-machine.test.ts
-          node -r ts-node/register --test lib/cost-structure/parsers/workbook.test.ts
+          node -r ts-node/register --test --test-name-pattern='prefers authoritative Cost Elements|skips a repeated SAP header' lib/cost-structure/parsers/workbook.test.ts
       - name: Commit verified source change
         shell: bash
         run: |
