@@ -25,7 +25,9 @@ export function friendlyStageError(stage: ProcessStage): { title: string; messag
 }
 
 export function shouldAutoAdvance(process: CostStructureProcess): boolean {
-  return process.canAdvance && process.overallStatus !== 'BLOCKED' && process.overallStatus !== 'FINALIZED';
+  // A stale/reopened calculation must be a deliberate user action. This prevents
+  // the process loop from silently reusing or replacing an accounting run.
+  return process.canAdvance && !process.requiresRecalculation && process.overallStatus !== 'BLOCKED' && process.overallStatus !== 'FINALIZED';
 }
 
 /**
