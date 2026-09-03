@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import CostModuleFrame from '@/app/components/CostModuleFrame';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import ProcessWorkflow from '@/components/cost-structure/process/process-workflow';
+import { getLockedCostGroupCode } from '@/lib/cost-structure/mappings/source-cost-group-policy';
 
 type Item = {
   logicalSourceCode: string;
@@ -25,7 +26,6 @@ type MappingAction = 'INCLUDE' | 'EXCLUDE' | 'RECLASS';
 type MappingDialogState = {
   item: Item;
   action: MappingAction;
-  groupId: string;
   natureId: string;
   reason: string;
 };
@@ -38,6 +38,11 @@ function amountIsBlocking(value: string): boolean {
 function amountIsZero(value: string): boolean {
   const amount = Number(value);
   return Number.isFinite(amount) && amount === 0;
+}
+
+function lockedGroup(groups: Group[] | undefined, logicalSourceCode: string): Group | null {
+  const code = getLockedCostGroupCode(logicalSourceCode);
+  return code ? groups?.find((group) => group.code === code) ?? null : null;
 }
 
 export default function PhaseDWorkspace({ uploadId }: { uploadId: number }) {
@@ -75,32 +80,22 @@ export default function PhaseDWorkspace({ uploadId }: { uploadId: number }) {
   }
 
   function openMappingDialog(item: Item, action: MappingAction) {
-    const firstGroup = action === 'EXCLUDE' ? null : map?.groups[0] ?? null;
+    const group = action === 'EXCLUDE' ? null : lockedGroup(map?.groups, item.logicalSourceCode);
     setMappingDialog({
       item,
       action,
-      groupId: firstGroup ? String(firstGroup.id) : '',
-      natureId: firstGroup?.natures[0] ? String(firstGroup.natures[0].id) : '',
+      natureId: group?.natures[0] ? String(group.natures[0].id) : '',
       reason: '',
     });
     setError('');
   }
 
-  function updateDialogGroup(groupId: string) {
-    if (!mappingDialog) return;
-    const group = map?.groups.find((item) => String(item.id) === groupId);
-    setMappingDialog({
-      ...mappingDialog,
-      groupId,
-      natureId: group?.natures[0] ? String(group.natures[0].id) : '',
-    });
-  }
-
   async function submitMapping() {
     if (!mappingDialog) return;
-    const { item, action, groupId, natureId, reason } = mappingDialog;
-    if (action !== 'EXCLUDE' && (!groupId || !natureId)) {
-      setError('Cost Group dan Nature wajib dipilih.');
+    const { item, action, natureId, reason } = mappingDialog;
+    const group = action === 'EXCLUDE' ? null : lockedGroup(map?.groups, item.logicalSourceCode);
+    if (action !== 'EXCLUDE' && (!group || !natureId)) {
+      setError('Cost Group source tidak tersedia atau Nature belum dipilih.');
       return;
     }
     if ((action === 'EXCLUDE' || action === 'RECLASS') && !reason.trim()) {
@@ -117,7 +112,6 @@ export default function PhaseDWorkspace({ uploadId }: { uploadId: number }) {
         logicalSourceCode: item.logicalSourceCode,
         coaCodeRaw: item.coaCodeRaw,
         mappingAction: action,
-        costGroupId: action === 'EXCLUDE' ? undefined : Number(groupId),
         natureId: action === 'EXCLUDE' ? undefined : Number(natureId),
         reason: reason.trim(),
         note: reason.trim(),
@@ -164,7 +158,7 @@ export default function PhaseDWorkspace({ uploadId }: { uploadId: number }) {
   );
 
   const selectedGroup = mappingDialog && mappingDialog.action !== 'EXCLUDE'
-    ? map?.groups.find((item) => String(item.id) === mappingDialog.groupId) ?? null
+    ? lockedGroup(map?.groups, mappingDialog.item.logicalSourceCode)
     : null;
 
   return (
@@ -187,8 +181,8 @@ export default function PhaseDWorkspace({ uploadId }: { uploadId: number }) {
         {blockingUnmapped.length > 0 && (
           <div data-cost-motion className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
             <div className="font-semibold">Mapping manual diperlukan untuk {blockingUnmapped.length} COA.</div>
-            <p className="mt-1">Sistem sudah mencoba exact mapping dan family COA deterministik. Item yang tersisa harus dikonfirmasi agar mapping baru menjadi reusable untuk periode berikutnya.</p>
-            <a href="#mapping-detail" className="mt-3 inline-flex rounded-md bg-amber-900 px-3 py-2 font-medium text-white">Buka mapping manual</a>
+            <p className="mt-1">Cost Group dikunci otomatis dari source. User hanya menentukan Nature untuk mapping Include/Reclassify agar tidak terjadi salah grouping.</p>
+            <a href="#mapping-detail" className="mt-3 inline-flex rounded-md bg-red-600 px-3 py-2 font-medium text-white hover:bg-red-700">Buka mapping manual</a>
           </div>
         )}
 
@@ -219,9 +213,9 @@ export default function PhaseDWorkspace({ uploadId }: { uploadId: number }) {
                   item.totalAmount,
                   item.mappingStatus,
                   <span className="flex flex-wrap gap-2" key={`${item.logicalSourceCode}:${item.coaCodeRaw}`}>
-                    <button disabled={busy} onClick={() => openMappingDialog(item, 'INCLUDE')} className="font-medium text-primary hover:underline disabled:opacity-50">Map</button>
-                    <button disabled={busy} onClick={() => openMappingDialog(item, 'EXCLUDE')} className="font-medium text-primary hover:underline disabled:opacity-50">Exclude</button>
-                    <button disabled={busy} onClick={() => openMappingDialog(item, 'RECLASS')} className="font-medium text-primary hover:underline disabled:opacity-50">Reclassify</button>
+                    <button disabled={busy} onClick={() => openMappingDialog(item, 'INCLUDE')} className="font-medium text-red-700 hover:underline disabled:opacity-50">Map</button>
+                    <button disabled={busy} onClick={() => openMappingDialog(item, 'EXCLUDE')} className="font-medium text-red-700 hover:underline disabled:opacity-50">Exclude</button>
+                    <button disabled={busy} onClick={() => openMappingDialog(item, 'RECLASS')} className="font-medium text-red-700 hover:underline disabled:opacity-50">Reclassify</button>
                   </span>,
                 ])} />
               </CardContent>
@@ -259,8 +253,8 @@ export default function PhaseDWorkspace({ uploadId }: { uploadId: number }) {
                   value={mappingDialog.action}
                   onChange={(event) => {
                     const action = event.target.value as MappingAction;
-                    const firstGroup = action === 'EXCLUDE' ? null : map?.groups[0] ?? null;
-                    setMappingDialog({ ...mappingDialog, action, groupId: firstGroup ? String(firstGroup.id) : '', natureId: firstGroup?.natures[0] ? String(firstGroup.natures[0].id) : '' });
+                    const group = action === 'EXCLUDE' ? null : lockedGroup(map?.groups, mappingDialog.item.logicalSourceCode);
+                    setMappingDialog({ ...mappingDialog, action, natureId: group?.natures[0] ? String(group.natures[0].id) : '' });
                   }}
                   className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                 >
@@ -274,9 +268,10 @@ export default function PhaseDWorkspace({ uploadId }: { uploadId: number }) {
                 <>
                   <div>
                     <label className="mb-1 block text-sm font-medium">Cost Group</label>
-                    <select value={mappingDialog.groupId} onChange={(event) => updateDialogGroup(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2 text-sm">
-                      {(map?.groups ?? []).map((group) => <option key={group.id} value={group.id}>{group.code}</option>)}
-                    </select>
+                    <div className="flex items-center justify-between rounded-md border bg-muted/60 px-3 py-2 text-sm">
+                      <span className="font-semibold">{selectedGroup?.code ?? 'Tidak tersedia'}</span>
+                      <span className="text-xs text-muted-foreground">Otomatis dari source · terkunci</span>
+                    </div>
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium">Nature</label>
@@ -293,13 +288,13 @@ export default function PhaseDWorkspace({ uploadId }: { uploadId: number }) {
               </div>
 
               <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">
-                Setelah dikonfirmasi, sistem membuat mapping effective-dated untuk Company + Source + COA ini, mencatat audit trail, lalu menjalankan ulang Phase D. Mapping tidak boleh mengubah periode FINALIZED.
+                Cost Group ditentukan dari logical source di server dan tidak dapat dioverride dari browser. Setelah dikonfirmasi, sistem membuat mapping effective-dated untuk Company + Source + COA, mencatat audit trail, lalu menjalankan ulang Phase D. Mapping tidak boleh mengubah periode FINALIZED.
               </div>
             </div>
 
             <div className="mt-5 flex justify-end gap-2">
               <button disabled={busy} onClick={() => setMappingDialog(null)} className="rounded-md border px-4 py-2 text-sm font-medium disabled:opacity-50">Batal</button>
-              <button disabled={busy} onClick={submitMapping} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{busy ? 'Menyimpan…' : 'Konfirmasi & Simpan'}</button>
+              <button disabled={busy} onClick={submitMapping} className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">{busy ? 'Menyimpan…' : 'Konfirmasi & Simpan'}</button>
             </div>
           </div>
         </div>
