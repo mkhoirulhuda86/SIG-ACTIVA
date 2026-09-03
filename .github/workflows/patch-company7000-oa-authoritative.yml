@@ -1,0 +1,62 @@
+name: Patch Company 7000 OA authoritative
+
+on:
+  push:
+    branches:
+      - fix/manual-mapping-commentary-hardening
+    paths:
+      - scripts/patch-company7000-oa-authoritative.py
+      - .github/workflows/patch-company7000-oa-authoritative.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/manual-mapping-commentary-hardening
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply OA patch
+        run: python3 scripts/patch-company7000-oa-authoritative.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Targeted Company 7000 tests
+        env:
+          TS_NODE_COMPILER_OPTIONS: '{"module":"CommonJS","moduleResolution":"node"}'
+        run: node -r ts-node/register --test lib/cost-structure/calculations/company-7000-source-adapter.test.ts lib/cost-structure/calculations/company-7000.test.ts
+
+      - name: ESLint changed production and tests
+        run: npx eslint lib/cost-structure/calculations/company-7000-source-adapter.ts lib/cost-structure/calculations/company-7000.ts lib/cost-structure/calculations/company-7000-source-adapter.test.ts lib/cost-structure/calculations/company-7000.test.ts
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify intended diff
+        run: |
+          git diff --check
+          git status --short
+          test -n "$(git status --short)"
+
+      - name: Commit patched files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/cost-structure/calculations/company-7000-source-adapter.ts \
+                  lib/cost-structure/calculations/company-7000.ts \
+                  lib/cost-structure/calculations/company-7000-source-adapter.test.ts \
+                  lib/cost-structure/calculations/company-7000.test.ts
+          git commit -m "fix(cost): use authoritative Company 7000 OA"
+          git push origin HEAD:fix/manual-mapping-commentary-hardening
