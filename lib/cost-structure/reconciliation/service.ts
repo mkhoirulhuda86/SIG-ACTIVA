@@ -231,6 +231,10 @@ export async function runPhaseD(uploadId: number) {
           setMappingIssue(desiredIssues, firstRowId, context, 'MAPPING_AMBIGUOUS', 'ERROR', 'Lebih dari satu mapping efektif.');
         } else if (mappings.length === 1) {
           setMappingIssue(desiredIssues, firstRowId, context, 'MAPPING_TARGET_INVALID', 'ERROR', 'Target mapping tidak lagi aktif/valid atau bukan Nature MAPPED.');
+        } else if (totalAmount.isZero()) {
+          // Exact-zero COAs remain visible in source-row audit evidence but do not
+          // represent an unresolved business decision and must not create an open issue.
+          setMappingIssue(desiredIssues, firstRowId, context, null);
         } else {
           setMappingIssue(
             desiredIssues,

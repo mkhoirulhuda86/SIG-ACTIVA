@@ -35,6 +35,11 @@ function amountIsBlocking(value: string): boolean {
   return Number.isFinite(amount) && Math.abs(amount) > 1;
 }
 
+function amountIsZero(value: string): boolean {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount === 0;
+}
+
 export default function PhaseDWorkspace({ uploadId }: { uploadId: number }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -149,8 +154,12 @@ export default function PhaseDWorkspace({ uploadId }: { uploadId: number }) {
     () => unmappedItems.filter((item) => amountIsBlocking(item.totalAmount)),
     [unmappedItems]
   );
-  const nonBlockingUnmapped = useMemo(
-    () => unmappedItems.filter((item) => !amountIsBlocking(item.totalAmount)),
+  const deMinimisUnmapped = useMemo(
+    () => unmappedItems.filter((item) => !amountIsBlocking(item.totalAmount) && !amountIsZero(item.totalAmount)),
+    [unmappedItems]
+  );
+  const zeroUnmapped = useMemo(
+    () => unmappedItems.filter((item) => amountIsZero(item.totalAmount)),
     [unmappedItems]
   );
 
@@ -200,7 +209,8 @@ export default function PhaseDWorkspace({ uploadId }: { uploadId: number }) {
               <CardHeader><CardTitle>Unmapped COA work queue</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {blockingUnmapped.length === 0 && <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">Tidak ada COA material yang membutuhkan mapping. Work queue bersih.</div>}
-                {nonBlockingUnmapped.length > 0 && <div className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">{nonBlockingUnmapped.length} COA masih UNMAPPED dengan total absolut ≤ Rp1. Item de-minimis ini tetap tercatat untuk audit tetapi tidak memblokir rekonsiliasi.</div>}
+                {deMinimisUnmapped.length > 0 && <div className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">{deMinimisUnmapped.length} COA masih UNMAPPED dengan total non-zero absolut ≤ Rp1. Item de-minimis ini tetap tercatat untuk audit tetapi tidak memblokir rekonsiliasi.</div>}
+                {zeroUnmapped.length > 0 && <div className="rounded-lg bg-muted/60 p-3 text-sm text-muted-foreground">{zeroUnmapped.length} COA bernilai tepat Rp0 hanya dipertahankan sebagai audit evidence. Item Rp0 bukan error, bukan de-minimis exception, dan tidak memerlukan mapping manual.</div>}
                 <Table headers={['Source', 'COA', 'Description', 'Rows', 'Amount', 'Status', 'Action']} rows={blockingUnmapped.map((item) => [
                   item.logicalSourceCode,
                   item.coaCodeRaw,

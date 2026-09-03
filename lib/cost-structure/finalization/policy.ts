@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { calculateMappingCompleteness, type MappingCompletenessRow } from '../reconciliation/mapping-completeness';
+import { isMappingBlockingAmount } from '../reconciliation/money';
 
 const REQUIRED_TOTALS: Record<string, readonly string[]> = {
   '2000': ['TOTAL_ADUM', 'TOTAL_PASAR', 'TOTAL_COMPANY'],
@@ -26,8 +27,8 @@ export type FinalizationSnapshot = {
   }>;
 };
 
-const isZero = (value: FinalizationSnapshot['results'][number]['reconciliationDifference']) =>
-  value !== null && new Prisma.Decimal(value).equals(0);
+const isWithinControlTolerance = (value: FinalizationSnapshot['results'][number]['reconciliationDifference']) =>
+  value !== null && !isMappingBlockingAmount(new Prisma.Decimal(value).toString());
 
 /** Uses the same per-source/COA aggregation and Rp1 de-minimis policy as Phase D. */
 export function mappingCompleteForReadiness(rows: MappingCompletenessRow[]): boolean {
@@ -52,14 +53,14 @@ export function assertPersistedControlsReady(snapshot: FinalizationSnapshot, all
   for (const code of REQUIRED_CONTROLS[snapshot.companyCode] ?? []) {
     const control = byCode.get(code);
     if (!control) throw new FinalizationError(`Required control ${code} tidak tersedia.`);
-    if (control.resultType !== 'CONTROL' || control.reconciliationStatus !== 'RECONCILED' || !isZero(control.reconciliationDifference)) {
-      throw new FinalizationError(`Control ${code} harus RECONCILED dengan selisih 0.00.`);
+    if (control.resultType !== 'CONTROL' || !isWithinControlTolerance(control.reconciliationDifference)) {
+      throw new FinalizationError(`Control ${code} harus memiliki selisih absolut <= Rp1.`);
     }
   }
 
   const allControls = snapshot.results.filter((result) => result.resultType === 'CONTROL');
-  if (allControls.some((control) => control.reconciliationStatus !== 'RECONCILED' || !isZero(control.reconciliationDifference))) {
-    throw new FinalizationError('Semua persisted CONTROL harus RECONCILED dengan selisih 0.00.');
+  if (allControls.some((control) => !isWithinControlTolerance(control.reconciliationDifference))) {
+    throw new FinalizationError('Semua persisted CONTROL harus memiliki selisih absolut <= Rp1.');
   }
   return snapshot.run.id;
 }

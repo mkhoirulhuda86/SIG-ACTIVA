@@ -2,6 +2,7 @@ import 'server-only';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getPhaseDReport } from '@/lib/cost-structure/reconciliation/service';
+import { isMappingBlockingAmount } from '@/lib/cost-structure/reconciliation/money';
 import { backfillDeterministicFamilyMappings } from '@/lib/cost-structure/mappings/family-mapping-backfill';
 import { classifySourceRow } from '@/lib/cost-structure/reconciliation/source-control-registry';
 import { calculateCompany2000 } from './company-2000';
@@ -137,7 +138,7 @@ export async function runCompany7000Calculation(periodId: number, startedById: n
         ...result.natureTotals.map((item) => ({ calculationRunId: run.id, periodId, costGroupId: item.costGroupId, natureId: item.natureId, resultCode: 'NATURE_TOTAL', resultType: 'NATURE' as const, amount: item.amount, ruleCode: natures.find((nature) => nature.natureId === item.natureId)?.ruleCode, calculationDetailJson: { natureCode: item.natureCode } as Prisma.InputJsonValue })),
         ...COMPANY_7000_GROUPS.map((code) => ({ calculationRunId: run.id, periodId, costGroupId: groupIds.get(code)!, natureId: null, resultCode: `TOTAL_${code}`, resultType: 'TOTAL' as const, amount: result.groupTotals[code], ruleCode: code === 'HPP' ? 'HPP_TOTAL_7000' : null, calculationDetailJson: (code === 'HPP' ? { accountGroup5: adapted.formulaDependencies.accountGroup5Total.sourceReference, cogsMortar: adapted.formulaDependencies.cogsMortar.sourceReference } : {}) as Prisma.InputJsonValue })),
         { calculationRunId: run.id, periodId, costGroupId: null, natureId: null, resultCode: 'TOTAL_COMPANY', resultType: 'TOTAL' as const, amount: result.companyTotal },
-        ...result.controls.map((control) => ({ calculationRunId: run.id, periodId, costGroupId: control.costGroupId, natureId: null, resultCode: control.resultCode, resultType: 'CONTROL' as const, amount: control.amount, reconciliationDifference: control.difference, reconciliationStatus: control.difference.isZero() ? 'RECONCILED' : 'NOT_RECONCILED', calculationDetailJson: { natureSum: control.amount.sub(control.difference).toString() } as Prisma.InputJsonValue })),
+        ...result.controls.map((control) => ({ calculationRunId: run.id, periodId, costGroupId: control.costGroupId, natureId: null, resultCode: control.resultCode, resultType: 'CONTROL' as const, amount: control.amount, reconciliationDifference: control.difference, reconciliationStatus: isMappingBlockingAmount(control.difference.toString()) ? 'NOT_RECONCILED' : 'RECONCILED', calculationDetailJson: { natureSum: control.amount.sub(control.difference).toString() } as Prisma.InputJsonValue })),
       ] });
       await tx.costCalculationRun.updateMany({ where: { periodId, isActive: true }, data: { isActive: false } });
       await tx.costCalculationRun.update({ where: { id: run.id }, data: { status: 'SUCCESS', isActive: true, completedAt: new Date() } });
@@ -264,7 +265,7 @@ export async function runCompany2000Calculation(periodId: number, startedById: n
         ...result.natureTotals.map((item) => ({ calculationRunId: run.id, periodId, costGroupId: item.costGroupId, natureId: item.natureId, resultCode: 'NATURE_TOTAL', resultType: 'NATURE' as const, amount: item.amount })),
         ...COMPANY_2000_GROUPS.map((code) => ({ calculationRunId: run.id, periodId, costGroupId: groupIdByCode.get(code)!, natureId: null, resultCode: `TOTAL_${code}`, resultType: 'TOTAL' as const, amount: result.groupTotals[code] })),
         { calculationRunId: run.id, periodId, costGroupId: null, natureId: null, resultCode: 'TOTAL_COMPANY', resultType: 'TOTAL' as const, amount: result.companyTotal },
-        ...result.controls.map((control) => ({ calculationRunId: run.id, periodId, costGroupId: control.costGroupId, natureId: null, resultCode: control.resultCode, resultType: 'CONTROL' as const, amount: control.amount, reconciliationDifference: control.difference, reconciliationStatus: control.difference.isZero() ? 'RECONCILED' : 'NOT_RECONCILED' })),
+        ...result.controls.map((control) => ({ calculationRunId: run.id, periodId, costGroupId: control.costGroupId, natureId: null, resultCode: control.resultCode, resultType: 'CONTROL' as const, amount: control.amount, reconciliationDifference: control.difference, reconciliationStatus: isMappingBlockingAmount(control.difference.toString()) ? 'NOT_RECONCILED' : 'RECONCILED' })),
       ] });
       await tx.costCalculationRun.updateMany({ where: { periodId, isActive: true }, data: { isActive: false } });
       await tx.costCalculationRun.update({ where: { id: run.id }, data: { status: 'SUCCESS', isActive: true, completedAt: new Date() } });
