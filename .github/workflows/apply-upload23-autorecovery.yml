@@ -1,0 +1,61 @@
+name: Apply Upload23 calculation autorecovery
+
+on:
+  push:
+    branches:
+      - fix/upload23-calc-family-autorecovery
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply calculation autorecovery patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('lib/cost-structure/calculations/run-service.ts')
+          s = p.read_text()
+          old_import = "import { getPhaseDReport } from '@/lib/cost-structure/reconciliation/service';\n"
+          new_import = old_import + "import { backfillDeterministicFamilyMappings } from '@/lib/cost-structure/mappings/family-mapping-backfill';\n"
+          if s.count(old_import) != 1:
+              raise SystemExit('expected one reconciliation service import')
+          s = s.replace(old_import, new_import, 1)
+          old = "  const upload = period.uploads[0];\n  if (!upload?.isActiveVersion) throw new Error('Upload aktif untuk periode tidak ditemukan.');\n  const readiness = await getPhaseDReport(upload.id);\n"
+          new = "  const upload = period.uploads[0];\n  if (!upload?.isActiveVersion) throw new Error('Upload aktif untuk periode tidak ditemukan.');\n\n  // Calculation can be retried long after Phase D was first reconciled. Re-run the\n  // deterministic family backfill here so derived Company-7000 CC_PROD requirements\n  // (for example a TB-only COA) are recovered before readiness and adapter resolution.\n  await backfillDeterministicFamilyMappings(upload.id, startedById);\n\n  const readiness = await getPhaseDReport(upload.id);\n"
+          if s.count(old) != 1:
+              raise SystemExit('expected one Company 7000 upload/readiness block')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git diff --check
+          git diff -- lib/cost-structure/calculations/run-service.ts
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx eslint lib/cost-structure/calculations/run-service.ts lib/cost-structure/mappings/family-mapping-backfill.ts lib/cost-structure/mappings/company-7000-derived-cc-prod.ts
+          export TS_NODE_COMPILER_OPTIONS='{"module":"CommonJS","moduleResolution":"node"}'
+          node -r ts-node/register --test lib/cost-structure/mappings/company-7000-derived-cc-prod.test.ts
+          node -r ts-node/register --test lib/cost-structure/mappings/family-mapping-policy.test.ts
+      - name: Commit verified source change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/cost-structure/calculations/run-service.ts
+          git commit -m 'fix(cost): auto-recover family mappings before calculation'
+          git push origin HEAD:fix/upload23-calc-family-autorecovery
