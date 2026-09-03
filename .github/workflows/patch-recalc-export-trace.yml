@@ -1,0 +1,536 @@
+name: Patch recalculate and export traceability
+
+on:
+  push:
+    branches:
+      - fix/recalculate-export-traceability
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Apply patch
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text()
+
+          def write(path, text):
+              Path(path).parent.mkdir(parents=True, exist_ok=True)
+              Path(path).write_text(text)
+
+          def replace_once(path, old, new):
+              text = read(path)
+              if old not in text:
+                  raise SystemExit(f'pattern not found in {path}: {old[:120]!r}')
+              if text.count(old) != 1:
+                  raise SystemExit(f'pattern not unique in {path}: {text.count(old)} occurrences')
+              write(path, text.replace(old, new, 1))
+
+          def replace_all(path, old, new, minimum=1):
+              text = read(path)
+              count = text.count(old)
+              if count < minimum:
+                  raise SystemExit(f'pattern not found enough in {path}: {count} < {minimum}')
+              write(path, text.replace(old, new))
+
+          # Rule-set version changes whenever calculation logic changes materially.
+          replace_once(
+              'lib/cost-structure/calculations/company-7000.ts',
+              "export const ENGINE1_7000_RULE_SET_VERSION = 'ENGINE1_7000_V1';",
+              "export const ENGINE1_7000_RULE_SET_VERSION = 'ENGINE1_7000_V2';",
+          )
+
+          write('lib/cost-structure/calculations/rule-set.ts', """import { ENGINE1_7000_RULE_SET_VERSION } from './company-7000';
+          import { ENGINE1_2000_RULE_SET_VERSION } from './constants';
+
+          export function getCurrentEngine1RuleSetVersion(companyCode: string) {
+            if (companyCode === '2000') return ENGINE1_2000_RULE_SET_VERSION;
+            if (companyCode === '7000') return ENGINE1_7000_RULE_SET_VERSION;
+            throw new Error(`Company ${companyCode} tidak didukung Engine 1.`);
+          }
+          """.replace('          ', ''))
+
+          # Processing status knows whether an old successful run must be explicitly recalculated.
+          path = 'lib/cost-structure/processing/service.ts'
+          text = read(path)
+          text = text.replace(
+              "import { getAuditSnapshotReadiness } from '@/lib/cost-structure/audit-hydration/readiness';\n",
+              "import { getAuditSnapshotReadiness } from '@/lib/cost-structure/audit-hydration/readiness';\nimport { getCurrentEngine1RuleSetVersion } from '@/lib/cost-structure/calculations/rule-set';\n",
+              1,
+          )
+          text = text.replace(
+              "calculationRuns: { orderBy: { runNumber: 'desc' }, take: 1, select: { uploadId: true, status: true, errorMessage: true } },",
+              "calculationRuns: { orderBy: { runNumber: 'desc' }, take: 1, select: { uploadId: true, status: true, errorMessage: true, ruleSetVersion: true, completedAt: true } },",
+              1,
+          )
+          old = """  const activeRun = upload.period.activeCalculationRun;
+          const postCheckBlockers = activeRun?.status === 'SUCCESS'
+          """.replace('          ', '')
+          new = """  const activeRun = upload.period.activeCalculationRun;
+          const currentRuleSetVersion = getCurrentEngine1RuleSetVersion(upload.period.company.companyCode);
+          const activeRequiresRecalculation = Boolean(activeRun?.status === 'SUCCESS' && (
+            activeRun.ruleSetVersion !== currentRuleSetVersion ||
+            (upload.period.reopenedAt && (!activeRun.completedAt || activeRun.completedAt < upload.period.reopenedAt))
+          ));
+          const postCheckBlockers = activeRun?.status === 'SUCCESS'
+          """.replace('          ', '')
+          if old not in text: raise SystemExit('processing activeRun insertion pattern missing')
+          text = text.replace(old, new, 1)
+          old = """    calculation: activeRun ? { status: activeRun.status, errorMessage: activeRun.errorMessage, belongsToUpload: activeRun.uploadId === uploadId } : latestRun ? { status: latestRun.status, errorMessage: latestRun.errorMessage, belongsToUpload: latestRun.uploadId === uploadId } : null,
+          """.replace('          ', '')
+          new = """    calculation: activeRun ? {
+              status: activeRun.status,
+              errorMessage: activeRun.errorMessage,
+              belongsToUpload: activeRun.uploadId === uploadId,
+              requiresRecalculation: activeRequiresRecalculation,
+              runRuleSetVersion: activeRun.ruleSetVersion,
+              currentRuleSetVersion,
+            } : latestRun ? {
+              status: latestRun.status,
+              errorMessage: latestRun.errorMessage,
+              belongsToUpload: latestRun.uploadId === uploadId,
+              requiresRecalculation: latestRun.status === 'SUCCESS' && latestRun.ruleSetVersion !== currentRuleSetVersion,
+              runRuleSetVersion: latestRun.ruleSetVersion,
+              currentRuleSetVersion,
+            } : null,
+          """.replace('          ', '')
+          if old not in text: raise SystemExit('processing calculation projection pattern missing')
+          text = text.replace(old, new, 1)
+          write(path, text)
+
+          # Automatic calculation remains idempotent only for a current, post-reopen run.
+          path = 'lib/cost-structure/processing/automatic-calculation.ts'
+          text = read(path)
+          text = text.replace(
+              "import { CalculationConflictError, runCostStructureCalculation } from '@/lib/cost-structure/calculations/run-service';\n",
+              "import { CalculationConflictError, runCostStructureCalculation } from '@/lib/cost-structure/calculations/run-service';\nimport { getCurrentEngine1RuleSetVersion } from '@/lib/cost-structure/calculations/rule-set';\n",
+              1,
+          )
+          old = """    const period = await tx.costPeriod.findUnique({
+              where: { id: periodId },
+              select: {
+                activeCalculationRun: {
+                  select: { id: true, runNumber: true, status: true, uploadId: true },
+                },
+              },
+            });
+          """.replace('          ', '')
+          new = """    const period = await tx.costPeriod.findUnique({
+              where: { id: periodId },
+              select: {
+                reopenedAt: true,
+                company: { select: { companyCode: true } },
+                activeCalculationRun: {
+                  select: { id: true, runNumber: true, status: true, uploadId: true, ruleSetVersion: true, completedAt: true },
+                },
+              },
+            });
+          """.replace('          ', '')
+          if old not in text: raise SystemExit('automatic period select pattern missing')
+          text = text.replace(old, new, 1)
+          old = """    const activeRun = period.activeCalculationRun;
+            if (activeRun?.status === 'SUCCESS' && activeRun.uploadId === uploadId) {
+              return { runId: activeRun.id, runNumber: activeRun.runNumber, skipped: true as const };
+            }
+          """.replace('          ', '')
+          new = """    const activeRun = period.activeCalculationRun;
+            const currentRuleSetVersion = getCurrentEngine1RuleSetVersion(period.company.companyCode);
+            const predatesReopen = Boolean(period.reopenedAt && (!activeRun?.completedAt || activeRun.completedAt < period.reopenedAt));
+            if (
+              activeRun?.status === 'SUCCESS' &&
+              activeRun.uploadId === uploadId &&
+              activeRun.ruleSetVersion === currentRuleSetVersion &&
+              !predatesReopen
+            ) {
+              return { runId: activeRun.id, runNumber: activeRun.runNumber, skipped: true as const };
+            }
+          """.replace('          ', '')
+          if old not in text: raise SystemExit('automatic skip pattern missing')
+          text = text.replace(old, new, 1)
+          write(path, text)
+
+          # State machine blocks post-check/finalization until stale runs are recalculated.
+          path = 'lib/cost-structure/processing/state-machine.ts'
+          text = read(path)
+          text = text.replace(
+              """  calculation: null | {
+            status: 'RUNNING' | 'SUCCESS' | 'FAILED';
+            errorMessage?: string | null;
+            belongsToUpload: boolean;
+          };
+          """.replace('          ', ''),
+              """  calculation: null | {
+            status: 'RUNNING' | 'SUCCESS' | 'FAILED';
+            errorMessage?: string | null;
+            belongsToUpload: boolean;
+            requiresRecalculation?: boolean;
+            runRuleSetVersion?: string | null;
+            currentRuleSetVersion?: string | null;
+          };
+          """.replace('          ', ''),
+              1,
+          )
+          text = text.replace(
+              """  canRetry: boolean;
+            readyForFinalization: boolean;
+          };
+          """.replace('          ', ''),
+              """  canRetry: boolean;
+            requiresRecalculation: boolean;
+            readyForFinalization: boolean;
+          };
+          """.replace('          ', ''),
+              1,
+          )
+          text = text.replace(
+              "const result = (currentStage: ProcessStageKey, stage: ProcessStage, tail: ProcessStage[], canRetry = false): CostStructureProcessStatus => ({",
+              "const result = (currentStage: ProcessStageKey, stage: ProcessStage, tail: ProcessStage[], canRetry = false, requiresRecalculation = false): CostStructureProcessStatus => ({",
+              1,
+          )
+          text = text.replace(
+              """    canRetry,
+              readyForFinalization: false,
+          """.replace('          ', ''),
+              """    canRetry,
+              requiresRecalculation,
+              readyForFinalization: false,
+          """.replace('          ', ''),
+              1,
+          )
+          text = text.replace(
+              """      canRetry: false,
+                readyForFinalization: false,
+          """.replace('          ', ''),
+              """      canRetry: false,
+                requiresRecalculation: false,
+                readyForFinalization: false,
+          """.replace('          ', ''),
+              1,
+          )
+          marker = """  if (snapshot.calculation.status === 'RUNNING') {
+          """.replace('          ', '')
+          insertion = """  if (snapshot.calculation.status === 'SUCCESS' && snapshot.calculation.requiresRecalculation) {
+            const versionChanged = snapshot.calculation.runRuleSetVersion && snapshot.calculation.currentRuleSetVersion
+              && snapshot.calculation.runRuleSetVersion !== snapshot.calculation.currentRuleSetVersion;
+            const message = versionChanged
+              ? `Calculation lama memakai ${snapshot.calculation.runRuleSetVersion}; recalculate dengan ${snapshot.calculation.currentRuleSetVersion} wajib dilakukan sebelum reconciliation.`
+              : 'Periode sudah di-reopen; calculation lama tidak boleh dipakai kembali. Jalankan Recalculate sebelum reconciliation.';
+            return result('CALCULATION', { key: 'CALCULATION', title: titles.CALCULATION, status: 'WAITING', message }, waitingStages('POST_CHECK'), false, true);
+          }
+
+          """.replace('          ', '')
+          if marker not in text: raise SystemExit('state machine running marker missing')
+          text = text.replace(marker, insertion + marker, 1)
+          old = """  return { uploadId: snapshot.uploadId, periodId: snapshot.periodId, overallStatus: 'READY', currentStage: 'POST_CHECK', stages: completed, canAdvance: false, canRetry: false, readyForFinalization: true };
+          """.replace('          ', '')
+          new = """  return { uploadId: snapshot.uploadId, periodId: snapshot.periodId, overallStatus: 'READY', currentStage: 'POST_CHECK', stages: completed, canAdvance: false, canRetry: false, requiresRecalculation: false, readyForFinalization: true };
+          """.replace('          ', '')
+          if old not in text: raise SystemExit('state machine READY pattern missing')
+          text = text.replace(old, new, 1)
+          write(path, text)
+
+          # Client contract + auto-advance policy.
+          replace_once(
+              'components/cost-structure/process/types.ts',
+              "  canRetry: boolean;\n  readyForFinalization: boolean;",
+              "  canRetry: boolean;\n  requiresRecalculation: boolean;\n  readyForFinalization: boolean;",
+          )
+          replace_once(
+              'components/cost-structure/process/presentation.ts',
+              "return process.canAdvance && process.overallStatus !== 'BLOCKED' && process.overallStatus !== 'FINALIZED';",
+              "return process.canAdvance && !process.requiresRecalculation && process.overallStatus !== 'BLOCKED' && process.overallStatus !== 'FINALIZED';",
+          )
+
+          # Explicit red Recalculate button and a refresh action for DB-only reference snapshots.
+          path = 'components/cost-structure/process/process-workflow.tsx'
+          text = read(path)
+          text = text.replace("import { getCurrentUserRole, isAdmin } from '@/app/utils/rolePermissions';\n", '', 1)
+          text = text.replace("  const [admin, setAdmin] = useState(false);\n", '', 1)
+          role_effect = """  useEffect(() => {
+            const role = getCurrentUserRole();
+            // Role state is intentionally hydrated from browser session storage after mount.
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setAdmin(role !== null && isAdmin(role));
+          }, []);
+          """.replace('          ', '')
+          if role_effect not in text: raise SystemExit('role effect pattern missing')
+          text = text.replace(role_effect, '', 1)
+          old = """  const auditStage = process.stages.find((stage) => stage.key === 'AUDIT_READINESS');
+            const showAuditMaintenance = admin && auditStage?.status === 'NOT_APPLICABLE';
+            return <div className="min-w-0 space-y-3">
+              <ProcessTracker process={process} submitting={submitting} onRetry={advance} onFinalize={finalize} />
+              {showAuditMaintenance && <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3 text-sm"><div className="min-w-0"><p className="font-medium">Audit historical untuk export belum lengkap</p><p className="mt-1 break-words text-xs text-muted-foreground">Menyiapkan snapshot audit hanya memproses AUDIT_* dari workbook authoritative; Engine 1 dan calculation run tidak diubah.</p></div><button type="button" disabled={submitting} onClick={() => void hydrateAudit()} className="rounded-md border border-primary px-3 py-2 font-medium text-primary disabled:opacity-50">{submitting ? 'Menyiapkan…' : 'Siapkan audit export'}</button></div>}
+          """.replace('          ', '')
+          new = """  const auditStage = process.stages.find((stage) => stage.key === 'AUDIT_READINESS');
+            const auditNeedsPreparation = auditStage?.status === 'NOT_APPLICABLE';
+            return <div className="min-w-0 space-y-3">
+              <ProcessTracker process={process} submitting={submitting} onRetry={advance} onFinalize={finalize} />
+              {process.requiresRecalculation && <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-950"><div className="min-w-0"><p className="font-semibold">Calculation lama harus dihitung ulang</p><p className="mt-1 break-words text-xs">Reopen atau perubahan rule Engine 1 membuat run sebelumnya stale. Reconciliation/finalization ditahan sampai run baru berhasil.</p></div><button type="button" disabled={submitting} onClick={() => void advance()} className="rounded-md bg-red-700 px-3 py-2 font-semibold text-white disabled:opacity-50">{submitting ? 'Menghitung ulang…' : 'Recalculate'}</button></div>}
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3 text-sm"><div className="min-w-0"><p className="font-medium">{auditNeedsPreparation ? 'Audit/reference export belum lengkap' : 'Audit/reference export tersimpan'}</p><p className="mt-1 break-words text-xs text-muted-foreground">Refresh membaca ulang hanya AUDIT_* dan sheet referensi dari workbook authoritative yang hash-nya terverifikasi; Engine 1 dan calculation run tidak diubah.</p></div><button type="button" disabled={submitting} onClick={() => void hydrateAudit()} className="rounded-md border border-primary px-3 py-2 font-medium text-primary disabled:opacity-50">{submitting ? 'Menyiapkan…' : auditNeedsPreparation ? 'Siapkan referensi export' : 'Refresh referensi export'}</button></div>
+          """.replace('          ', '')
+          if old not in text: raise SystemExit('process workflow audit UI pattern missing')
+          text = text.replace(old, new, 1)
+          write(path, text)
+
+          # Audit/reference hydration is safe for the normal accounting preparer role.
+          replace_once(
+              'app/api/cost-structure/periods/[id]/hydrate-audit/route.ts',
+              "import { requireCostStructureAdmin } from '@/lib/cost-structure/auth';",
+              "import { requireCostStructurePrepare } from '@/lib/cost-structure/auth';",
+          )
+          replace_once(
+              'app/api/cost-structure/periods/[id]/hydrate-audit/route.ts',
+              "const auth = await requireCostStructureAdmin(request);",
+              "const auth = await requireCostStructurePrepare(request);",
+          )
+
+          # A controlled explicit rerun may invalidate a prior COST_STRUCTURE_RECONCILED state.
+          replace_all(
+              'lib/cost-structure/calculations/run-service.ts',
+              "['SOURCE_RECONCILED', 'CALCULATED'].includes(period.status)",
+              "['SOURCE_RECONCILED', 'CALCULATED', 'COST_STRUCTURE_RECONCILED'].includes(period.status)",
+              minimum=2,
+          )
+
+          # Preserve unrecognized workbook sheets as audit-only reference snapshots.
+          replace_once(
+              'lib/cost-structure/parsers/types.ts',
+              "  | 'AUDIT_SI2000_DRV';",
+              "  | 'AUDIT_SI2000_DRV'\n  | 'AUDIT_REFERENCE';",
+          )
+          path = 'lib/cost-structure/parsers/workbook.ts'
+          text = read(path)
+          text = text.replace(
+              "const AUDIT_ONLY = new Set<LogicalSourceCode>(['AUDIT_SI', 'AUDIT_GHOPO', 'AUDIT_DERIV', 'AUDIT_RINCIAN', 'AUDIT_CC_DRV', 'AUDIT_SI2000_DRV']);",
+              "const AUDIT_ONLY = new Set<LogicalSourceCode>(['AUDIT_SI', 'AUDIT_GHOPO', 'AUDIT_DERIV', 'AUDIT_RINCIAN', 'AUDIT_CC_DRV', 'AUDIT_SI2000_DRV', 'AUDIT_REFERENCE']);",
+              1,
+          )
+          text = text.replace(
+              "  const matched = new Map<string, MatchedSheet[]>();\n",
+              "  const matched = new Map<string, MatchedSheet[]>();\n  const recognizedSheetNames = new Set<string>();\n",
+              1,
+          )
+          text = text.replace(
+              "    if (!definition) continue;\n    const sheet = { name: sheetName, rows: sheetMatrix(workbook, sheetName) };",
+              "    if (!definition) continue;\n    recognizedSheetNames.add(normalizeLabel(sheetName));\n    const sheet = { name: sheetName, rows: sheetMatrix(workbook, sheetName) };",
+              1,
+          )
+          return_marker = "  return { rows, issues, sources };"
+          if return_marker not in text: raise SystemExit('parser return marker missing')
+          reference_block = """  // Preserve every otherwise-unrecognized workbook worksheet as audit-only raw evidence.
+            // This keeps helper/reference sheets (for example historical GHoPO/DERIV variants)
+            // available to the DB-only Excel export without allowing them into Engine 1.
+            for (const sheetName of workbook.SheetNames) {
+              if (normalizeLabel(sheetName) === 'META' || recognizedSheetNames.has(normalizeLabel(sheetName))) continue;
+              const sheet = { name: sheetName, rows: sheetMatrix(workbook, sheetName) };
+              if (!hasMeaningfulRows(sheet.rows)) continue;
+              const referenceRows = preserveRawRows(sheet, 'AUDIT_REFERENCE');
+              rows.push(...referenceRows);
+              sources.push({ code: 'AUDIT_REFERENCE', sheetName: sheet.name, rowCount: referenceRows.length });
+            }
+
+          """.replace('          ', '')
+          text = text.replace(return_marker, reference_block + return_marker, 1)
+          write(path, text)
+
+          # Export mixed CC source rows as a complete semantic trace table, not a near-empty COLUMN_n matrix.
+          path = 'lib/cost-structure/export/service.ts'
+          text = read(path)
+          old = """  const columnKeys = rawKeys.filter((key) => columnIndex(key) !== null);
+            if (columnKeys.length) {
+              writeRawMatrix(sheet, rows);
+              return;
+            }
+          """.replace('          ', '')
+          new = """  const columnKeys = rawKeys.filter((key) => columnIndex(key) !== null);
+            const semanticKeys = rawKeys.filter((key) => columnIndex(key) === null);
+            // Audit/raw matrices contain only positional COLUMN_n values. Operational CC/TB rows
+            // can contain a few helper COLUMN_n cells plus authoritative named fields; those must
+            // remain a semantic trace table or the account/amount columns disappear from export.
+            if (columnKeys.length && semanticKeys.length === 0) {
+              writeRawMatrix(sheet, rows);
+              return;
+            }
+          """.replace('          ', '')
+          if old not in text: raise SystemExit('export mixed-key pattern missing')
+          text = text.replace(old, new, 1)
+          add_source_marker = """function addSourceSheet(workbook: ExcelJS.Workbook, name: string, rows: SourceRow[], required = false) {
+            if (!rows.length) { if (required) throw new Error(`Persisted audit source ${name} tidak tersedia.`); return; }
+            const sheet = workbook.addWorksheet(name);
+            if (rows.every((row) => AUDIT_TEMPLATE_CODES.has(row.logicalSourceCode))) writeRawMatrix(sheet, rows); else writeNormalizedSource(sheet, rows);
+          }
+          """.replace('          ', '')
+          reference_helper = add_source_marker + """
+          function addReferenceSheets(workbook: ExcelJS.Workbook, rows: SourceRow[]) {
+            const references = rowsByCode(rows, 'AUDIT_REFERENCE');
+            if (!references.length) return;
+            const reserved = new Set(workbook.worksheets.map((sheet) => sheet.name.toUpperCase()));
+            reserved.add('FORMULA AUDIT');
+            const names = [...new Set(references.map((row) => row.originalSheetName).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+            for (const originalName of names) {
+              const sourceRows = references.filter((row) => row.originalSheetName === originalName);
+              if (!sourceRows.length) continue;
+              let name = originalName.slice(0, 31);
+              if (reserved.has(name.toUpperCase())) {
+                const base = `src_${originalName}`;
+                name = base.slice(0, 31);
+                let suffix = 2;
+                while (reserved.has(name.toUpperCase())) {
+                  const marker = `_${suffix++}`;
+                  name = `${base.slice(0, 31 - marker.length)}${marker}`;
+                }
+              }
+              reserved.add(name.toUpperCase());
+              addSourceSheet(workbook, name, sourceRows);
+            }
+          }
+          """.replace('          ', '')
+          if add_source_marker not in text: raise SystemExit('addSourceSheet marker missing')
+          text = text.replace(add_source_marker, reference_helper, 1)
+          old_2000 = """    writeCompany2000Si(workbook, run);
+              const rincian = workbook.addWorksheet('rincian biaya'); writeRawMatrix(rincian, requireAuditRows(allRows, 'AUDIT_RINCIAN', 'rincian biaya'));
+              addSourceSheet(workbook, 'cc prod', rowsByCode(allRows, 'CC_PROD'));
+          """.replace('          ', '')
+          new_2000 = """    writeCompany2000Si(workbook, run);
+              const rincian = workbook.addWorksheet('rincian biaya'); writeRawMatrix(rincian, requireAuditRows(allRows, 'AUDIT_RINCIAN', 'rincian biaya'));
+              addSourceSheet(workbook, 'tb', rowsByCode(allRows, 'TB'), true);
+              addSourceSheet(workbook, 'cc prod', rowsByCode(allRows, 'CC_PROD'));
+          """.replace('          ', '')
+          if old_2000 not in text: raise SystemExit('2000 export branch marker missing')
+          text = text.replace(old_2000, new_2000, 1)
+          formula_marker = """  writeFormulaAudit(workbook, run);
+          """.replace('          ', '')
+          if formula_marker not in text: raise SystemExit('Formula Audit call marker missing')
+          text = text.replace(formula_marker, "  addReferenceSheets(workbook, allRows);\n" + formula_marker, 1)
+          write(path, text)
+
+          # Regression tests for stale calculation, mixed-key export, and unknown reference preservation.
+          path = 'lib/cost-structure/processing/state-machine.test.ts'
+          text = read(path)
+          insert_before = "test('successful calculation and post-check are ready for explicit finalization', () => {"
+          test_block = """test('stale successful calculation requires an explicit recalculation before post-check', () => {
+            const status = deriveProcessStatus(base({
+              periodStatus: 'COST_STRUCTURE_RECONCILED',
+              reconciliationReady: true,
+              calculation: {
+                status: 'SUCCESS',
+                belongsToUpload: true,
+                requiresRecalculation: true,
+                runRuleSetVersion: 'ENGINE1_7000_V1',
+                currentRuleSetVersion: 'ENGINE1_7000_V2',
+              },
+            }));
+            assert.equal(status.currentStage, 'CALCULATION');
+            assert.equal(status.canAdvance, true);
+            assert.equal(status.requiresRecalculation, true);
+            assert.equal(status.readyForFinalization, false);
+            assert.match(status.stages.find((stage) => stage.key === 'CALCULATION')?.message ?? '', /recalculate/i);
+          });
+
+          """.replace('          ', '')
+          if insert_before not in text: raise SystemExit('state machine test insertion marker missing')
+          text = text.replace(insert_before, test_block + insert_before, 1)
+          text = text.replace(
+              "assert.match(automatic, /activeRun\\?\\.status === 'SUCCESS' && activeRun\\.uploadId === uploadId/);",
+              "assert.match(automatic, /activeRun\\?\\.status === 'SUCCESS'/);\n  assert.match(automatic, /activeRun\\.ruleSetVersion === currentRuleSetVersion/);\n  assert.match(automatic, /predatesReopen/);",
+              1,
+          )
+          write(path, text)
+
+          path = 'lib/cost-structure/export/service.test.ts'
+          text = read(path)
+          text += """
+          test('mixed semantic CC rows retain authoritative account and amount fields in export', async () => {
+            const source = await readFile(servicePath, 'utf8');
+            assert.match(source, /const semanticKeys = rawKeys\.filter/);
+            assert.match(source, /columnKeys\.length && semanticKeys\.length === 0/);
+            assert.match(source, /Cost Elements/);
+          });
+
+          test('Company 2000 exports TB and dynamically preserved reference worksheets', async () => {
+            const source = await readFile(servicePath, 'utf8');
+            assert.match(source, /addSourceSheet\(workbook, 'tb', rowsByCode\(allRows, 'TB'\), true\)/);
+            assert.match(source, /AUDIT_REFERENCE/);
+            assert.match(source, /addReferenceSheets\(workbook, allRows\)/);
+          });
+          """.replace('          ', '')
+          write(path, text)
+
+          write('lib/cost-structure/parsers/audit-reference.test.ts', """import assert from 'node:assert/strict';
+          import test from 'node:test';
+          import * as XLSX from 'xlsx';
+          import { parseWorkbook } from './workbook';
+
+          test('unrecognized helper worksheets are preserved as AUDIT_REFERENCE raw evidence', async () => {
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+              ['Driver', 'Value'],
+              ['HPP helper', 12345],
+            ]), 'GHoPO helper');
+            XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+              ['Account', 'Amount'],
+              ['68110001', 999],
+            ]), 'DERIV helper');
+            const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+            const parsed = await parseWorkbook(new Uint8Array(bytes), '2000');
+            const references = parsed.rows.filter((row) => row.logicalSourceCode === 'AUDIT_REFERENCE');
+            assert.ok(references.some((row) => row.originalSheetName === 'GHoPO helper' && row.rawDataJson.COLUMN_2 === '12345'));
+            assert.ok(references.some((row) => row.originalSheetName === 'DERIV helper' && row.rawDataJson.COLUMN_1 === '68110001'));
+          });
+          """.replace('          ', ''))
+
+          # Keep tests that spell out the version aligned with the engine constant.
+          for test_path in Path('.').rglob('*.test.ts'):
+              content = test_path.read_text()
+              if 'ENGINE1_7000_V1' in content and test_path.as_posix() != 'lib/cost-structure/processing/state-machine.test.ts':
+                  test_path.write_text(content.replace('ENGINE1_7000_V1', 'ENGINE1_7000_V2'))
+
+          # Remove this temporary workflow from the final patch commit.
+          Path('.github/workflows/patch-recalc-export-trace.yml').unlink()
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Targeted regression tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/sig_activa_ci
+        run: >-
+          node -r ts-node/register --test
+          lib/cost-structure/processing/state-machine.test.ts
+          lib/cost-structure/export/service.test.ts
+          lib/cost-structure/parsers/audit-reference.test.ts
+          lib/cost-structure/calculations/company-7000-source-adapter.test.ts
+          lib/cost-structure/calculations/company-7000.test.ts
+      - name: Full cost-structure test suite
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/sig_activa_ci
+        run: npm test
+      - name: Lint
+        run: npm run lint
+      - name: TypeScript check
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/sig_activa_ci
+        run: npx tsc --noEmit
+      - name: Commit tested patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(cost): require recalc and restore export traceability [patched]"
+          git push origin HEAD:fix/recalculate-export-traceability
