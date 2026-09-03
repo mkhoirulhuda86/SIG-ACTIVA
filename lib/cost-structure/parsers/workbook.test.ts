@@ -129,6 +129,30 @@ describe('parseWorkbook raw support-source lineage', () => {
     assert.equal(parsed.rows.some((row) => row.logicalSourceCode === 'TB' && row.sourceRowNumber === 3), false);
   });
 
+  it('skips historical repeated SAP header when the selected helper labels are truncated', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const tb = workbook.addWorksheet('tb');
+    tb.addRows([['Account', 'Description', 'Amount'], ['61110002', 'Limestone', 5]]);
+    workbook.addWorksheet('cc_prod');
+    for (const name of ['cc_adm', 'cc pasar']) {
+      const sheet = workbook.addWorksheet(name);
+      for (let i = 1; i < 13; i += 1) sheet.addRow([]);
+      // Upload #34 pattern: the first detected header is helper-only (CE / Act Amt).
+      sheet.addRow([null, null, null, null, null, null, null, null, null, null, null, 'CE', 'Act Amt', 'Group CE']);
+      // The next row is the real SAP semantic header. Helper labels are truncated, while
+      // authoritative raw cells elsewhere in the same row contain Cost Elements / Act. Costs.
+      sheet.addRow([null, 'Cost Elements', 'Cost Elements', 'Act. Costs', 'Plan Costs', 'Var.(Abs.)', 'Var.(%)', 'Cost Elements', 'Actual Qty', 'Plan Qty', 'Var.(Abs.)', 'Cost Ele', 'Act. Costs', 'C']);
+      sheet.addRow([null, '61110002 LIMEST. CONSUMPT.', '61110002  LIMEST. CONSUMPT.', 0, 0, 0, 0, '61110002  LIMEST. CONSUMPT.', 0, 0, 0, '61110002', 0, '6']);
+    }
+    const parsed = await parseWorkbook(new Uint8Array(await workbook.xlsx.writeBuffer() as ArrayBuffer), '2000');
+    assert.equal(parsed.issues.some((issue) => issue.issueCode === 'SOURCE_ROW_INVALID_AMOUNT'), false);
+    assert.equal(parsed.issues.some((issue) => issue.issueCode === 'SOURCE_ROW_MISSING_COA'), false);
+    const adum = parsed.rows.filter((row) => row.logicalSourceCode === 'CC_ADUM');
+    assert.equal(adum.some((row) => row.sourceRowNumber === 14), false);
+    assert.equal(adum.some((row) => row.coaCodeRaw === 'Cost Ele'), false);
+    assert.equal(adum.find((row) => row.coaCodeRaw === '61110002')?.amount, '0');
+  });
+
   it('skips a repeated SAP header and prefers authoritative raw columns over CE/Act Amt helpers', async () => {
     const workbook = new ExcelJS.Workbook();
     const tb = workbook.addWorksheet('tb');

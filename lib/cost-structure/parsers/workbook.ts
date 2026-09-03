@@ -35,9 +35,11 @@ const indexOf = (row: string[], aliases: string[]) => {
 
 function isRepeatedSemanticHeader(values: unknown[], coaIndex: number, amountIndex: number) {
   if (coaIndex < 0 || amountIndex < 0) return false;
-  const coaLabel = normalizeLabel(text(values[coaIndex]) ?? '');
-  const amountLabel = normalizeLabel(text(values[amountIndex]) ?? '');
-  return COA.includes(coaLabel) && AMOUNT.includes(amountLabel);
+  const labels = values.map((value) => normalizeLabel(text(value) ?? '')).filter(Boolean);
+  // Historical SAP exports can repeat the raw semantic header below helper-only headers.
+  // The helper cells can be truncated (`Cost Ele` / `Act. Costs`), so detect the repeated
+  // header from the complete row instead of requiring the selected helper cells to match.
+  return labels.some((label) => COA.includes(label)) && labels.some((label) => AMOUNT.includes(label));
 }
 
 function normalizedControlLabel(value: string | null): string {
