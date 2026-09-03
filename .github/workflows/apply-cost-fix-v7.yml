@@ -1,0 +1,41 @@
+name: Commit verified cost source patch
+on:
+  push:
+    branches: [fix/cost-auto-mapping-calculation]
+    paths: ['.github/workflows/apply-cost-fix-v7.yml']
+permissions:
+  contents: write
+jobs:
+  commit-source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply reviewed patch
+        run: |
+          set -euo pipefail
+          cat .tmp/cost-fix-script/part*.b64 | base64 --decode > /tmp/apply_cost_fix.py
+          python /tmp/apply_cost_fix.py
+          git diff --check
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify source patch
+        run: |
+          set -euo pipefail
+          export TS_NODE_COMPILER_OPTIONS='{"module":"CommonJS","moduleResolution":"node"}'
+          node -r ts-node/register --test lib/cost-structure/mappings/company-7000-derived-cc-prod.test.ts
+          node -r ts-node/register --test lib/cost-structure/mappings/family-mapping-policy.test.ts
+          node -r ts-node/register --test --test-name-pattern='skips a repeated SAP header|prefers authoritative Cost Elements' lib/cost-structure/parsers/workbook.test.ts
+          npx eslint lib/cost-structure/mappings/company-7000-derived-cc-prod.ts lib/cost-structure/mappings/company-7000-derived-cc-prod.test.ts lib/cost-structure/mappings/family-mapping-backfill.ts lib/cost-structure/parsers/workbook.ts lib/cost-structure/parsers/workbook.test.ts app/api/cost-structure/uploads/[id]/mapping/route.ts
+      - name: Commit source changes
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- 'lib/cost-structure/mappings/company-7000-derived-cc-prod.ts' 'lib/cost-structure/mappings/company-7000-derived-cc-prod.test.ts' 'lib/cost-structure/mappings/family-mapping-backfill.ts' 'lib/cost-structure/parsers/workbook.ts' 'lib/cost-structure/parsers/workbook.test.ts' 'app/api/cost-structure/uploads/[id]/mapping/route.ts'
+          git commit -m 'fix(cost): recover derived mapping and SAP parsing'
+          git push origin HEAD:fix/cost-auto-mapping-calculation
