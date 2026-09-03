@@ -1,6 +1,6 @@
 import type { MaterialityNode } from '../materiality/types';
 
-export type ReviewRow = { key: string; materialityStatus: string; commentaryStatus?: string };
+export type ReviewRow = { key: string; nodeType: string; materialityStatus: string; commentaryStatus?: string };
 export type ScopedReviewNode = { node: MaterialityNode; groupId: number | null };
 
 export function scopeReviewNodes(nodes: MaterialityNode[], parentGroupId: number | null = null): ScopedReviewNode[] {
@@ -17,7 +17,11 @@ export function readiness(periodStatus: string, analyses: Array<{ available: boo
   if (!available.length) blockers.push('AVAILABLE');
   for (const analysis of available) for (const row of analysis.rows) {
     if (['NOT_CONFIGURED', 'NOT_EVALUABLE'].includes(row.materialityStatus)) blockers.push(row.materialityStatus);
-    if (row.materialityStatus === 'REQUIRES_EXPLANATION' && row.commentaryStatus !== 'REVIEWED') blockers.push(`${row.key}:${row.commentaryStatus ?? 'OPEN'}`);
+    // Commentary governance is intentionally Nature-first. A material Nature needs one
+    // saved explanation. COA commentary remains optional and never blocks readiness.
+    if (row.nodeType === 'NATURE' && row.materialityStatus === 'REQUIRES_EXPLANATION' && !row.commentaryStatus) {
+      blockers.push(`${row.key}:OPEN`);
+    }
   }
   return { ready: blockers.length === 0, blockers };
 }
