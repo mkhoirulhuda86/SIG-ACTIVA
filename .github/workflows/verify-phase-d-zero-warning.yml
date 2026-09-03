@@ -33,12 +33,14 @@ jobs:
           set -euo pipefail
           npx eslint lib/cost-structure/reconciliation/service.ts lib/cost-structure/calculations/run-service.ts lib/cost-structure/finalization/policy.ts lib/cost-structure/finalization/service.test.ts
           npx eslint 'app/cost-structure/upload/[id]/phase-d-workspace.tsx' --rule 'react-hooks/set-state-in-effect: off'
-          node --import tsx --test lib/cost-structure/reconciliation/reconcile-cc-group.test.ts
-          node --import tsx --test lib/cost-structure/reconciliation/mapping-completeness.test.ts
-          node --import tsx --test lib/cost-structure/reconciliation/issue-batch.test.ts
-          node --import tsx --test lib/cost-structure/calculations/company-2000-deminimis.test.ts
-          node --import tsx --test lib/cost-structure/calculations/company-7000.test.ts
-          node --import tsx --test lib/cost-structure/finalization/service.test.ts
+          export TS_NODE_TRANSPILE_ONLY=true
+          export TS_NODE_COMPILER_OPTIONS='{"module":"CommonJS","moduleResolution":"node"}'
+          node -r ts-node/register --test lib/cost-structure/reconciliation/reconcile-cc-group.test.ts
+          node -r ts-node/register --test lib/cost-structure/reconciliation/mapping-completeness.test.ts
+          node -r ts-node/register --test lib/cost-structure/reconciliation/issue-batch.test.ts
+          node -r ts-node/register --test lib/cost-structure/calculations/company-2000-deminimis.test.ts
+          node -r ts-node/register --test lib/cost-structure/calculations/company-7000.test.ts
+          node -r ts-node/register --test lib/cost-structure/finalization/service.test.ts
       - name: Commit verified source change
         shell: bash
         run: |
