@@ -1,4 +1,4 @@
-export const COMMENTARY_TARGET_TYPES = ['COST_GROUP', 'NATURE', 'COA', 'CALCULATED_ITEM'] as const;
+export const COMMENTARY_TARGET_TYPES = ['NATURE', 'COA'] as const;
 
 export type GovernancePermissions = { canPrepare: boolean; canReview: boolean; canAdmin: boolean };
 
@@ -15,19 +15,17 @@ export function isCommentaryTarget(nodeType: string) {
 }
 
 export function commentaryActions(
-  status: string | undefined,
+  _status: string | undefined,
   permissions: GovernancePermissions,
-  preparedById?: number,
-  actorId?: number,
+  _preparedById?: number,
+  _actorId?: number,
 ) {
-  const sameMaker = preparedById !== undefined && actorId !== undefined && preparedById === actorId;
   return {
-    canEdit: permissions.canPrepare && (!status || status === 'DRAFT' || status === 'RETURNED'),
-    // RETURNED must first be saved, which transitions it back to DRAFT on the server.
-    canSubmit: permissions.canPrepare && status === 'DRAFT',
-    canCheck: permissions.canReview && status === 'SUBMITTED' && !sameMaker,
-    immutable: status === 'REVIEWED',
-    makerCheckerBlocked: permissions.canReview && status === 'SUBMITTED' && sameMaker,
+    canEdit: permissions.canPrepare,
+    canSubmit: false,
+    canCheck: false,
+    immutable: false,
+    makerCheckerBlocked: false,
   };
 }
 
