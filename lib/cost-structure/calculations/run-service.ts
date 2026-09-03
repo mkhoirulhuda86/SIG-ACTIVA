@@ -2,6 +2,7 @@ import 'server-only';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getPhaseDReport } from '@/lib/cost-structure/reconciliation/service';
+import { backfillDeterministicFamilyMappings } from '@/lib/cost-structure/mappings/family-mapping-backfill';
 import { classifySourceRow } from '@/lib/cost-structure/reconciliation/source-control-registry';
 import { calculateCompany2000 } from './company-2000';
 import { calculateCompany7000, COMPANY_7000_GROUPS, COMPANY_7000_MAPPED_SOURCES, ENGINE1_7000_RULE_SET_VERSION } from './company-7000';
@@ -32,6 +33,12 @@ export async function runCompany7000Calculation(periodId: number, startedById: n
   if (!['SOURCE_RECONCILED', 'CALCULATED'].includes(period.status)) throw new Error('Periode belum SOURCE_RECONCILED.');
   const upload = period.uploads[0];
   if (!upload?.isActiveVersion) throw new Error('Upload aktif untuk periode tidak ditemukan.');
+
+  // Calculation can be retried long after Phase D was first reconciled. Re-run the
+  // deterministic family backfill here so derived Company-7000 CC_PROD requirements
+  // (for example a TB-only COA) are recovered before readiness and adapter resolution.
+  await backfillDeterministicFamilyMappings(upload.id, startedById);
+
   const readiness = await getPhaseDReport(upload.id);
   if (!readiness?.ready) throw new Error(`Phase D readiness gagal: ${readiness?.blockers.join('; ') ?? 'upload tidak ditemukan'}`);
 
