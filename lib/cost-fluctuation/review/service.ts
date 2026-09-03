@@ -16,7 +16,7 @@ async function preview(periodId: number) {
   if (!period) throw new Error('Period not found.');
   const analyses = await Promise.all(TYPES.map(async (comparisonType) => ({ comparisonType, overlay: await getCommentaryOverlay(periodId, comparisonType) })));
   const available: Available[] = [];
-  const readinessInput: Array<{ available: boolean; rows: Array<{ key: string; materialityStatus: string; commentaryStatus?: string }> }> = [];
+  const readinessInput: Array<{ available: boolean; rows: Array<{ key: string; nodeType: string; materialityStatus: string; commentaryStatus?: string }> }> = [];
 
   for (const { comparisonType, overlay } of analyses) {
     if (overlay.kind !== 'OK' || overlay.status !== 'AVAILABLE') {
@@ -30,7 +30,7 @@ async function preview(periodId: number) {
       available: true,
       rows: scoped
         .filter(({ node }) => node.nodeType !== 'COMPANY' && node.nodeType !== 'ANALYSIS_BASIS')
-        .map(({ node }) => ({ key: `${comparisonType}:${node.key}`, materialityStatus: node.materialityStatus, commentaryStatus: commentary.get(node.key)?.status })),
+        .map(({ node }) => ({ key: `${comparisonType}:${node.key}`, nodeType: node.nodeType, materialityStatus: node.materialityStatus, commentaryStatus: commentary.get(node.key)?.status })),
     });
   }
 
@@ -76,15 +76,16 @@ async function assertReadyAtCommit(tx: Prisma.TransactionClient, periodId: numbe
       if (groupId === null) throw new Error('Invalid analytical hierarchy.');
       const evaluated = evaluateNode(node, resolveRule(rules, locked[0].companyId, groupId, analysis.comparisonType, locked[0].periodEnd));
       if (['NOT_CONFIGURED', 'NOT_EVALUABLE'].includes(evaluated.materialityStatus)) throw new Error(`${analysis.comparisonType}: materiality is incomplete at commit.`);
-      if (evaluated.materialityStatus === 'REQUIRES_EXPLANATION') required.add(node.key);
+      if (node.nodeType === 'NATURE' && evaluated.materialityStatus === 'REQUIRES_EXPLANATION') required.add(node.key);
     }
 
     const requiredKeys = [...required];
-    const reviewed = requiredKeys.length ? await tx.costCommentary.findMany({
-      where: { periodId, comparisonType: analysis.comparisonType, analysisLineageKey: analysis.analysisLineageKey, analysisKey: { in: requiredKeys }, status: 'REVIEWED' },
-      select: { analysisKey: true },
+    const saved = requiredKeys.length ? await tx.costCommentary.findMany({
+      where: { periodId, comparisonType: analysis.comparisonType, analysisLineageKey: analysis.analysisLineageKey, analysisKey: { in: requiredKeys } },
+      select: { analysisKey: true, reason: true },
     }) : [];
-    if (new Set(reviewed.map((row) => row.analysisKey)).size !== requiredKeys.length) throw new Error(`${analysis.comparisonType}: mandatory commentary changed before completion.`);
+    const savedKeys = new Set(saved.filter((row) => row.reason.trim()).map((row) => row.analysisKey));
+    if (savedKeys.size !== requiredKeys.length) throw new Error(`${analysis.comparisonType}: mandatory Nature commentary changed before completion.`);
   }
 }
 
