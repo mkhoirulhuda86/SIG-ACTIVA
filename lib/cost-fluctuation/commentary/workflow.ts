@@ -16,7 +16,9 @@ export function nextStatus(
   actorId: number,
 ): WorkflowStatus {
   if (action === 'SAVE') {
-    if (current !== null && current !== 'DRAFT' && current !== 'RETURNED') throw new Error('Invalid commentary transition.');
+    if (!reason.trim()) throw new Error('Save requires a nonblank commentary.');
+    // DRAFT is retained as the persisted legacy enum value, but SAVE is now the
+    // authoritative completion action. It can replace any old maker/checker state.
     return 'DRAFT';
   }
   if (action === 'SUBMIT') {
