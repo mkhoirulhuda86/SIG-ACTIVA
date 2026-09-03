@@ -1,0 +1,21 @@
+name: Cost baseline check
+
+on:
+  push:
+    branches:
+      - test/cost-fix-baseline-20260903
+    paths:
+      - .github/workflows/cost-baseline-check.yml
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run baseline cost tests
+        run: npm test
