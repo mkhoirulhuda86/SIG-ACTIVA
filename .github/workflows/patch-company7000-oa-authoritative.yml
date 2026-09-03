@@ -54,6 +54,8 @@ jobs:
         run: npx eslint lib/cost-structure/calculations/company-7000-source-adapter.ts lib/cost-structure/calculations/company-7000.ts lib/cost-structure/calculations/company-7000-source-adapter.test.ts lib/cost-structure/calculations/company-7000.test.ts
 
       - name: Build
+        env:
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
         run: npm run build
 
       - name: Verify intended diff
