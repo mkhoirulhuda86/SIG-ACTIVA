@@ -29,13 +29,13 @@ export async function saveDraft(input: SaveDraftInput, userId: number) {
   positiveSafeInteger(input.periodId, 'periodId'); positiveSafeInteger(userId, 'userId');
   if (typeof input.analysisKey !== 'string' || !input.analysisKey.trim()) throw new Error('analysisKey is required.');
   const context = await resolveCommentaryTarget(input.periodId, input.comparisonType, input.analysisKey);
-  const reason = boundedText(input.reason, 'reason');
+  const reason = boundedText(input.reason, 'reason', true);
   return prisma.$transaction(async (tx) => {
     await assertCurrentLineage(tx, input.comparisonType, context.analysis.current.periods, context.analysis.comparison.periods, context.analysisLineageKey);
     const identity = { periodId: input.periodId, comparisonType: input.comparisonType, analysisKey: context.target.node.key, analysisLineageKey: context.analysisLineageKey };
     const existing = await tx.costCommentary.findUnique({ where: { periodId_comparisonType_analysisKey_analysisLineageKey: identity }, include: { history: { orderBy: { version: 'desc' }, take: 1 } } });
     const status = nextStatus(existing?.status ?? null, 'SAVE', reason, '', existing?.preparedById ?? userId, userId);
-    const data = { reason, status, preparedById: userId, preparedAt: new Date(), reviewerNote: null, reviewedById: null, reviewedAt: null };
+    const data = { reason, status, preparedById: userId, preparedAt: new Date(), submittedAt: null, reviewerNote: null, reviewedById: null, reviewedAt: null };
     const generated = generateCommentary(context.target.node, input.comparisonType, context.analysis.comparisonLabel, context.analysisLineageKey);
     const generatedBaseline = generated && !existing?.generatedText
       ? { generatedText: generated.text, generationMetadataJson: auditJson(generated.metadata), generatedAt: new Date() }
@@ -46,7 +46,7 @@ export async function saveDraft(input: SaveDraftInput, userId: number) {
         generatedText: generated?.text ?? null, generationMetadataJson: generated ? auditJson(generated.metadata) : Prisma.JsonNull, generatedAt: generated ? new Date() : null } });
     const version = (existing?.history[0]?.version ?? 0) + 1;
     await tx.costCommentaryHistory.create({ data: { commentaryId: row.id, version, reason, status, changedById: userId } });
-    await tx.costAuditLog.create({ data: { userId, periodId: input.periodId, action: WORKFLOW_AUDIT.SAVE, entityType: 'CostCommentary', entityId: String(row.id), newValueJson: auditJson({ analysisKey: row.analysisKey, comparisonType: row.comparisonType, status: row.status, version, generatedBaselineCaptured: Boolean(generated && !existing?.generatedText) }) } });
+    await tx.costAuditLog.create({ data: { userId, periodId: input.periodId, action: WORKFLOW_AUDIT.SAVE, entityType: 'CostCommentary', entityId: String(row.id), newValueJson: auditJson({ analysisKey: row.analysisKey, analysisLevel: row.analysisLevel, comparisonType: row.comparisonType, status: row.status, version, approvalRequired: false, generatedBaselineCaptured: Boolean(generated && !existing?.generatedText) }) } });
     return row;
   }, transactionOptions);
 }
@@ -75,6 +75,7 @@ async function transition(id: number, userId: number, action: 'submit' | 'return
   }, transactionOptions);
 }
 
+// Legacy endpoints are retained for audit/backward compatibility. Current product UI uses SAVE only.
 export const submitCommentary = (id: number, userId: number) => transition(id, userId, 'submit');
 export const returnCommentary = (id: number, userId: number, note: unknown) => transition(id, userId, 'return', note);
 export const reviewCommentary = (id: number, userId: number, note?: unknown) => transition(id, userId, 'review', note);
