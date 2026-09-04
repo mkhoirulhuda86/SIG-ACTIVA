@@ -89,6 +89,7 @@ CREATE INDEX "cost_raw_v2_periods_status_idx" ON "cost_raw_v2_periods"("status")
 CREATE UNIQUE INDEX "cost_raw_v2_uploads_periodId_version_key" ON "cost_raw_v2_uploads"("periodId", "version");
 CREATE UNIQUE INDEX "cost_raw_v2_uploads_periodId_fileHashSha256_key" ON "cost_raw_v2_uploads"("periodId", "fileHashSha256");
 CREATE INDEX "cost_raw_v2_uploads_periodId_isActiveVersion_idx" ON "cost_raw_v2_uploads"("periodId", "isActiveVersion");
+CREATE UNIQUE INDEX "cost_raw_v2_uploads_one_active_per_period_key" ON "cost_raw_v2_uploads"("periodId") WHERE "isActiveVersion" = true;
 CREATE INDEX "cost_raw_v2_uploads_uploadedById_idx" ON "cost_raw_v2_uploads"("uploadedById");
 CREATE INDEX "cost_raw_v2_uploads_status_idx" ON "cost_raw_v2_uploads"("status");
 CREATE INDEX "cost_raw_v2_source_rows_uploadId_logicalSourceCode_idx" ON "cost_raw_v2_source_rows"("uploadId", "logicalSourceCode");
@@ -101,13 +102,17 @@ CREATE INDEX "cost_raw_v2_validation_issues_resolved_idx" ON "cost_raw_v2_valida
 CREATE INDEX "cost_raw_v2_validation_issues_resolvedById_idx" ON "cost_raw_v2_validation_issues"("resolvedById");
 CREATE UNIQUE INDEX "cost_raw_v2_calculation_runs_periodId_runNumber_key" ON "cost_raw_v2_calculation_runs"("periodId", "runNumber");
 CREATE INDEX "cost_raw_v2_calculation_runs_periodId_isActive_idx" ON "cost_raw_v2_calculation_runs"("periodId", "isActive");
+CREATE UNIQUE INDEX "cost_raw_v2_calculation_runs_one_active_per_period_key" ON "cost_raw_v2_calculation_runs"("periodId") WHERE "isActive" = true;
 CREATE INDEX "cost_raw_v2_calculation_runs_uploadId_idx" ON "cost_raw_v2_calculation_runs"("uploadId");
 CREATE INDEX "cost_raw_v2_calculation_runs_status_idx" ON "cost_raw_v2_calculation_runs"("status");
 CREATE INDEX "cost_raw_v2_calculation_runs_startedById_idx" ON "cost_raw_v2_calculation_runs"("startedById");
 
 ALTER TABLE "cost_raw_v2_uploads" ADD CONSTRAINT "cost_raw_v2_uploads_periodId_fkey" FOREIGN KEY ("periodId") REFERENCES "cost_raw_v2_periods"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "cost_raw_v2_uploads" ADD CONSTRAINT "cost_raw_v2_uploads_uploadedById_fkey" FOREIGN KEY ("uploadedById") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "cost_raw_v2_source_rows" ADD CONSTRAINT "cost_raw_v2_source_rows_uploadId_fkey" FOREIGN KEY ("uploadId") REFERENCES "cost_raw_v2_uploads"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "cost_raw_v2_validation_issues" ADD CONSTRAINT "cost_raw_v2_validation_issues_uploadId_fkey" FOREIGN KEY ("uploadId") REFERENCES "cost_raw_v2_uploads"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "cost_raw_v2_validation_issues" ADD CONSTRAINT "cost_raw_v2_validation_issues_sourceRowId_fkey" FOREIGN KEY ("sourceRowId") REFERENCES "cost_raw_v2_source_rows"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "cost_raw_v2_validation_issues" ADD CONSTRAINT "cost_raw_v2_validation_issues_resolvedById_fkey" FOREIGN KEY ("resolvedById") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "cost_raw_v2_calculation_runs" ADD CONSTRAINT "cost_raw_v2_calculation_runs_periodId_fkey" FOREIGN KEY ("periodId") REFERENCES "cost_raw_v2_periods"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "cost_raw_v2_calculation_runs" ADD CONSTRAINT "cost_raw_v2_calculation_runs_uploadId_fkey" FOREIGN KEY ("uploadId") REFERENCES "cost_raw_v2_uploads"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "cost_raw_v2_calculation_runs" ADD CONSTRAINT "cost_raw_v2_calculation_runs_startedById_fkey" FOREIGN KEY ("startedById") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
