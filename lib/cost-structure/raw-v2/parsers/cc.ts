@@ -8,11 +8,30 @@ const COA=/^\s*(\d{8})(?:\s+|$)/;
 const META=['Controlling Area','Fiscal Year','From Period','To Period','Cost Center Group','Plan Version'];
 const normalizedControl=(value:unknown)=>semanticText(value).replace(/^\*+\s*/,'').toLowerCase();
 
+function normalizeMetadataValue(key:string,value:string){
+  const normalized=semanticText(value);
+  if(!normalized)return '';
+  if(['Fiscal Year','From Period','To Period','Plan Version'].includes(key))return normalized.match(/-?\d+/)?.[0]??normalized;
+  if(key==='Cost Center Group'||key==='Controlling Area')return normalized.split(/\s+/)[0]??normalized;
+  return normalized;
+}
+
 function findMetadata(grid:unknown[][]){
   const result:Record<string,string>={};
   for(const row of grid)for(let c=0;c<row.length;c++){
-    const label=semanticText(row[c]); const key=META.find(k=>k.toLowerCase()===label.replace(/:$/,'').toLowerCase());
-    if(key){const inline=label.includes(':')?label.slice(label.indexOf(':')+1).trim():'';const right=row.slice(c+1).map(semanticText).find(Boolean);if(inline||right)result[key]=inline||right!;}
+    const label=semanticText(row[c]);
+    if(!label)continue;
+    const lower=label.toLowerCase();
+    for(const key of META){
+      const keyLower=key.toLowerCase();
+      let candidate='';
+      if(lower===keyLower||lower===`${keyLower}:`){
+        candidate=row.slice(c+1).map(semanticText).find(Boolean)??'';
+      }else if(lower.startsWith(`${keyLower} `)||lower.startsWith(`${keyLower}:`)){
+        candidate=label.slice(key.length).replace(/^\s*:\s*/,'').trim();
+      }
+      if(candidate){result[key]=normalizeMetadataValue(key,candidate);break;}
+    }
   }
   return result;
 }
