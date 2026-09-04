@@ -1,5 +1,5 @@
 export const RAW_V2_ENGINE = 'RAW_V2' as const;
-export const RAW_V2_PHASE = 'B_SKELETON' as const;
+export const RAW_V2_PHASE = 'C_RAW_INGESTION' as const;
 
 export const RAW_V2_RULE_SETS = {
   '2000': 'ENGINE1_2000_RAW_V3',
@@ -7,7 +7,7 @@ export const RAW_V2_RULE_SETS = {
 } as const;
 
 export const RAW_V2_CAPABILITIES = {
-  uploadEnabled: false,
+  uploadEnabled: true,
   calculationEnabled: false,
   exportEnabled: false,
 } as const;
@@ -16,6 +16,7 @@ export const RAW_V2_CAPABILITIES = {
 export const RAW_V2_WORKFLOW_MODELS = [
   'CostRawV2Period',
   'CostRawV2Upload',
+  'CostRawV2Source',
   'CostRawV2SourceRow',
   'CostRawV2ValidationIssue',
   'CostRawV2CalculationRun',

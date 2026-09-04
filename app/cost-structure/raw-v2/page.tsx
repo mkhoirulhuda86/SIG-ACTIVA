@@ -15,10 +15,10 @@ export default function RawV2DashboardPage() {
     <CostModuleFrame title="Engine 1 V2 – Raw SAP" contentClassName="p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-6xl space-y-6">
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-slate-900">
-          <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">Status: Stage B / Skeleton</p>
-          <h1 className="mt-2 text-2xl font-bold">Parallel Raw SAP engine foundation</h1>
+          <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">Status: Stage C / Raw ingestion</p>
+          <h1 className="mt-2 text-2xl font-bold">Validated Raw SAP ingestion</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-700">
-            This isolated workspace is not production-ready. The existing Cost Structure engine remains active and unchanged.
+            Company 2000 raw upload, parsing, and reconciliation are enabled. Calculation and export remain disabled.
           </p>
         </section>
 

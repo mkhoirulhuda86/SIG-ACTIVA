@@ -1,0 +1,5 @@
+import { NextRequest,NextResponse } from 'next/server';
+import { requireCostStructureRead } from '@/lib/cost-structure/auth';
+import { prisma } from '@/lib/prisma';
+
+export async function GET(request:NextRequest){const auth=await requireCostStructureRead(request);if('error'in auth)return auth.error;const companyCode=request.nextUrl.searchParams.get('companyCode')||'2000';const uploads=await prisma.costRawV2Upload.findMany({where:{period:{companyCode}},include:{period:true,sources:{orderBy:{logicalSourceCode:'asc'}},validationIssues:{orderBy:{createdAt:'asc'}}},orderBy:{uploadedAt:'desc'},take:50});return NextResponse.json({uploads:uploads.map(upload=>({...upload,fileSizeBytes:upload.fileSizeBytes.toString(),sources:upload.sources.map(source=>({...source,detailTotal:source.detailTotal?.toString()??null,debitControl:source.debitControl?.toString()??null,overUnderControl:source.overUnderControl?.toString()??null,reconciliationDifference:source.reconciliationDifference?.toString()??null}))}))});}

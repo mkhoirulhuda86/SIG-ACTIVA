@@ -30,22 +30,22 @@ model User {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  costMappingsCreated             CostCoaMapping[]            @relation("CostMappingCreatedBy")
-  costUploads                     CostUpload[]                @relation("CostUploadUploadedBy")
-  costValidationIssuesResolved    CostValidationIssue[]       @relation("CostValidationIssueResolvedBy")
-  costAdjustmentsCreated          CostAdjustment[]            @relation("CostAdjustmentCreatedBy")
-  costCalculationRunsStarted      CostCalculationRun[]        @relation("CostCalculationRunStartedBy")
-  costPeriodsFinalized            CostPeriod[]                @relation("CostPeriodFinalizedBy")
-  costPeriodsReopened             CostPeriod[]                @relation("CostPeriodReopenedBy")
-  costAuditLogs                   CostAuditLog[]
-  costMaterialityRulesCreated     CostMaterialityRule[]       @relation("CostMaterialityRuleCreatedBy")
-  costCommentariesPrepared        CostCommentary[]            @relation("CostCommentaryPreparedBy")
-  costCommentariesReviewed        CostCommentary[]            @relation("CostCommentaryReviewedBy")
-  costCommentaryChanges           CostCommentaryHistory[]     @relation("CostCommentaryHistoryChangedBy")
-  costPeriodReviews               CostPeriodReview[]          @relation("CostPeriodReviewReviewedBy")
-  costRawV2Uploads                CostRawV2Upload[]            @relation("CostRawV2UploadUploadedBy")
+  costMappingsCreated               CostCoaMapping[]           @relation("CostMappingCreatedBy")
+  costUploads                       CostUpload[]               @relation("CostUploadUploadedBy")
+  costValidationIssuesResolved      CostValidationIssue[]      @relation("CostValidationIssueResolvedBy")
+  costAdjustmentsCreated            CostAdjustment[]           @relation("CostAdjustmentCreatedBy")
+  costCalculationRunsStarted        CostCalculationRun[]       @relation("CostCalculationRunStartedBy")
+  costPeriodsFinalized              CostPeriod[]               @relation("CostPeriodFinalizedBy")
+  costPeriodsReopened               CostPeriod[]               @relation("CostPeriodReopenedBy")
+  costAuditLogs                     CostAuditLog[]
+  costMaterialityRulesCreated       CostMaterialityRule[]      @relation("CostMaterialityRuleCreatedBy")
+  costCommentariesPrepared          CostCommentary[]           @relation("CostCommentaryPreparedBy")
+  costCommentariesReviewed          CostCommentary[]           @relation("CostCommentaryReviewedBy")
+  costCommentaryChanges             CostCommentaryHistory[]    @relation("CostCommentaryHistoryChangedBy")
+  costPeriodReviews                 CostPeriodReview[]         @relation("CostPeriodReviewReviewedBy")
+  costRawV2Uploads                  CostRawV2Upload[]          @relation("CostRawV2UploadUploadedBy")
   costRawV2ValidationIssuesResolved CostRawV2ValidationIssue[] @relation("CostRawV2ValidationIssueResolvedBy")
-  costRawV2CalculationRunsStarted CostRawV2CalculationRun[]   @relation("CostRawV2CalculationRunStartedBy")
+  costRawV2CalculationRunsStarted   CostRawV2CalculationRun[]  @relation("CostRawV2CalculationRunStartedBy")
 
   @@map("users")
 }
@@ -192,6 +192,7 @@ model CostRawV2Upload {
   period           CostRawV2Period            @relation(fields: [periodId], references: [id], onDelete: Restrict)
   uploadedBy       User                       @relation("CostRawV2UploadUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
   sourceRows       CostRawV2SourceRow[]
+  sources          CostRawV2Source[]
   validationIssues CostRawV2ValidationIssue[]
   calculationRuns  CostRawV2CalculationRun[]
 
@@ -201,6 +202,36 @@ model CostRawV2Upload {
   @@index([uploadedById])
   @@index([status])
   @@map("cost_raw_v2_uploads")
+}
+
+/// Per-worksheet controls for the isolated Raw SAP ingestion boundary.
+model CostRawV2Source {
+  id                       Int      @id @default(autoincrement())
+  uploadId                 Int
+  logicalSourceCode        String
+  originalSheetName        String?
+  presenceStatus           String
+  companyCode              String
+  fiscalYear               Int?
+  fiscalPeriod             Int?
+  controllingArea          String?
+  costCenterGroup          String?
+  headerRowNumber          Int?
+  detailRowCount           Int      @default(0)
+  nonZeroDetailRowCount    Int      @default(0)
+  detailTotal              Decimal? @db.Decimal(20, 2)
+  debitControl             Decimal? @db.Decimal(20, 2)
+  overUnderControl         Decimal? @db.Decimal(20, 2)
+  reconciliationDifference Decimal? @db.Decimal(20, 2)
+  metadataJson             Json?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  upload CostRawV2Upload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@unique([uploadId, logicalSourceCode])
+  @@index([uploadId, presenceStatus])
+  @@map("cost_raw_v2_sources")
 }
 
 model CostRawV2SourceRow {
