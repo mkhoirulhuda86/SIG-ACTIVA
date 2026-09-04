@@ -1,5 +1,5 @@
 export const RAW_V2_ENGINE = 'RAW_V2' as const;
-export const RAW_V2_PHASE = 'E_MAPPING_RINCIAN_SI' as const;
+export const RAW_V2_PHASE = 'F_OPERATIONAL_READINESS' as const;
 
 export const RAW_V2_RULE_SETS = {
   '2000': 'ENGINE1_2000_RAW_V3',
@@ -9,7 +9,7 @@ export const RAW_V2_RULE_SETS = {
 export const RAW_V2_CAPABILITIES = {
   uploadEnabled: true,
   calculationEnabled: true,
-  exportEnabled: false,
+  exportEnabled: true,
 } as const;
 
 /** Dedicated transaction models; legacy workflow models are intentionally absent. */

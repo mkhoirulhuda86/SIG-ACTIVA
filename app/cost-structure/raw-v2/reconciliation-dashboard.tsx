@@ -1,215 +1,31 @@
 'use client';
-import { useState } from 'react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useMemo, useState } from 'react';
 
-type Data = any;
-function rupiah(value: string | null | undefined) {
-  if (value == null) return '—';
-  const negative = value.startsWith('-');
-  const [whole, fraction] = value.replace('-', '').split('.');
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `${negative ? '-' : ''}Rp${grouped}${fraction && fraction !== '00' ? `,${fraction}` : ''}`;
-}
+type AnyRow = Record<string, any>;
+function rupiah(value: unknown) { if(value==null)return '—'; const text=String(value), negative=text.startsWith('-'), [whole,fraction]=text.replace('-','').split('.'); return `${negative?'-':''}Rp${whole.replace(/\B(?=(\d{3})+(?!\d))/g,'.')}${fraction&&fraction!=='00'?`,${fraction}`:''}`; }
+function Badge({status}:{status:string}) { const pass=['PASS','SUCCESS','READY'].includes(status); const neutral=['NOT RUN','BLOCKED'].includes(status); return <span className={`rounded-full px-3 py-1 text-xs font-bold ${pass?'bg-emerald-100 text-emerald-800':neutral?'bg-slate-100 text-slate-700':'bg-red-100 text-red-800'}`}>{status}</span>; }
 
-export default function ReconciliationDashboard() {
-  const [year, setYear] = useState(2026);
-  const [period, setPeriod] = useState(8);
-  const [data, setData] = useState<Data>(null);
-  const [si, setSi] = useState<Data>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-
-  async function load() {
-    setBusy(true);
-    setError('');
-    try {
-      const response = await fetch(`/api/cost-structure/raw-v2/reconciliation?fiscalYear=${year}&fiscalPeriod=${period}`);
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error);
-      setData(json);
-      const siResponse = await fetch(`/api/cost-structure/raw-v2/si?fiscalYear=${year}&fiscalPeriod=${period}`);
-      if (siResponse.ok) setSi(await siResponse.json());
-    } catch (value) {
-      setError(value instanceof Error ? value.message : 'Gagal memuat data.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function calculateSi() {
-    setBusy(true);
-    setError('');
-    try {
-      const response = await fetch('/api/cost-structure/raw-v2/si/calculate', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ companyCode: '2000', fiscalYear: year, fiscalPeriod: period }),
-      });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error);
-      await load();
-    } catch (value) {
-      setError(value instanceof Error ? value.message : 'Gagal menghitung SI.');
-      setBusy(false);
-    }
-  }
-
-  async function calculate() {
-    setBusy(true);
-    setError('');
-    try {
-      const response = await fetch('/api/cost-structure/raw-v2/reconciliation/calculate', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ companyCode: '2000', fiscalYear: year, fiscalPeriod: period }),
-      });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error);
-      await load();
-    } catch (value) {
-      setError(value instanceof Error ? value.message : 'Gagal menghitung.');
-      setBusy(false);
-    }
-  }
-
-  const rec = data?.run?.reconciliation;
-  const upload = data?.upload;
-  const source = (code: string) => upload?.sources?.find((item: any) => item.logicalSourceCode === code);
-  const cards = rec
-    ? [
-        ['Unique CC COA', rec.uniqueCcCoaCount],
-        ['Found in TB', rec.foundInTbCount],
-        ['Missing in TB', rec.missingInTbCount],
-        ['Exact match', rec.exactMatchCount],
-        ['Mismatch', rec.mismatchCount],
-        ['ADUM', rupiah(rec.totalAdum)],
-        ['PASAR', rupiah(rec.totalPasar)],
-        ['Base CC', rupiah(rec.totalBaseCc)],
-        ['TB (same COAs)', rupiah(rec.totalTbPopulation)],
-        ['Difference (CC − TB)', rupiah(rec.totalDifference)],
-      ]
-    : [];
-
-  return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-blue-200 bg-blue-50 p-6">
-        <p className="text-sm font-semibold uppercase text-blue-700">D_RAW_RECONCILIATION</p>
-        <h1 className="mt-2 text-2xl font-bold">Company 2000 TB ↔ Base CC</h1>
-        <p className="mt-2 text-sm text-slate-700">
-          Exact per-COA control: TB = CC_ADUM + CC_PASAR. DERIV is separate evidence and is never double-counted. No SI is finalized here.
-        </p>
-      </section>
-
-      <section className="flex flex-wrap items-end gap-3 rounded-2xl border bg-white p-5 shadow-sm">
-        <label className="text-sm">
-          Fiscal year
-          <input className="mt-1 block rounded border p-2" type="number" value={year} onChange={(event) => setYear(Number(event.target.value))} />
-        </label>
-        <label className="text-sm">
-          Period
-          <select className="mt-1 block rounded border p-2" value={period} onChange={(event) => setPeriod(Number(event.target.value))}>
-            {Array.from({ length: 12 }, (_, index) => <option key={index + 1}>{index + 1}</option>)}
-          </select>
-        </label>
-        <button onClick={load} disabled={busy} className="rounded bg-slate-700 px-4 py-2 text-white">Load</button>
-        <button onClick={calculate} disabled={busy || upload?.status !== 'VALIDATED'} className="rounded bg-blue-600 px-4 py-2 font-semibold text-white disabled:bg-slate-300">Calculate reconciliation</button>
-        <button onClick={calculateSi} disabled={busy || !rec || rec.missingInTbCount > 0 || rec.derivPasarCoverageMissing > 0} className="rounded bg-violet-700 px-4 py-2 font-semibold text-white disabled:bg-slate-300">Calculate mapped SI</button>
-        {error && <p className="w-full text-sm text-red-700">{error}</p>}
-      </section>
-
-      {data && <>
-        <section className="rounded-2xl border bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap justify-between gap-2">
-            <div><h2 className="font-bold">Active upload</h2><p className="text-sm">{upload ? `v${upload.version} · ${upload.status}` : 'No active upload'}</p></div>
-            {rec && <span className={`rounded-full px-4 py-2 font-bold ${rec.status === 'PASS' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>{rec.status}</span>}
-          </div>
-          {source('TB') && <div className="mt-4 rounded-xl bg-emerald-50 p-4"><b>TB coverage: {source('TB').detailRowCount} COA parsed · {source('TB').nonZeroDetailRowCount} non-zero</b><p className="text-xs text-slate-600">Net TB: {rupiah(source('TB').detailTotal)}. A zero Net TB does not mean TB is empty.</p></div>}
-        </section>
-
-        {rec && <>
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{cards.map(([label, value]) => <div key={label as string} className="rounded-xl border bg-white p-4 shadow-sm"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 font-bold">{value}</p></div>)}</section>
-
-          <section className="rounded-2xl border bg-white p-5 shadow-sm">
-            <h2 className="font-bold">Blocking exceptions</h2>
-            <div className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b"><th>COA</th><th>TB</th><th>ADUM</th><th>PASAR</th><th>CC total</th><th>Difference (CC − TB)</th><th>Status</th></tr></thead><tbody>{rec.rows.length === 0 ? <tr><td colSpan={7} className="py-4 text-slate-500">No TB/base-CC mismatch.</td></tr> : rec.rows.map((row: any) => <tr key={row.coaCode} className="border-b"><td className="py-2 font-mono font-bold">{row.coaCode}</td><td>{rupiah(row.tbAmount)}</td><td>{rupiah(row.adumAmount)}</td><td>{rupiah(row.pasarAmount)}</td><td>{rupiah(row.ccAmount)}</td><td className="font-bold text-red-700">{rupiah(row.difference)}</td><td>{row.status}</td></tr>)}</tbody></table></div>
-          </section>
-
-          <section className="rounded-2xl border border-violet-200 bg-violet-50 p-5">
-            <h2 className="font-bold">DERIV — separate PASAR evidence</h2>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
-              <span>Presence: <b>{rec.derivPresenceStatus}</b></span>
-              <span>Rows: <b>{rec.derivDetailRowCount}</b></span>
-              <span>Non-zero: <b>{rec.derivNonZeroCount}</b></span>
-              <span>Total: <b>{rupiah(rec.derivTotal)}</b></span>
-              <span>Debit: <b>{rupiah(rec.derivDebitControl)}</b></span>
-              <span>Control difference: <b>{rupiah(rec.derivSourceDifference)}</b></span>
-              <span>COA missing in PASAR: <b className={rec.derivPasarCoverageMissing > 0 ? 'text-red-700' : ''}>{rec.derivPasarCoverageMissing}</b></span>
-            </div>
-            {rec.derivPasarCoverageMissing > 0 && <p className="mt-3 rounded-lg bg-red-100 p-3 text-sm font-semibold text-red-800">Blocking: non-zero DERIV COA must already exist inside CC_PASAR.</p>}
-            <p className="mt-3 text-xs">Future SI treatment: PASAR analytical base − DERIV. Stage D does not apply or finalize that overlay.</p>
-          </section>
-        </>}
-        {si?.run && <StageESummary run={si.run} />}
-      </>}
-    </div>
-  );
-}
-
-function StageESummary({ run }: { run: any }) {
-  const result = (code: string) => run.results.find((item: any) => item.resultCode === code)?.amount;
-  const mappingControls = run.controls.filter((item: any) => item.controlCode.endsWith('_MAPPING_COMPLETENESS'));
-  const corrections = run.analyticalRows.filter((item: any) => item.analyticalClass === 'RINCIAN_ADUM_DELTA' || item.analyticalClass === 'DERIV_PASAR_OFFSET');
-  const issueMap = new Map<string, any>();
-  for (const control of run.controls) {
-    const issues = Array.isArray(control.metricsJson?.issues) ? control.metricsJson.issues : [];
-    for (const issue of issues) issueMap.set(`${issue.code}:${issue.source}:${issue.coaCode}:${issue.amount}`, issue);
-  }
-  const issues = [...issueMap.values()];
-
-  return <section className="space-y-4 rounded-2xl border border-violet-200 bg-violet-50 p-5">
-    <div className="flex justify-between"><div><p className="text-xs font-bold uppercase text-violet-700">E_MAPPING_RINCIAN_SI</p><h2 className="text-xl font-bold">Mapped Company 2000 SI</h2></div><b>{run.status}</b></div>
-    <div className="grid gap-3 sm:grid-cols-3">{[['Final ADUM', result('GROUP:ADUM')], ['Final PASAR', result('GROUP:PASAR')], ['Company SI', result('COMPANY:SI')]].map(([label, value]) => <div key={label} className="rounded-xl bg-white p-4"><p className="text-xs text-slate-500">{label}</p><b>{rupiah(value)}</b></div>)}</div>
-
-    <div className="overflow-x-auto rounded-xl bg-white p-4">
-      <h3 className="mb-2 font-bold">Mapping coverage</h3>
-      <table className="w-full text-left text-sm">
-        <thead><tr><th>Population</th><th>Non-zero</th><th>INCLUDE</th><th>EXCLUDE</th><th>RECLASS</th><th>Unmapped / Ambiguous / Invalid</th><th>Difference</th><th>Status</th></tr></thead>
-        <tbody>{mappingControls.map((control: any) => {
-          const metrics = control.metricsJson ?? {};
-          return <tr key={control.controlCode} className="border-t">
-            <td className="py-2">{control.sourceLogicalCode}</td>
-            <td>{metrics.nonZeroCount ?? 0}</td>
-            <td>{metrics.include?.count ?? 0} · {rupiah(metrics.include?.amount)}</td>
-            <td>{metrics.exclude?.count ?? 0} · {rupiah(metrics.exclude?.amount)}</td>
-            <td>{metrics.reclass?.count ?? 0} · {rupiah(metrics.reclass?.amount)}</td>
-            <td>{metrics.unmapped?.count ?? 0} / {metrics.ambiguous?.count ?? 0} / {metrics.invalidTarget?.count ?? 0}</td>
-            <td>{rupiah(control.difference)}</td>
-            <td className="font-bold">{control.status}</td>
-          </tr>;
-        })}</tbody>
-      </table>
-    </div>
-
-    {issues.length > 0 && <div className="overflow-x-auto rounded-xl border border-red-200 bg-red-50 p-4">
-      <h3 className="mb-2 font-bold text-red-800">Stage E blocking issues</h3>
-      <table className="w-full text-left text-sm"><thead><tr><th>Code</th><th>Population</th><th>COA</th><th>Amount</th><th>Message</th></tr></thead><tbody>{issues.map((issue: any) => <tr key={`${issue.code}:${issue.source}:${issue.coaCode}:${issue.amount}`} className="border-t"><td className="py-2 font-bold text-red-700">{issue.code}</td><td>{issue.source}</td><td className="font-mono">{issue.coaCode}</td><td>{rupiah(issue.amount)}</td><td>{issue.message}</td></tr>)}</tbody></table>
-    </div>}
-
-    <div className="overflow-x-auto rounded-xl bg-white p-4">
-      <h3 className="mb-1 font-bold">Explicit corrections and offsets</h3>
-      <p className="mb-3 text-xs text-slate-600">A Stage D CC − TB mismatch is reconstructed as the exact opposite-signed Rincian ADUM correction; it is never hidden.</p>
-      <table className="w-full text-left text-sm"><thead><tr><th>Source / row</th><th>COA</th><th>Class</th><th>Raw evidence</th><th>SI contribution</th><th>Mapping</th></tr></thead><tbody>{corrections.map((row: any) => <tr key={row.id} className="border-t"><td className="py-2">{row.logicalSourceCode} / {row.sourceRowNumber}</td><td className="font-mono">{row.coaCode}</td><td>{row.analyticalClass}</td><td>{rupiah(row.rawAmount)}</td><td className="font-bold">{rupiah(row.mappedAmount)}</td><td>{row.mappingAction ?? '—'} → {row.costGroupCode ?? '—'}/{row.natureCode ?? '—'} · map #{row.mappingId ?? '—'}</td></tr>)}</tbody></table>
-    </div>
-
-    <div className="overflow-x-auto rounded-xl bg-white p-4">
-      <h3 className="mb-2 font-bold">Nature breakdown</h3>
-      <table className="w-full text-left text-sm"><tbody>{run.results.filter((item: any) => item.resultLevel === 'NATURE').map((item: any) => <tr key={item.id} className="border-t"><td className="py-2">{item.costGroupCode}</td><td>{item.natureCode}</td><td className="text-right font-bold">{rupiah(item.amount)}</td></tr>)}</tbody></table>
-    </div>
-
-    <details className="rounded-xl bg-white p-4">
-      <summary className="cursor-pointer font-bold">Analytical lineage ({run.analyticalRows.length} rows)</summary>
-      <div className="mt-3 overflow-x-auto">
-        <table className="w-full text-left text-xs"><thead><tr><th>Source / row</th><th>COA</th><th>Class</th><th>Raw</th><th>Contribution</th><th>Disposition</th><th>Target</th><th>Mapping ID</th></tr></thead><tbody>{run.analyticalRows.map((row: any) => <tr key={row.id} className="border-t"><td className="py-2">{row.logicalSourceCode} / {row.sourceRowNumber}</td><td className="font-mono">{row.coaCode}</td><td>{row.analyticalClass}</td><td>{rupiah(row.rawAmount)}</td><td>{rupiah(row.mappedAmount)}</td><td>{row.mappingStatus}</td><td>{row.costGroupCode ?? '—'}/{row.natureCode ?? '—'}</td><td>{row.mappingId ?? '—'}</td></tr>)}</tbody></table>
-      </div>
-    </details>
-  </section>;
+export default function ReconciliationDashboard(){
+ const [year,setYear]=useState(2026),[period,setPeriod]=useState(8),[data,setData]=useState<AnyRow|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [query,setQuery]=useState(''),[sourceFilter,setSourceFilter]=useState(''),[groupFilter,setGroupFilter]=useState(''),[natureFilter,setNatureFilter]=useState(''),[statusFilter,setStatusFilter]=useState(''),[classFilter,setClassFilter]=useState('');
+ async function load(){setBusy(true);setError('');try{const response=await fetch(`/api/cost-structure/raw-v2/report?fiscalYear=${year}&fiscalPeriod=${period}`);const body=await response.json();if(!response.ok)throw new Error(body.error);setData(body);}catch(e){setError(e instanceof Error?e.message:'Gagal memuat laporan.');}finally{setBusy(false)}}
+ async function calculate(path:string){setBusy(true);setError('');try{const response=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({companyCode:'2000',fiscalYear:year,fiscalPeriod:period})});const body=await response.json();if(!response.ok)throw new Error(body.error);await load();}catch(e){setError(e instanceof Error?e.message:'Proses gagal.');setBusy(false)}}
+ const run=data?.run, rec=data?.stageD?.reconciliation;
+ const analytical=useMemo(()=>run?.analyticalRows??[],[run]);
+ const filtered=useMemo(()=>analytical.filter((row:AnyRow)=>(!query||`${row.coaCode} ${row.descriptionRaw??''}`.toLowerCase().includes(query.toLowerCase()))&&(!sourceFilter||row.logicalSourceCode===sourceFilter)&&(!groupFilter||row.costGroupCode===groupFilter)&&(!natureFilter||row.natureCode===natureFilter)&&(!statusFilter||row.mappingStatus===statusFilter||row.mappingAction===statusFilter)&&(!classFilter||row.analyticalClass===classFilter)),[analytical,query,sourceFilter,groupFilter,natureFilter,statusFilter,classFilter]);
+ const workflows=[['1. Raw upload',data?.upload?.status==='VALIDATED'?'READY':data?.upload?.status??'NOT RUN'],['2. Source validation',data?.upload?.status==='VALIDATED'?'PASS':data?.upload?'FAIL':'NOT RUN'],['3. TB ↔ Base CC reconciliation',rec?.status??'NOT RUN'],['4. Mapping / Rincian / SI',run?.status??(rec?'BLOCKED':'NOT RUN')],['5. Reporting / Export',data?.exportEligibility?.eligible?'READY':'BLOCKED']];
+ const cards=[['Final ADUM',data?.executive?.finalAdum],['Final PASAR',data?.executive?.finalPasar],['Final Company SI',data?.executive?.finalCompanySi],['Stage D CC − TB',data?.executive?.stageDDifference],['Rincian ADUM correction',data?.executive?.rincianAdumCorrection],['DERIV raw',data?.executive?.derivRaw],['DERIV contributing',data?.executive?.derivContributing],['DERIV excluded',data?.executive?.derivExcluded],['DERIV SI offset',data?.executive?.derivSiOffset]];
+ return <div className="space-y-6">
+  <section className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 to-violet-50 p-6"><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Operational reporting · Company 2000</p><h1 className="mt-2 text-2xl font-bold">Raw SAP Cost Structure & SI</h1><p className="mt-2 text-sm text-slate-600">Active-upload scoped review, persisted results, audit lineage, and controlled export. Ruleset: {run?.ruleSetVersion??'—'}</p></section>
+  <section className="flex flex-wrap items-end gap-3 rounded-2xl border bg-white p-5 shadow-sm"><label className="text-sm">Fiscal year<input className="mt-1 block rounded border p-2" type="number" value={year} onChange={e=>setYear(Number(e.target.value))}/></label><label className="text-sm">Period<select className="mt-1 block rounded border p-2" value={period} onChange={e=>setPeriod(Number(e.target.value))}>{Array.from({length:12},(_,i)=><option key={i+1}>{i+1}</option>)}</select></label><button onClick={load} disabled={busy} className="rounded bg-slate-700 px-4 py-2 text-white">{busy?'Loading…':'Load period'}</button><button onClick={()=>calculate('/api/cost-structure/raw-v2/reconciliation/calculate')} disabled={busy||data?.upload?.status!=='VALIDATED'} className="rounded bg-blue-600 px-4 py-2 text-white disabled:bg-slate-300">Run reconciliation</button><button onClick={()=>calculate('/api/cost-structure/raw-v2/si/calculate')} disabled={busy||!rec||rec.missingInTbCount>0||rec.derivPasarCoverageMissing>0} className="rounded bg-violet-700 px-4 py-2 text-white disabled:bg-slate-300">Run mapped SI</button>{data?.exportEligibility?.eligible&&<a className="rounded bg-emerald-700 px-4 py-2 font-semibold text-white" href={`/api/cost-structure/raw-v2/report/export?fiscalYear=${year}&fiscalPeriod=${period}`}>Export Excel</a>}{error&&<p className="w-full text-sm font-semibold text-red-700">{error}</p>}</section>
+  {data&&<><section className="grid gap-3 md:grid-cols-5">{workflows.map(([label,status])=><div className="rounded-xl border bg-white p-4" key={label}><p className="mb-3 text-xs font-semibold text-slate-600">{label}</p><Badge status={status}/></div>)}</section>
+  <section className="rounded-2xl border bg-white p-5"><div className="flex flex-wrap justify-between gap-3"><div><h2 className="font-bold">Period context</h2><p className="text-sm text-slate-600">Company 2000 · {year}/P{String(period).padStart(2,'0')} · period {data.period?.status??'NOT FOUND'} · upload {data.upload?`#${data.upload.id} v${data.upload.version} ${data.upload.status}`:'none'}</p></div>{run&&<Badge status={run.status}/>}</div></section>
+  {run&&<><section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{cards.map(([label,value])=><div key={label} className="rounded-xl border bg-white p-4 shadow-sm"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-lg font-bold">{rupiah(value)}</p></div>)}</section>
+  <section className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Mapping coverage</h2><div className="mt-3 overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr><th>Population</th><th>Non-zero</th>{['INCLUDE','EXCLUDE','RECLASS','UNMAPPED','AMBIGUOUS','INVALID TARGET'].map(x=><th key={x}>{x}</th>)}<th>Difference</th><th>Status</th></tr></thead><tbody>{run.controls.filter((c:AnyRow)=>c.controlCode.endsWith('_MAPPING_COMPLETENESS')).map((c:AnyRow)=>{const m=c.metricsJson??{};return <tr className="border-t" key={c.id}><td className="py-2 font-bold">{c.sourceLogicalCode}</td><td>{m.nonZeroCount??0}</td>{['include','exclude','reclass','unmapped','ambiguous','invalidTarget'].map(k=><td key={k}>{m[k]?.count??0} · {rupiah(m[k]?.amount)}</td>)}<td>{rupiah(c.difference)}</td><td><Badge status={c.status}/></td></tr>})}</tbody></table></div></section>
+  <section className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Nature breakdown (persisted)</h2>{['ADUM','PASAR'].map(group=><div key={group} className="mt-4"><h3 className="font-semibold">{group}</h3><div className="overflow-x-auto"><table className="w-full text-sm"><tbody>{run.results.filter((r:AnyRow)=>r.resultLevel==='NATURE'&&r.costGroupCode===group).map((r:AnyRow)=><tr className="border-t" key={r.id}><td className="py-2 font-mono">{r.natureCode}</td><td>{r.natureName??'—'}</td><td className="text-right font-bold">{rupiah(r.amount)}</td></tr>)}</tbody></table></div></div>)}</section>
+  <section className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Analytical lineage</h2><div className="my-3 grid gap-2 md:grid-cols-3 lg:grid-cols-6"><input placeholder="COA / description" className="rounded border p-2 text-sm" value={query} onChange={e=>setQuery(e.target.value)}/>{[['Source',sourceFilter,setSourceFilter,'logicalSourceCode'],['Cost Group',groupFilter,setGroupFilter,'costGroupCode'],['Nature',natureFilter,setNatureFilter,'natureCode'],['Status / action',statusFilter,setStatusFilter,'mappingStatus'],['Class',classFilter,setClassFilter,'analyticalClass']].map(([label,value,setter,key]:any)=><select aria-label={label} className="rounded border p-2 text-sm" key={label} value={value} onChange={e=>setter(e.target.value)}><option value="">All {label}</option>{[...new Set(analytical.map((r:AnyRow)=>r[key]).filter(Boolean))].map((x:any)=><option key={x}>{x}</option>)}</select>)}</div><div className="max-h-[34rem] overflow-auto"><table className="w-full text-left text-xs"><thead><tr><th>Source / sheet / row</th><th>COA / description</th><th>Raw</th><th>SI contribution</th><th>Class</th><th>Status/action</th><th>Target</th><th>Rule / mapping</th><th>References</th></tr></thead><tbody>{filtered.map((r:AnyRow)=><tr className="border-t align-top" key={r.id}><td className="py-2">{r.logicalSourceCode}<br/>{r.originalSheetName} · {r.sourceRowNumber}</td><td><b className="font-mono">{r.coaCode}</b><br/>{r.descriptionRaw}</td><td>{rupiah(r.rawAmount)}</td><td className="font-bold">{rupiah(r.mappedAmount)}</td><td>{r.analyticalClass}</td><td>{r.mappingStatus} / {r.mappingAction??'—'}</td><td>{r.costGroupCode??'—'} / {r.natureCode??'—'}</td><td>{r.ruleCode??'—'}<br/>#{r.mappingId??'—'} · {r.mappingEffectiveDate?.slice(0,10)??'—'}</td><td><details><summary>View JSON</summary><pre className="max-w-sm whitespace-pre-wrap">{JSON.stringify(r.referenceJson,null,2)}</pre></details></td></tr>)}</tbody></table></div></section>
+  <section className={`rounded-2xl border p-5 ${data.issues.length||run.controls.some((c:AnyRow)=>c.status!=='PASS')?'border-red-200 bg-red-50':'border-emerald-200 bg-emerald-50'}`}><h2 className="font-bold">Blocking & diagnostic issues</h2>{!data.issues.length&&!run.controls.some((c:AnyRow)=>c.status!=='PASS')?<p className="mt-2 text-sm font-semibold text-emerald-800">Zero blocking issues. All persisted Stage E controls PASS.</p>:<ul className="mt-2 list-disc pl-5 text-sm">{data.issues.map((i:AnyRow)=><li key={i.id}>{i.issueCode}: {i.message}</li>)}{run.controls.filter((c:AnyRow)=>c.status!=='PASS').map((c:AnyRow)=><li key={c.id}>{c.controlCode}: {c.status} ({rupiah(c.difference)})</li>)}</ul>}</section></>}
+  <section className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Run history</h2><div className="mt-3 overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr><th>Run</th><th>Stage</th><th>Upload</th><th>Status</th><th>State</th><th>Ruleset</th><th>Started / completed</th><th>Rows R/C/A</th><th>Error / invalidation</th></tr></thead><tbody>{data.history.map((h:AnyRow)=><tr className={`border-t ${h.isActive&&h.status==='SUCCESS'?'bg-emerald-50':''}`} key={h.id}><td className="py-2">#{h.runNumber} / ID {h.id}</td><td>{h.stage??'—'}</td><td>#{h.uploadId} / v{h.uploadVersion??'—'}</td><td><Badge status={h.status}/></td><td>{h.isActive?'ACTIVE':'INACTIVE'}</td><td>{h.ruleSetVersion}</td><td>{new Date(h.startedAt).toLocaleString()}<br/>{h.completedAt?new Date(h.completedAt).toLocaleString():'—'}</td><td>{h.resultCount}/{h.controlCount}/{h.analyticalRowCount}</td><td>{h.errorMessage??'—'}</td></tr>)}</tbody></table></div>{!data.exportEligibility.eligible&&<p className="mt-3 text-xs text-amber-800">Export blocked: {data.exportEligibility.reasons.join(' ')}</p>}</section></>}
+ </div>
 }

@@ -10,13 +10,13 @@ test('Raw V2 has distinct persisted ruleset lineage', () => {
   assert.notEqual(RAW_V2_RULE_SETS['2000'], RAW_V2_RULE_SETS['7000']);
 });
 
-test('Stage E enables mapped SI calculation without export', () => {
+test('Stage F enables operational export after the protected implementation is wired', () => {
   assert.deepEqual(getRawV2Status(), {
     engine: 'RAW_V2',
-    phase: 'E_MAPPING_RINCIAN_SI',
+    phase: 'F_OPERATIONAL_READINESS',
     uploadEnabled: true,
     calculationEnabled: true,
-    exportEnabled: false,
+    exportEnabled: true,
     ruleSets: RAW_V2_RULE_SETS,
   });
 });
