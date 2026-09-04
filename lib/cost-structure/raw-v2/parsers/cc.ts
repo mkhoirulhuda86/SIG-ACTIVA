@@ -8,6 +8,22 @@ const COA=/^\s*(\d{8})(?:\s+|$)/;
 const META=['Controlling Area','Fiscal Year','From Period','To Period','Cost Center Group','Plan Version'];
 const normalizedControl=(value:unknown)=>semanticText(value).replace(/^\*+\s*/,'').toLowerCase();
 
+export function readCcAuthoritativeGrid(sheet:XLSX.WorkSheet){
+  const ref=sheet['!ref'];
+  if(!ref)return [] as unknown[][];
+  const decoded=XLSX.utils.decode_range(ref);
+  const rows:unknown[][]=[];
+  for(let r=0;r<=decoded.e.r;r++){
+    const row:unknown[]=[];
+    for(let c=1;c<=10;c++){
+      const cell=sheet[XLSX.utils.encode_cell({r,c})];
+      row.push(cell?.v??null);
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
 function normalizeMetadataValue(key:string,value:string){
   const normalized=semanticText(value);
   if(!normalized)return '';
@@ -42,10 +58,9 @@ function findHeader(grid:unknown[][]){
   }
 }
 
-/** Input grid is deliberately sliced to Excel B:K before this function sees it. */
+/** Reads only absolute Excel columns B:K regardless of the worksheet used-range start column. */
 export function parseCcSheet(sheet:XLSX.WorkSheet,sheetName:string,companyCode:string){
-  const whole=XLSX.utils.sheet_to_json<unknown[]>(sheet,{header:1,raw:true,defval:null});
-  const grid=whole.map(row=>row.slice(1,11));
+  const grid=readCcAuthoritativeGrid(sheet);
   const metadata=findMetadata(grid); const issues:RawV2ParserIssue[]=[];const rows:RawV2ParsedRow[]=[];
   const group=metadata['Cost Center Group']; const logical=group?classifyCostCenterGroup(companyCode,group):undefined;
   const sourceCode=logical??`UNCLASSIFIED_${sheetName}`;
