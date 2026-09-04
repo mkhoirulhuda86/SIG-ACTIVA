@@ -30,19 +30,22 @@ model User {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  costMappingsCreated          CostCoaMapping[]        @relation("CostMappingCreatedBy")
-  costUploads                  CostUpload[]            @relation("CostUploadUploadedBy")
-  costValidationIssuesResolved CostValidationIssue[]   @relation("CostValidationIssueResolvedBy")
-  costAdjustmentsCreated       CostAdjustment[]        @relation("CostAdjustmentCreatedBy")
-  costCalculationRunsStarted   CostCalculationRun[]    @relation("CostCalculationRunStartedBy")
-  costPeriodsFinalized         CostPeriod[]            @relation("CostPeriodFinalizedBy")
-  costPeriodsReopened          CostPeriod[]            @relation("CostPeriodReopenedBy")
-  costAuditLogs                CostAuditLog[]
-  costMaterialityRulesCreated  CostMaterialityRule[]   @relation("CostMaterialityRuleCreatedBy")
-  costCommentariesPrepared     CostCommentary[]        @relation("CostCommentaryPreparedBy")
-  costCommentariesReviewed     CostCommentary[]        @relation("CostCommentaryReviewedBy")
-  costCommentaryChanges        CostCommentaryHistory[] @relation("CostCommentaryHistoryChangedBy")
-  costPeriodReviews            CostPeriodReview[]      @relation("CostPeriodReviewReviewedBy")
+  costMappingsCreated             CostCoaMapping[]            @relation("CostMappingCreatedBy")
+  costUploads                     CostUpload[]                @relation("CostUploadUploadedBy")
+  costValidationIssuesResolved    CostValidationIssue[]       @relation("CostValidationIssueResolvedBy")
+  costAdjustmentsCreated          CostAdjustment[]            @relation("CostAdjustmentCreatedBy")
+  costCalculationRunsStarted      CostCalculationRun[]        @relation("CostCalculationRunStartedBy")
+  costPeriodsFinalized            CostPeriod[]                @relation("CostPeriodFinalizedBy")
+  costPeriodsReopened             CostPeriod[]                @relation("CostPeriodReopenedBy")
+  costAuditLogs                   CostAuditLog[]
+  costMaterialityRulesCreated     CostMaterialityRule[]       @relation("CostMaterialityRuleCreatedBy")
+  costCommentariesPrepared        CostCommentary[]            @relation("CostCommentaryPreparedBy")
+  costCommentariesReviewed        CostCommentary[]            @relation("CostCommentaryReviewedBy")
+  costCommentaryChanges           CostCommentaryHistory[]     @relation("CostCommentaryHistoryChangedBy")
+  costPeriodReviews               CostPeriodReview[]          @relation("CostPeriodReviewReviewedBy")
+  costRawV2Uploads                CostRawV2Upload[]            @relation("CostRawV2UploadUploadedBy")
+  costRawV2ValidationIssuesResolved CostRawV2ValidationIssue[] @relation("CostRawV2ValidationIssueResolvedBy")
+  costRawV2CalculationRunsStarted CostRawV2CalculationRun[]   @relation("CostRawV2CalculationRunStartedBy")
 
   @@map("users")
 }
@@ -167,6 +170,7 @@ model CostRawV2Period {
   @@map("cost_raw_v2_periods")
 }
 
+/// The migration enforces at most one isActiveVersion=true upload per Raw V2 period with a partial unique index.
 model CostRawV2Upload {
   id               Int                   @id @default(autoincrement())
   periodId         Int
@@ -186,6 +190,7 @@ model CostRawV2Upload {
   updatedAt        DateTime              @updatedAt
 
   period           CostRawV2Period            @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  uploadedBy       User                       @relation("CostRawV2UploadUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
   sourceRows       CostRawV2SourceRow[]
   validationIssues CostRawV2ValidationIssue[]
   calculationRuns  CostRawV2CalculationRun[]
@@ -239,8 +244,9 @@ model CostRawV2ValidationIssue {
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
 
-  upload    CostRawV2Upload     @relation(fields: [uploadId], references: [id], onDelete: Cascade)
-  sourceRow CostRawV2SourceRow? @relation(fields: [sourceRowId], references: [id], onDelete: Cascade)
+  upload     CostRawV2Upload     @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  sourceRow  CostRawV2SourceRow? @relation(fields: [sourceRowId], references: [id], onDelete: Cascade)
+  resolvedBy User?               @relation("CostRawV2ValidationIssueResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
 
   @@index([uploadId, severity])
   @@index([sourceRowId])
@@ -250,6 +256,7 @@ model CostRawV2ValidationIssue {
   @@map("cost_raw_v2_validation_issues")
 }
 
+/// The migration enforces at most one isActive=true calculation run per Raw V2 period with a partial unique index.
 model CostRawV2CalculationRun {
   id                  Int                           @id @default(autoincrement())
   periodId            Int
@@ -267,8 +274,9 @@ model CostRawV2CalculationRun {
   createdAt           DateTime                      @default(now())
   updatedAt           DateTime                      @updatedAt
 
-  period CostRawV2Period @relation(fields: [periodId], references: [id], onDelete: Restrict)
-  upload CostRawV2Upload @relation(fields: [uploadId], references: [id], onDelete: Restrict)
+  period    CostRawV2Period @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  upload    CostRawV2Upload @relation(fields: [uploadId], references: [id], onDelete: Restrict)
+  startedBy User            @relation("CostRawV2CalculationRunStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
 
   @@unique([periodId, runNumber])
   @@index([periodId, isActive])
