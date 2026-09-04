@@ -25,6 +25,7 @@ CREATE TABLE "cost_raw_v2_reconciliation_rows" (
 );
 CREATE INDEX "cost_raw_v2_reconciliation_rows_reconciliationId_status_idx" ON "cost_raw_v2_reconciliation_rows"("reconciliationId", "status");
 
+-- Reserved for Stage E mapping output. Stage D creates no rows here because mapping has not yet been applied.
 CREATE TABLE "cost_raw_v2_analytical_rows" (
   "id" SERIAL PRIMARY KEY, "calculationRunId" INTEGER NOT NULL, "sourceRowId" INTEGER NOT NULL,
   "logicalSourceCode" TEXT NOT NULL, "originalSheetName" TEXT NOT NULL, "sourceRowNumber" INTEGER NOT NULL,
@@ -32,6 +33,8 @@ CREATE TABLE "cost_raw_v2_analytical_rows" (
   "analyticalClass" TEXT NOT NULL, "mappedAmount" NUMERIC(20,2) NOT NULL,
   "mappingStatus" TEXT NOT NULL, "ruleSetVersion" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "cost_raw_v2_analytical_rows_calculationRunId_fkey" FOREIGN KEY ("calculationRunId") REFERENCES "cost_raw_v2_calculation_runs"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "cost_raw_v2_analytical_rows_sourceRowId_fkey" FOREIGN KEY ("sourceRowId") REFERENCES "cost_raw_v2_source_rows"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "cost_raw_v2_analytical_rows_calculationRunId_sourceRowId_key" UNIQUE ("calculationRunId", "sourceRowId")
 );
+CREATE INDEX "cost_raw_v2_analytical_rows_sourceRowId_idx" ON "cost_raw_v2_analytical_rows"("sourceRowId");
 CREATE INDEX "cost_raw_v2_analytical_rows_calculationRunId_logicalSourceCode_coaCode_idx" ON "cost_raw_v2_analytical_rows"("calculationRunId", "logicalSourceCode", "coaCode");
