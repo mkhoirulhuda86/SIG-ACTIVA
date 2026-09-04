@@ -27,7 +27,7 @@ export async function parseRawV2Workbook(bytes:Uint8Array,context:RawV2UploadCon
     if(tbHeader||hint==='TB'){
       result=parseTbSheet(sheet,name,context.companyCode);
     }else{
-      const hintedCc=hint!==undefined&&hint!=='TB';
+      const hintedCc=hint!==undefined;
       const optionalHint=hint==='CC_PROD'||hint==='CC_DERIV'?hint:undefined;
       if(!looksLikeCc(grid)&&!hintedCc)continue;
       if(optionalHint)malformedOptionalCandidates.add(optionalHint);
