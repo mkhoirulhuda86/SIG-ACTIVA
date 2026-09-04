@@ -7,8 +7,14 @@ import type { RawV2ParsedWorkbook, RawV2ParsedSource, RawV2ParserIssue, RawV2Upl
 
 const REQUIRED=['TB','CC_ADUM','CC_PASAR'] as const;
 const OPTIONAL=['CC_PROD','CC_DERIV'] as const;
+const CC_MARKERS=['cost center group','cost elements','controlling area'] as const;
 
-function looksLikeCc(grid:unknown[][]){return grid.some(row=>row.slice(1,11).some(v=>['cost center group','cost elements','controlling area'].includes(semanticText(v).replace(/:$/,'').toLowerCase())));}
+function looksLikeCc(grid:unknown[][]){
+  return grid.some(row=>row.slice(1,11).some(value=>{
+    const text=semanticText(value).replace(/:$/,'').toLowerCase();
+    return CC_MARKERS.some(marker=>text===marker||text.startsWith(`${marker} `)||text.startsWith(`${marker}:`));
+  }));
+}
 
 export async function parseRawV2Workbook(bytes:Uint8Array,context:RawV2UploadContext):Promise<RawV2ParsedWorkbook>{
   const workbook=XLSX.read(bytes,{type:'array',cellDates:false});
