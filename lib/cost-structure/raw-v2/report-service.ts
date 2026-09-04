@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { evaluateRawV2ExportEligibility, selectOperationalStageE, STAGE_E_IDENTITY } from './report';
-import { Prisma } from '@prisma/client';
 
 const money = (value: { toString(): string } | null | undefined) => value?.toString() ?? null;
 const jsonRun = (run: any) => ({
@@ -20,8 +20,14 @@ export async function getRawV2OperationalReport(fiscalYear: number, fiscalPeriod
     if (!period) return null;
     const upload = period.uploads[0] ?? null;
     const runs = await tx.costRawV2CalculationRun.findMany({
-      where: { periodId: period.id }, orderBy: [{ runNumber: 'desc' }],
-      include: { reconciliation: true, results: { orderBy: { resultCode: 'asc' } }, controls: { orderBy: { controlCode: 'asc' } }, analyticalRows: { orderBy: [{ logicalSourceCode: 'asc' }, { sourceRowNumber: 'asc' }, { id: 'asc' }] } },
+      where: { periodId: period.id },
+      orderBy: [{ runNumber: 'desc' }],
+      include: {
+        reconciliation: true,
+        results: { orderBy: { resultCode: 'asc' } },
+        controls: { orderBy: { controlCode: 'asc' } },
+        analyticalRows: { orderBy: [{ logicalSourceCode: 'asc' }, { sourceRowNumber: 'asc' }, { id: 'asc' }] },
+      },
     });
     const stageE = upload ? selectOperationalStageE(runs, upload.id) : null;
     const operational = stageE ? runs.find((run) => run.id === stageE.id)! : null;
@@ -45,5 +51,7 @@ export async function getRawV2OperationalReport(fiscalYear: number, fiscalPeriod
       exportEligibility,
       stageIdentity: STAGE_E_IDENTITY,
     };
+  }, {
+    isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
   });
 }
