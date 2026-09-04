@@ -1,5 +1,5 @@
 export const RAW_V2_ENGINE = 'RAW_V2' as const;
-export const RAW_V2_PHASE = 'D_RAW_RECONCILIATION' as const;
+export const RAW_V2_PHASE = 'E_MAPPING_RINCIAN_SI' as const;
 
 export const RAW_V2_RULE_SETS = {
   '2000': 'ENGINE1_2000_RAW_V3',
@@ -23,4 +23,6 @@ export const RAW_V2_WORKFLOW_MODELS = [
   'CostRawV2Reconciliation',
   'CostRawV2ReconciliationRow',
   'CostRawV2AnalyticalRow',
+  'CostRawV2Result',
+  'CostRawV2Control',
 ] as const;

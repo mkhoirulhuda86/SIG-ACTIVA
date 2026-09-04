@@ -14,6 +14,7 @@ export default function ReconciliationDashboard() {
   const [year, setYear] = useState(2026);
   const [period, setPeriod] = useState(8);
   const [data, setData] = useState<Data>(null);
+  const [si, setSi] = useState<Data>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -25,11 +26,21 @@ export default function ReconciliationDashboard() {
       const json = await response.json();
       if (!response.ok) throw new Error(json.error);
       setData(json);
+      const siResponse = await fetch(`/api/cost-structure/raw-v2/si?fiscalYear=${year}&fiscalPeriod=${period}`);
+      if (siResponse.ok) setSi(await siResponse.json());
     } catch (value) {
       setError(value instanceof Error ? value.message : 'Gagal memuat data.');
     } finally {
       setBusy(false);
     }
+  }
+
+  async function calculateSi() {
+    setBusy(true); setError('');
+    try {
+      const response = await fetch('/api/cost-structure/raw-v2/si/calculate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ companyCode: '2000', fiscalYear: year, fiscalPeriod: period }) });
+      const json = await response.json(); if (!response.ok) throw new Error(json.error); await load();
+    } catch (value) { setError(value instanceof Error ? value.message : 'Gagal menghitung SI.'); setBusy(false); }
   }
 
   async function calculate() {
@@ -81,6 +92,7 @@ export default function ReconciliationDashboard() {
         <label className="text-sm">Period<select className="mt-1 block rounded border p-2" value={period} onChange={(event) => setPeriod(Number(event.target.value))}>{Array.from({ length: 12 }, (_, index) => <option key={index + 1}>{index + 1}</option>)}</select></label>
         <button onClick={load} disabled={busy} className="rounded bg-slate-700 px-4 py-2 text-white">Load</button>
         <button onClick={calculate} disabled={busy || upload?.status !== 'VALIDATED'} className="rounded bg-blue-600 px-4 py-2 font-semibold text-white disabled:bg-slate-300">Calculate reconciliation</button>
+        <button onClick={calculateSi} disabled={busy || !rec || rec.missingInTbCount > 0 || rec.derivPasarCoverageMissing > 0} className="rounded bg-violet-700 px-4 py-2 font-semibold text-white disabled:bg-slate-300">Calculate mapped SI</button>
         {error && <p className="w-full text-sm text-red-700">{error}</p>}
       </section>
 
@@ -116,7 +128,21 @@ export default function ReconciliationDashboard() {
             <p className="mt-3 text-xs">Future SI treatment: PASAR analytical base − DERIV. Stage D does not apply or finalize that overlay.</p>
           </section>
         </>}
+        {si?.run && <StageESummary run={si.run} />}
       </>}
     </div>
   );
+}
+
+function StageESummary({ run }: { run: any }) {
+  const result = (code: string) => run.results.find((item: any) => item.resultCode === code)?.amount;
+  const mappingControls = run.controls.filter((item: any) => item.controlCode.endsWith('_MAPPING_COMPLETENESS'));
+  const corrections = run.analyticalRows.filter((item: any) => item.analyticalClass === 'RINCIAN_ADUM_DELTA' || item.analyticalClass === 'DERIV_PASAR_OFFSET');
+  return <section className="space-y-4 rounded-2xl border border-violet-200 bg-violet-50 p-5">
+    <div className="flex justify-between"><div><p className="text-xs font-bold uppercase text-violet-700">E_MAPPING_RINCIAN_SI</p><h2 className="text-xl font-bold">Mapped Company 2000 SI</h2></div><b>{run.status}</b></div>
+    <div className="grid gap-3 sm:grid-cols-3">{[['Final ADUM',result('GROUP:ADUM')],['Final PASAR',result('GROUP:PASAR')],['Company SI',result('COMPANY:SI')]].map(([label,value])=><div key={label} className="rounded-xl bg-white p-4"><p className="text-xs text-slate-500">{label}</p><b>{rupiah(value)}</b></div>)}</div>
+    <div className="overflow-x-auto rounded-xl bg-white p-4"><h3 className="mb-2 font-bold">Mapping coverage</h3><table className="w-full text-left text-sm"><thead><tr><th>Population</th><th>Source</th><th>Accounted</th><th>Difference</th><th>Status</th></tr></thead><tbody>{mappingControls.map((c:any)=><tr key={c.controlCode} className="border-t"><td className="py-2">{c.sourceLogicalCode}</td><td>{rupiah(c.sourceAmount)}</td><td>{rupiah(c.accountedAmount)}</td><td>{rupiah(c.difference)}</td><td className="font-bold">{c.status}</td></tr>)}</tbody></table></div>
+    <div className="overflow-x-auto rounded-xl bg-white p-4"><h3 className="mb-1 font-bold">Explicit corrections and offsets</h3><p className="mb-3 text-xs text-slate-600">A Stage D CC − TB mismatch is reconstructed as the exact opposite-signed Rincian ADUM correction; it is never hidden.</p><table className="w-full text-left text-sm"><thead><tr><th>COA</th><th>Class</th><th>Raw evidence</th><th>SI contribution</th><th>Mapping</th></tr></thead><tbody>{corrections.map((r:any)=><tr key={r.id} className="border-t"><td className="py-2 font-mono">{r.coaCode}</td><td>{r.analyticalClass}</td><td>{rupiah(r.rawAmount)}</td><td className="font-bold">{rupiah(r.mappedAmount)}</td><td>{r.mappingAction} → {r.costGroupCode}/{r.natureCode}</td></tr>)}</tbody></table></div>
+    <div className="overflow-x-auto rounded-xl bg-white p-4"><h3 className="mb-2 font-bold">Nature breakdown</h3><table className="w-full text-left text-sm"><tbody>{run.results.filter((r:any)=>r.resultLevel==='NATURE').map((r:any)=><tr key={r.id} className="border-t"><td className="py-2">{r.costGroupCode}</td><td>{r.natureCode}</td><td className="text-right font-bold">{rupiah(r.amount)}</td></tr>)}</tbody></table></div>
+  </section>;
 }

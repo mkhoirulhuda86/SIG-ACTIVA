@@ -310,6 +310,8 @@ model CostRawV2CalculationRun {
   startedBy      User                     @relation("CostRawV2CalculationRunStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
   reconciliation CostRawV2Reconciliation?
   analyticalRows CostRawV2AnalyticalRow[]
+  results        CostRawV2Result[]
+  controls       CostRawV2Control[]
 
   @@unique([periodId, runNumber])
   @@index([periodId, isActive])
@@ -373,26 +375,73 @@ model CostRawV2ReconciliationRow {
 
 /// Reconciled CC detail prepared for later mapping/Rincian/SI stages; Stage D does not finalize SI.
 model CostRawV2AnalyticalRow {
-  id                Int      @id @default(autoincrement())
-  calculationRunId  Int
-  sourceRowId       Int
-  logicalSourceCode String
-  originalSheetName String
-  sourceRowNumber   Int
-  coaCode           String
-  descriptionRaw    String?
-  rawAmount         Decimal  @db.Decimal(20, 2)
-  analyticalClass   String
-  mappedAmount      Decimal  @db.Decimal(20, 2)
-  mappingStatus     String
-  ruleSetVersion    String
-  createdAt         DateTime @default(now())
+  id                   Int       @id @default(autoincrement())
+  calculationRunId     Int
+  sourceRowId          Int
+  logicalSourceCode    String
+  originalSheetName    String
+  sourceRowNumber      Int
+  coaCode              String
+  descriptionRaw       String?
+  rawAmount            Decimal   @db.Decimal(20, 2)
+  analyticalClass      String
+  mappedAmount         Decimal   @db.Decimal(20, 2)
+  mappingStatus        String
+  mappingAction        String?
+  mappingId            Int?
+  costGroupId          Int?
+  costGroupCode        String?
+  natureId             Int?
+  natureCode           String?
+  mappingEffectiveDate DateTime?
+  ruleCode             String?
+  referenceJson        Json?
+  ruleSetVersion       String
+  createdAt            DateTime  @default(now())
 
   calculationRun CostRawV2CalculationRun @relation(fields: [calculationRunId], references: [id], onDelete: Cascade)
 
   @@unique([calculationRunId, sourceRowId])
   @@index([calculationRunId, logicalSourceCode, coaCode])
   @@map("cost_raw_v2_analytical_rows")
+}
+
+/// Authoritative Stage E Nature, Cost Group, and Company SI amounts.
+model CostRawV2Result {
+  id               Int                     @id @default(autoincrement())
+  calculationRunId Int
+  resultLevel      String
+  resultCode       String
+  costGroupId      Int?
+  costGroupCode    String?
+  natureId         Int?
+  natureCode       String?
+  amount           Decimal                 @db.Decimal(20, 2)
+  createdAt        DateTime                @default(now())
+  calculationRun   CostRawV2CalculationRun @relation(fields: [calculationRunId], references: [id], onDelete: Cascade)
+
+  @@unique([calculationRunId, resultCode])
+  @@index([calculationRunId, resultLevel])
+  @@map("cost_raw_v2_results")
+}
+
+/// Persisted Stage E mapping and roll-up reconciliation evidence.
+model CostRawV2Control {
+  id                Int                     @id @default(autoincrement())
+  calculationRunId  Int
+  controlCode       String
+  sourceLogicalCode String?
+  status            String
+  sourceAmount      Decimal                 @db.Decimal(20, 2)
+  accountedAmount   Decimal                 @db.Decimal(20, 2)
+  difference        Decimal                 @db.Decimal(20, 2)
+  metricsJson       Json?
+  createdAt         DateTime                @default(now())
+  calculationRun    CostRawV2CalculationRun @relation(fields: [calculationRunId], references: [id], onDelete: Cascade)
+
+  @@unique([calculationRunId, controlCode])
+  @@index([calculationRunId, status])
+  @@map("cost_raw_v2_controls")
 }
 
 model CostCompany {

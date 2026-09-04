@@ -10,10 +10,10 @@ test('Raw V2 has distinct persisted ruleset lineage', () => {
   assert.notEqual(RAW_V2_RULE_SETS['2000'], RAW_V2_RULE_SETS['7000']);
 });
 
-test('Stage D enables protected raw reconciliation without export', () => {
+test('Stage E enables mapped SI calculation without export', () => {
   assert.deepEqual(getRawV2Status(), {
     engine: 'RAW_V2',
-    phase: 'D_RAW_RECONCILIATION',
+    phase: 'E_MAPPING_RINCIAN_SI',
     uploadEnabled: true,
     calculationEnabled: true,
     exportEnabled: false,
