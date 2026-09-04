@@ -6,13 +6,38 @@ import type { RawV2ParsedRow, RawV2ParsedSource, RawV2ParserIssue } from './type
 const YTD = /^FY\s+(\d{4})\s+1\s*-\s*(\d{1,2})$/i;
 const COA = /\/(\d{8})\s*$/;
 
+type TbPeriodHeader = { match: RegExpMatchArray | null; i: number };
+type TbAccountHeader = { row: number; account: number };
+type TbFinancialHeader = { row: number; variance: number; periods: TbPeriodHeader[] };
+
 export function findTbHeader(grid: unknown[][]) {
-  for (let r=0;r<grid.length;r++) {
-    const cells=grid[r].map(semanticText);
-    const account=cells.findIndex(v=>v.toLowerCase()==='fs item/account');
-    const variance=cells.findIndex(v=>v.toLowerCase()==='variance');
-    const periods=cells.map((v,i)=>({match:v.match(YTD),i})).filter(v=>v.match);
-    if(account>=0&&variance>=0&&periods.length) return {row:r,account,variance,periods};
+  const accountHeaders: TbAccountHeader[] = [];
+  const financialHeaders: TbFinancialHeader[] = [];
+
+  for (let r = 0; r < grid.length; r += 1) {
+    const cells = grid[r].map(semanticText);
+    const account = cells.findIndex((value) => value.toLowerCase() === 'fs item/account');
+    const variance = cells.findIndex((value) => value.toLowerCase() === 'variance');
+    const periods = cells.map((value, i) => ({ match: value.match(YTD), i })).filter((value) => value.match);
+
+    if (account >= 0) accountHeaders.push({ row: r, account });
+    if (variance >= 0 && periods.length) financialHeaders.push({ row: r, variance, periods });
+  }
+
+  for (const accountHeader of accountHeaders) {
+    const financialHeader = financialHeaders
+      .filter((candidate) => Math.abs(candidate.row - accountHeader.row) <= 3)
+      .sort((a, b) => Math.abs(a.row - accountHeader.row) - Math.abs(b.row - accountHeader.row))[0];
+    if (!financialHeader) continue;
+
+    return {
+      row: Math.max(accountHeader.row, financialHeader.row),
+      account: accountHeader.account,
+      variance: financialHeader.variance,
+      periods: financialHeader.periods,
+      accountHeaderRow: accountHeader.row,
+      financialHeaderRow: financialHeader.row,
+    };
   }
 }
 
@@ -40,6 +65,6 @@ export function parseTbSheet(sheet: XLSX.WorkSheet, sheetName:string, companyCod
     if(variance)total=total.plus(variance);
     rows.push({logicalSourceCode:'TB',originalSheetName:sheetName,sourceRowNumber:r+1,rawDataJson:raw,normalizedDataJson:{currentYtd:currentAmount?.toString()??null,previousYtd:previousAmount?.toString()??null,variance:variance?.toString()??null,validationDifference:difference?.toString()??null},coaCodeRaw:coa,descriptionRaw:label.replace(COA,'').trim(),amount:variance?decimalString(variance):undefined,normalizationStatus:currentAmount&&previousAmount&&variance?'FINANCIAL_DETAIL':'INVALID'});
   }
-  base.detailRowCount=seen.size;base.nonZeroDetailRowCount=rows.filter(r=>r.coaCodeRaw&&r.amount&&new Prisma.Decimal(r.amount).isZero()===false).length;base.detailTotal=decimalString(total);base.metadataJson={currentYtdColumn:current.column+1,previousYtdColumn:previous?previous.column+1:null,varianceColumn:header.variance+1};
+  base.detailRowCount=seen.size;base.nonZeroDetailRowCount=rows.filter(r=>r.coaCodeRaw&&r.amount&&new Prisma.Decimal(r.amount).isZero()===false).length;base.detailTotal=decimalString(total);base.metadataJson={accountHeaderRow:header.accountHeaderRow+1,financialHeaderRow:header.financialHeaderRow+1,currentYtdColumn:current.column+1,previousYtdColumn:previous?previous.column+1:null,varianceColumn:header.variance+1};
   return {source:base,rows,issues};
 }
