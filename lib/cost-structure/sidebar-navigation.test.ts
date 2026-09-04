@@ -13,6 +13,8 @@ const expectedRoutes = [
   '/cost-structure',
   '/cost-structure/upload',
   '/cost-structure/monthly',
+  '/cost-structure/raw-v2',
+  '/cost-structure/raw-v2/upload',
   '/cost-fluctuation',
   '/cost-fluctuation/commentary',
   '/cost-fluctuation/review',
@@ -39,6 +41,14 @@ test('dynamic upload detail keeps Upload & Proses active without activating dash
   assert.equal(navigationPathMatches('/cost-structure/upload', pathname), true);
   assert.equal(navigationPathMatches('/cost-structure', pathname), false);
   assert.equal(navigationContainsPath(costStructureNavigation.find((item) => item.id === 'cost-upload')!, pathname), true);
+});
+
+test('Raw V2 routes select only their exact nested entry and expand the Raw V2 group', () => {
+  assert.equal(navigationPathMatches('/cost-structure', '/cost-structure/raw-v2'), false);
+  assert.equal(navigationPathMatches('/cost-structure/raw-v2', '/cost-structure/raw-v2/upload'), false);
+  assert.equal(navigationPathMatches('/cost-structure/raw-v2/upload', '/cost-structure/raw-v2/upload'), true);
+  assert.deepEqual(openNavigationIds(costStructureNavigation, '/cost-structure/raw-v2'), ['cost-raw-v2']);
+  assert.deepEqual(openNavigationIds(costStructureNavigation, '/cost-structure/raw-v2/upload'), ['cost-raw-v2']);
 });
 
 test('Materiality Rules is hidden from non-admin navigation and visible to admins', () => {

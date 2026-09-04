@@ -124,6 +124,160 @@ enum CostPeriodReviewStatus {
   COMPLETED
 }
 
+enum CostRawV2PeriodStatus {
+  SKELETON
+  UPLOADED
+  VALIDATING
+  VALIDATED
+  CALCULATING
+  CALCULATED
+  FINALIZED
+}
+
+enum CostRawV2UploadStatus {
+  UPLOADED
+  VALIDATING
+  VALIDATED
+  INVALID
+  SUPERSEDED
+}
+
+enum CostRawV2CalculationRunStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+/// Isolated workspace for the Raw SAP engine with a dedicated lifecycle.
+model CostRawV2Period {
+  id           Int                   @id @default(autoincrement())
+  companyCode  String
+  fiscalYear   Int
+  fiscalPeriod Int
+  status       CostRawV2PeriodStatus @default(SKELETON)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  uploads         CostRawV2Upload[]
+  calculationRuns CostRawV2CalculationRun[]
+
+  @@unique([companyCode, fiscalYear, fiscalPeriod])
+  @@index([status])
+  @@map("cost_raw_v2_periods")
+}
+
+model CostRawV2Upload {
+  id               Int                   @id @default(autoincrement())
+  periodId         Int
+  version          Int
+  originalFileName String
+  fileHashSha256   String
+  fileSizeBytes    BigInt
+  storageProvider  String
+  storageKey       String
+  status           CostRawV2UploadStatus @default(UPLOADED)
+  isActiveVersion  Boolean               @default(true)
+  uploadedById     Int
+  uploadedAt       DateTime              @default(now())
+  validatedAt      DateTime?
+  supersededAt     DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  period           CostRawV2Period            @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  sourceRows       CostRawV2SourceRow[]
+  validationIssues CostRawV2ValidationIssue[]
+  calculationRuns  CostRawV2CalculationRun[]
+
+  @@unique([periodId, version])
+  @@unique([periodId, fileHashSha256])
+  @@index([periodId, isActiveVersion])
+  @@index([uploadedById])
+  @@index([status])
+  @@map("cost_raw_v2_uploads")
+}
+
+model CostRawV2SourceRow {
+  id                  Int      @id @default(autoincrement())
+  uploadId            Int
+  logicalSourceCode   String
+  originalSheetName   String
+  sourceRowNumber     Int
+  rawDataJson         Json
+  normalizedDataJson  Json?
+  coaCodeRaw          String?
+  coaCodeResolved     String?
+  descriptionRaw      String?
+  amount              Decimal? @db.Decimal(20, 2)
+  normalizationStatus String   @default("PENDING")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  upload           CostRawV2Upload            @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  validationIssues CostRawV2ValidationIssue[]
+
+  @@index([uploadId, logicalSourceCode])
+  @@index([coaCodeRaw])
+  @@index([normalizationStatus])
+  @@map("cost_raw_v2_source_rows")
+}
+
+model CostRawV2ValidationIssue {
+  id                 Int                    @id @default(autoincrement())
+  uploadId           Int
+  sourceRowId        Int?
+  issueCode          String
+  severity           CostValidationSeverity
+  message            String
+  resolved           Boolean                @default(false)
+  resolutionType     String?
+  resolutionNote     String?
+  resolvedById       Int?
+  resolvedAt         DateTime?
+  resolutionMetadata Json?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  upload    CostRawV2Upload     @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  sourceRow CostRawV2SourceRow? @relation(fields: [sourceRowId], references: [id], onDelete: Cascade)
+
+  @@index([uploadId, severity])
+  @@index([sourceRowId])
+  @@index([issueCode])
+  @@index([resolved])
+  @@index([resolvedById])
+  @@map("cost_raw_v2_validation_issues")
+}
+
+model CostRawV2CalculationRun {
+  id                  Int                           @id @default(autoincrement())
+  periodId            Int
+  runNumber           Int
+  uploadId            Int
+  status              CostRawV2CalculationRunStatus @default(PENDING)
+  ruleSetVersion      String
+  sourceSnapshotJson  Json
+  mappingSnapshotJson Json?
+  startedById         Int
+  startedAt           DateTime                      @default(now())
+  completedAt         DateTime?
+  isActive            Boolean                       @default(false)
+  errorMessage        String?
+  createdAt           DateTime                      @default(now())
+  updatedAt           DateTime                      @updatedAt
+
+  period CostRawV2Period @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  upload CostRawV2Upload @relation(fields: [uploadId], references: [id], onDelete: Restrict)
+
+  @@unique([periodId, runNumber])
+  @@index([periodId, isActive])
+  @@index([uploadId])
+  @@index([status])
+  @@index([startedById])
+  @@map("cost_raw_v2_calculation_runs")
+}
+
 model CostCompany {
   id          Int      @id @default(autoincrement())
   companyCode String   @unique

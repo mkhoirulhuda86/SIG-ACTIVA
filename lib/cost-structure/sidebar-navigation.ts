@@ -10,6 +10,14 @@ export const costStructureNavigation: CostNavigationItem[] = [
   { id: 'cost-dashboard', label: 'Dashboard', href: '/cost-structure' },
   { id: 'cost-upload', label: 'Upload & Proses', href: '/cost-structure/upload' },
   { id: 'cost-monthly', label: 'Cost Structure Bulanan', href: '/cost-structure/monthly' },
+  {
+    id: 'cost-raw-v2',
+    label: 'Engine 1 V2 – Raw SAP',
+    children: [
+      { id: 'cost-raw-v2-dashboard', label: 'Dashboard Raw V2', href: '/cost-structure/raw-v2' },
+      { id: 'cost-raw-v2-upload', label: 'Upload Raw SAP', href: '/cost-structure/raw-v2/upload' },
+    ],
+  },
   { id: 'cost-fluctuation', label: 'Analisis Fluktuasi', href: '/cost-fluctuation' },
   {
     id: 'cost-analysis-review',
@@ -38,7 +46,7 @@ export const costStructureAdminNavigation: CostNavigationItem[] = [
   },
 ];
 
-const exactOnlyRoutes = new Set(['/cost-structure', '/cost-fluctuation']);
+const exactOnlyRoutes = new Set(['/cost-structure', '/cost-structure/raw-v2', '/cost-fluctuation']);
 
 export function navigationPathMatches(href: string | undefined, pathname: string): boolean {
   if (!href) return false;
