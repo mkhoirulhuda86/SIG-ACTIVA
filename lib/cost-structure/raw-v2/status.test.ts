@@ -10,12 +10,12 @@ test('Raw V2 has distinct persisted ruleset lineage', () => {
   assert.notEqual(RAW_V2_RULE_SETS['2000'], RAW_V2_RULE_SETS['7000']);
 });
 
-test('Stage C enables only isolated raw ingestion', () => {
+test('Stage D enables protected raw reconciliation without export', () => {
   assert.deepEqual(getRawV2Status(), {
     engine: 'RAW_V2',
-    phase: 'C_RAW_INGESTION',
+    phase: 'D_RAW_RECONCILIATION',
     uploadEnabled: true,
-    calculationEnabled: false,
+    calculationEnabled: true,
     exportEnabled: false,
     ruleSets: RAW_V2_RULE_SETS,
   });

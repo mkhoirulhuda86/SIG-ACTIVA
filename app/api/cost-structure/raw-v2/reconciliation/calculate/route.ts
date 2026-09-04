@@ -1,0 +1,15 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { requireCostStructurePrepare } from '@/lib/cost-structure/auth';
+import { calculateRawV2Company2000, RawV2CalculationEligibilityError } from '@/lib/cost-structure/raw-v2/reconciliation-service';
+
+export async function POST(request: NextRequest) {
+  const auth = await requireCostStructurePrepare(request); if ('error' in auth) return auth.error;
+  const body = await request.json().catch(() => null) as { companyCode?: string; fiscalYear?: number; fiscalPeriod?: number } | null;
+  if (body?.companyCode !== '2000' || !Number.isInteger(body.fiscalYear) || !Number.isInteger(body.fiscalPeriod) || body!.fiscalPeriod! < 1 || body!.fiscalPeriod! > 12)
+    return NextResponse.json({ error: 'Company 2000 dan fiscal year/period yang valid diperlukan.' }, { status: 400 });
+  try { return NextResponse.json(await calculateRawV2Company2000({ fiscalYear: body!.fiscalYear!, fiscalPeriod: body!.fiscalPeriod!, startedById: auth.user.uid })); }
+  catch (error) {
+    if (error instanceof RawV2CalculationEligibilityError) return NextResponse.json({ error: error.message }, { status: 409 });
+    console.error('Raw V2 Stage D calculation failed', error); return NextResponse.json({ error: 'Raw V2 reconciliation gagal diproses.' }, { status: 500 });
+  }
+}

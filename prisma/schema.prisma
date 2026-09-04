@@ -305,9 +305,11 @@ model CostRawV2CalculationRun {
   createdAt           DateTime                      @default(now())
   updatedAt           DateTime                      @updatedAt
 
-  period    CostRawV2Period @relation(fields: [periodId], references: [id], onDelete: Restrict)
-  upload    CostRawV2Upload @relation(fields: [uploadId], references: [id], onDelete: Restrict)
-  startedBy User            @relation("CostRawV2CalculationRunStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
+  period         CostRawV2Period          @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  upload         CostRawV2Upload          @relation(fields: [uploadId], references: [id], onDelete: Restrict)
+  startedBy      User                     @relation("CostRawV2CalculationRunStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
+  reconciliation CostRawV2Reconciliation?
+  analyticalRows CostRawV2AnalyticalRow[]
 
   @@unique([periodId, runNumber])
   @@index([periodId, isActive])
@@ -315,6 +317,82 @@ model CostRawV2CalculationRun {
   @@index([status])
   @@index([startedById])
   @@map("cost_raw_v2_calculation_runs")
+}
+
+/// Stage D Company 2000 snapshot. Amounts reconcile the CC population only, never the full-net TB.
+model CostRawV2Reconciliation {
+  id                        Int      @id @default(autoincrement())
+  calculationRunId          Int      @unique
+  status                    String
+  tbRowCount                Int
+  tbNonZeroCount            Int
+  uniqueCcCoaCount          Int
+  foundInTbCount            Int
+  missingInTbCount          Int
+  exactMatchCount           Int
+  mismatchCount             Int
+  totalAdum                 Decimal  @db.Decimal(20, 2)
+  totalPasar                Decimal  @db.Decimal(20, 2)
+  totalBaseCc               Decimal  @db.Decimal(20, 2)
+  totalTbPopulation         Decimal  @db.Decimal(20, 2)
+  totalDifference           Decimal  @db.Decimal(20, 2)
+  derivPresenceStatus       String
+  derivDetailRowCount       Int
+  derivNonZeroCount         Int
+  derivTotal                Decimal  @db.Decimal(20, 2)
+  derivDebitControl         Decimal? @db.Decimal(20, 2)
+  derivSourceDifference     Decimal? @db.Decimal(20, 2)
+  derivPasarCoverageMissing Int      @default(0)
+  createdAt                 DateTime @default(now())
+
+  calculationRun CostRawV2CalculationRun      @relation(fields: [calculationRunId], references: [id], onDelete: Cascade)
+  rows           CostRawV2ReconciliationRow[]
+
+  @@index([status])
+  @@map("cost_raw_v2_reconciliations")
+}
+
+model CostRawV2ReconciliationRow {
+  id               Int      @id @default(autoincrement())
+  reconciliationId Int
+  coaCode          String
+  adumAmount       Decimal  @db.Decimal(20, 2)
+  pasarAmount      Decimal  @db.Decimal(20, 2)
+  ccAmount         Decimal  @db.Decimal(20, 2)
+  tbAmount         Decimal? @db.Decimal(20, 2)
+  difference       Decimal? @db.Decimal(20, 2)
+  status           String
+  createdAt        DateTime @default(now())
+
+  reconciliation CostRawV2Reconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+
+  @@unique([reconciliationId, coaCode])
+  @@index([reconciliationId, status])
+  @@map("cost_raw_v2_reconciliation_rows")
+}
+
+/// Reconciled CC detail prepared for later mapping/Rincian/SI stages; Stage D does not finalize SI.
+model CostRawV2AnalyticalRow {
+  id                Int      @id @default(autoincrement())
+  calculationRunId  Int
+  sourceRowId       Int
+  logicalSourceCode String
+  originalSheetName String
+  sourceRowNumber   Int
+  coaCode           String
+  descriptionRaw    String?
+  rawAmount         Decimal  @db.Decimal(20, 2)
+  analyticalClass   String
+  mappedAmount      Decimal  @db.Decimal(20, 2)
+  mappingStatus     String
+  ruleSetVersion    String
+  createdAt         DateTime @default(now())
+
+  calculationRun CostRawV2CalculationRun @relation(fields: [calculationRunId], references: [id], onDelete: Cascade)
+
+  @@unique([calculationRunId, sourceRowId])
+  @@index([calculationRunId, logicalSourceCode, coaCode])
+  @@map("cost_raw_v2_analytical_rows")
 }
 
 model CostCompany {
