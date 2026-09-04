@@ -5,7 +5,9 @@ import { readFileSync } from 'node:fs';
 test('Stage D persistence is additive and does not write legacy transaction models', () => {
   const migration = readFileSync('prisma/migrations/20260904180000_add_raw_v2_stage_d_reconciliation/migration.sql', 'utf8');
   const service = readFileSync('lib/cost-structure/raw-v2/reconciliation-service.ts', 'utf8');
-  assert.doesNotMatch(migration, /\b(?:DROP|DELETE|TRUNCATE|ALTER TABLE)\b/i);
+  // FK clauses such as ON DELETE RESTRICT/CASCADE are allowed. Block destructive statements themselves.
+  assert.doesNotMatch(migration, /^\s*(?:DROP|DELETE|TRUNCATE)\b/im);
+  assert.doesNotMatch(migration, /^\s*ALTER\s+TABLE\b/im);
   assert.doesNotMatch(service, /\.cost(?:Period|Upload|SourceRow|ValidationIssue|CalculationRun|ActualLine|CalculationResult)\b|activeCalculationRunId/);
   assert.match(service, /isolationLevel: Prisma\.TransactionIsolationLevel\.Serializable/);
 });
