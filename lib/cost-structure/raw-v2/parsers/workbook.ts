@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { findTbHeader, parseTbSheet } from './tb';
-import { parseCcSheet } from './cc';
+import { parseCcSheet, readCcAuthoritativeGrid } from './cc';
 import { semanticText } from './amount';
 import { sheetNameHint } from './source-registry';
 import type { RawV2ParsedWorkbook, RawV2ParsedSource, RawV2ParserIssue, RawV2UploadContext } from './types';
@@ -10,7 +10,7 @@ const OPTIONAL=['CC_PROD','CC_DERIV'] as const;
 const CC_MARKERS=['cost center group','cost elements','controlling area'] as const;
 
 function looksLikeCc(grid:unknown[][]){
-  return grid.some(row=>row.slice(1,11).some(value=>{
+  return grid.some(row=>row.some(value=>{
     const text=semanticText(value).replace(/:$/,'').toLowerCase();
     return CC_MARKERS.some(marker=>text===marker||text.startsWith(`${marker} `)||text.startsWith(`${marker}:`));
   }));
@@ -35,7 +35,8 @@ export async function parseRawV2Workbook(bytes:Uint8Array,context:RawV2UploadCon
     }else{
       const hintedCc=hint!==undefined;
       const optionalHint=hint==='CC_PROD'||hint==='CC_DERIV'?hint:undefined;
-      if(!looksLikeCc(grid)&&!hintedCc)continue;
+      const authoritativeCcGrid=readCcAuthoritativeGrid(sheet);
+      if(!looksLikeCc(authoritativeCcGrid)&&!hintedCc)continue;
       if(optionalHint)malformedOptionalCandidates.add(optionalHint);
       result=parseCcSheet(sheet,name,context.companyCode);
     }
