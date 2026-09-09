@@ -172,6 +172,17 @@ Enforce permissions in API/server code, not only in UI.
 - Do not proceed from Engine 1 company 2000 to 7000 until the 2000 golden tests pass.
 - Do not proceed to Engine 2 until Engine 1 finalized outputs pass golden reconciliation for both companies.
 
+## Remote push and Vercel preview-build discipline
+
+Repository changes that trigger remote preview builds must be batched deliberately.
+
+- Do not push one file, one minor fix, or one small refactor at a time.
+- Collect a meaningful task package in the working tree, run applicable tests/lint/build, then push the package once.
+- Local commits are allowed, but remote pushes should be minimized and normally occur once when the assigned task is complete.
+- Parallel branches may work independently, but each lane should avoid incremental remote pushes unless a remote push is strictly required to unblock another lane.
+- Do not create/update extra remote branches merely for experimentation when local work is sufficient.
+- Treat Vercel preview-build quota as a shared project resource.
+
 ## Update Cycle SAP submodule
 
 `Update Cycle SAP` is a separate operational submodule under Cost Structure. It supports monthly SAP allocation-cycle maintenance and must not alter the authoritative Engine 1 or Engine 2 accounting results described above.
