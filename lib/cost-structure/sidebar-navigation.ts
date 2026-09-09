@@ -18,6 +18,20 @@ export const costStructureNavigation: CostNavigationItem[] = [
       { id: 'cost-raw-v2-upload', label: 'Upload Raw SAP', href: '/cost-structure/raw-v2/upload' },
     ],
   },
+  {
+    id: 'cost-cycle',
+    label: 'Update Cycle SAP',
+    children: [
+      { id: 'cost-cycle-process', label: 'Proses Cycle', href: '/cost-structure/cycle' },
+      { id: 'cost-cycle-history', label: 'Riwayat Cycle', href: '/cost-structure/cycle/history' },
+      {
+        id: 'cost-cycle-master',
+        label: 'Master CC & Reference',
+        href: '/cost-structure/cycle/master',
+        requireAdmin: true,
+      },
+    ],
+  },
   { id: 'cost-fluctuation', label: 'Analisis Fluktuasi', href: '/cost-fluctuation' },
   {
     id: 'cost-analysis-review',
@@ -46,7 +60,12 @@ export const costStructureAdminNavigation: CostNavigationItem[] = [
   },
 ];
 
-const exactOnlyRoutes = new Set(['/cost-structure', '/cost-structure/raw-v2', '/cost-fluctuation']);
+const exactOnlyRoutes = new Set([
+  '/cost-structure',
+  '/cost-structure/raw-v2',
+  '/cost-structure/cycle',
+  '/cost-fluctuation',
+]);
 
 export function navigationPathMatches(href: string | undefined, pathname: string): boolean {
   if (!href) return false;
