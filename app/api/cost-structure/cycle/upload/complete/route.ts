@@ -27,10 +27,11 @@ export async function POST(request: NextRequest) {
       fiscalYear: pending.fiscalYear, fiscalPeriod: pending.fiscalPeriod, fileName: pending.fileName,
       storageKey: pending.objectKey, hash, bytes, parsed, uploadedById: auth.user.uid,
     });
-    return NextResponse.json({ success: true, upload: {
+    const valid = parsed.summary.errorCount === 0;
+    return NextResponse.json({ success: valid, upload: {
       id: upload.id, version: upload.version, status: upload.status, hash, isActiveVersion: upload.isActiveVersion,
       sheetName: parsed.sheetName, summary: parsed.summary, issues: parsed.issues.slice(0, 100),
-    } }, { status: parsed.summary.errorCount ? 422 : 201 });
+    } }, { status: valid ? 201 : 422 });
   } catch (error) {
     if (error instanceof DuplicateCycleUploadError) {
       await costStructureStorage.remove(pending.objectKey).catch(() => undefined);

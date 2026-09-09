@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { ParsedCycleWorkbook } from '../parser';
-import { nextCycleUploadVersion } from './version-policy';
+import { nextCycleUploadVersion, replacementStates } from './version-policy';
 
 export class DuplicateCycleUploadError extends Error {
   constructor(public readonly existing: { id: number; version: number; status: string; uploadedAt: Date }) { super('Workbook yang sama sudah pernah diunggah untuk periode ini.'); }
@@ -18,6 +18,10 @@ export async function persistCycleUpload(prisma: PrismaClient, input: {
     const duplicate = await tx.costCycleUpload.findUnique({ where: { periodId_fileHashSha256: { periodId: period.id, fileHashSha256: input.hash } } });
     if (duplicate) throw new DuplicateCycleUploadError(duplicate);
     const latest = await tx.costCycleUpload.aggregate({ where: { periodId: period.id }, _max: { version: true } });
+    const currentActive = await tx.costCycleUpload.findFirst({
+      where: { periodId: period.id, isActiveVersion: true },
+      select: { id: true, status: true },
+    });
     const invalid = input.parsed.summary.errorCount > 0;
     const upload = await tx.costCycleUpload.create({ data: {
       periodId: period.id, version: nextCycleUploadVersion(latest._max.version == null ? [] : [latest._max.version]), originalFileName: input.fileName,
@@ -36,10 +40,26 @@ export async function persistCycleUpload(prisma: PrismaClient, input: {
       uploadId: upload.id, sourceRowNumber: issue.sourceRowNumber, issueCode: issue.code, severity: issue.severity,
       message: issue.message, metadataJson: issue.metadata as Prisma.InputJsonValue | undefined,
     })) });
-    await tx.costCycleUpload.updateMany({ where: { periodId: period.id, isActiveVersion: true }, data: { isActiveVersion: false, status: 'SUPERSEDED', supersededAt: new Date() } });
-    const active = await tx.costCycleUpload.update({ where: { id: upload.id }, data: { isActiveVersion: true } });
-    await tx.costCyclePeriod.update({ where: { id: period.id }, data: { status: invalid ? 'INVALID' : 'READY' } });
-    return active;
+
+    const replacement = replacementStates(currentActive, upload, !invalid);
+    if (replacement.supersededId !== null) {
+      await tx.costCycleUpload.update({
+        where: { id: replacement.supersededId },
+        data: { isActiveVersion: false, status: 'SUPERSEDED', supersededAt: new Date() },
+      });
+    }
+
+    if (replacement.activeId === upload.id) {
+      const active = await tx.costCycleUpload.update({ where: { id: upload.id }, data: { isActiveVersion: true } });
+      await tx.costCyclePeriod.update({ where: { id: period.id }, data: { status: 'READY' } });
+      return active;
+    }
+
+    await tx.costCyclePeriod.update({
+      where: { id: period.id },
+      data: { status: currentActive?.status === 'VALIDATED' ? 'READY' : 'INVALID' },
+    });
+    return upload;
   }, { timeout: 60_000 });
 }
 
