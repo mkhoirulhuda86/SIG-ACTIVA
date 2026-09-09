@@ -9,11 +9,20 @@ import { deriveReceiverBaselines } from "@/lib/cost-structure/cycle/engine";
 export async function GET(request: NextRequest) {
   const auth = await requireCostStructureRead(request);
   if ("error" in auth) return auth.error;
-  const fiscalYear = Number(request.nextUrl.searchParams.get("fiscalYear")),
-    fiscalPeriod = Number(request.nextUrl.searchParams.get("fiscalPeriod"));
+
+  const fiscalYear = Number(request.nextUrl.searchParams.get("fiscalYear"));
+  const fiscalPeriod = Number(request.nextUrl.searchParams.get("fiscalPeriod"));
+
   try {
     const state = await loadActiveCycle(fiscalYear, fiscalPeriod);
-    const refs = new Map(state.references.map((r) => [r.receiverCc, r]));
+    const references = new Map(
+      state.references.map((reference) => [reference.receiverCc, reference]),
+    );
+    const masterByCc = new Map(
+      state.ccMaster.map((master) => [master.receiverCc, master]),
+    );
+    const baselines = deriveReceiverBaselines(state.rows, state.ccMaster);
+
     return NextResponse.json({
       upload: {
         id: state.upload.id,
@@ -32,15 +41,22 @@ export async function GET(request: NextRequest) {
         sourceSheet: state.sourceSheetName,
       },
       masterFingerprint: state.fingerprint,
-      receivers: deriveReceiverBaselines(state.rows, state.ccMaster).map(
-        (b) => ({
-          ...b,
-          receiverDescription: state.ccMaster.find(
-            (m) => m.receiverCc === b.receiverCc,
-          )?.receiverDescription,
-          reference: refs.get(b.receiverCc),
-        }),
-      ),
+      receivers: baselines.map((baseline) => ({
+        ...baseline,
+        receiverDescription:
+          masterByCc.get(baseline.receiverCc)?.receiverDescription,
+        reference: references.get(baseline.receiverCc),
+      })),
+      referenceCandidates: baselines
+        .filter((baseline) => baseline.baselineStatus === "ON")
+        .map((baseline) => ({
+          receiverCc: baseline.receiverCc,
+          receiverDescription:
+            masterByCc.get(baseline.receiverCc)?.receiverDescription ?? "",
+          plantCode: baseline.plantCode,
+          plantName: baseline.plantName,
+          processLabel: baseline.processLabel,
+        })),
     });
   } catch (error) {
     return NextResponse.json(
