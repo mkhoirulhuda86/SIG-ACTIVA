@@ -263,15 +263,45 @@ export function splitDeltaByCycle(delta: readonly CycleDeltaRow[]): CycleDeltaSp
   };
 }
 
+function validateTargetRequests(targetRequests: readonly CycleTargetChange[]) {
+  const firstByReceiver = new Map<string, CycleTargetChange>();
+  const duplicateReceiverCcs = new Set<string>();
+  const issues: CycleValidationIssue[] = [];
+
+  for (const request of targetRequests) {
+    const first = firstByReceiver.get(request.receiverCc);
+    if (!first) {
+      firstByReceiver.set(request.receiverCc, request);
+      continue;
+    }
+    duplicateReceiverCcs.add(request.receiverCc);
+    issues.push(cycleIssue({
+      code: 'DUPLICATE_TARGET_REQUEST',
+      severity: 'ERROR',
+      message: `Receiver CC ${request.receiverCc} appears more than once in the requested target status payload.`,
+      receiverCc: request.receiverCc,
+      metadata: { firstTargetStatus: first.targetStatus, duplicateTargetStatus: request.targetStatus },
+    }));
+  }
+
+  return { issues, duplicateReceiverCcs };
+}
+
 export function runCycleEngine(
   rows: readonly CycleSourceRow[], ccMaster: readonly CycleCcMaster[],
   targetRequests: readonly CycleTargetChange[], referenceConfigs: readonly CycleReferenceConfig[],
 ): CycleEngineResult {
   const baselines = deriveReceiverBaselines(rows, ccMaster);
-  const plan = planCycleChanges(rows, baselines, targetRequests, referenceConfigs);
+  const requestValidation = validateTargetRequests(targetRequests);
+  const effectiveRequests = targetRequests.filter((request) => !requestValidation.duplicateReceiverCcs.has(request.receiverCc));
+  const plan = planCycleChanges(rows, baselines, effectiveRequests, referenceConfigs);
   const validationIssues = validatePlannedChanges(rows, plan.actions);
   // Source-level issues are already emitted by planning; avoid duplicating them from validation.
-  const issues = [...plan.issues, ...validationIssues.filter((issue) => !['DUPLICATE_TARGET_KEY', 'NEGATIVE_PORTION'].includes(issue.code))];
+  const issues = [
+    ...requestValidation.issues,
+    ...plan.issues,
+    ...validationIssues.filter((issue) => !['DUPLICATE_TARGET_KEY', 'NEGATIVE_PORTION'].includes(issue.code)),
+  ];
   const generationBlocked = hasBlockingCycleIssues(issues);
   const delta = generationBlocked ? [] : buildCycleDelta(rows, plan.actions);
   const deltaByCycle = splitDeltaByCycle(delta);
