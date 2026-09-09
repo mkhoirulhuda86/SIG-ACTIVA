@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, BarChart3, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BarChart3, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
@@ -207,6 +207,13 @@ export default function DashboardResumeFluktuasiPage() {
     router.push(`/detail-akun-fluktuasi?${query.toString()}`);
   };
 
+  const moveDetail = (direction: -1 | 1) => {
+    if (!detailActivity) return;
+    const activities: ActivityKey[] = ['mom', 'yoy', 'ytd'];
+    const currentIndex = activities.indexOf(detailActivity);
+    setDetailActivity(activities[(currentIndex + direction + activities.length) % activities.length]);
+  };
+
   return (
     <div className="flex h-dvh overflow-hidden bg-[#edf2f6]">
       <div className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
@@ -221,7 +228,7 @@ export default function DashboardResumeFluktuasiPage() {
         />
 
         <main className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-[#f8fafc] via-[#f1f5f8] to-[#eaf0f4] p-3 sm:p-4 xl:p-5">
-          <div className="mx-auto max-w-[1800px] space-y-3">
+          <div className="mx-auto max-w-[1720px] space-y-3">
             <section className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-gradient-to-r from-[#eef4f8] to-[#f8fbfd] p-3 shadow-[0_7px_18px_rgba(32,58,82,0.05)] sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -298,11 +305,6 @@ export default function DashboardResumeFluktuasiPage() {
                 </aside>
 
                 <div className="min-w-0">
-                  <div className={`mb-2 px-1 text-xs font-black ${CLASS_STYLE[active.key].title}`}>
-                    {active.title}
-                    <span className="ml-2 font-medium text-slate-400">· {dashboard.periodLabel}</span>
-                  </div>
-
                   <article className="overflow-hidden rounded-[24px] border border-[#d5e0e8] bg-gradient-to-b from-[#fdfefe] to-[#f5f8fb] shadow-[0_14px_34px_rgba(24,49,73,0.09)]">
                     <header className={`flex flex-col gap-2 border-b border-white/20 bg-gradient-to-b ${CLASS_STYLE[active.key].header} px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between`}>
                       <div>
@@ -324,7 +326,7 @@ export default function DashboardResumeFluktuasiPage() {
                             type="button"
                             key={activity}
                             onClick={() => openDetail(activity)}
-                            className={`group relative min-h-[330px] overflow-hidden bg-gradient-to-b ${style.panel} p-4 text-left transition hover:-translate-y-0.5 hover:shadow-[inset_0_0_0_999px_rgba(255,255,255,0.06)] ${index < 2 ? 'border-b border-[#dde6ed] lg:border-b-0 lg:border-r' : ''}`}
+                            className={`group relative min-h-[286px] overflow-hidden bg-gradient-to-b ${style.panel} p-4 text-left transition hover:-translate-y-0.5 hover:shadow-[inset_0_0_0_999px_rgba(255,255,255,0.06)] ${index < 2 ? 'border-b border-[#dde6ed] lg:border-b-0 lg:border-r' : ''}`}
                           >
                             <span className={`absolute inset-x-0 top-0 h-1.5 ${style.accent}`} />
                             <div className="mt-1 flex items-center justify-between gap-2">
@@ -380,31 +382,58 @@ export default function DashboardResumeFluktuasiPage() {
                     const detail = active.activities[detailActivity];
                     const total = detail.kpi;
                     return (
-                      <section id="detail-classification" className="mt-4 overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-sm">
-                        <header className="flex flex-wrap items-center justify-between gap-3 bg-[#173d5a] px-5 py-4 text-white">
-                          <div>
-                            <h2 className="text-sm font-black">Detail {active.title} · {detailActivity.toUpperCase()}</h2>
-                            <p className="mt-1 text-[10px] text-slate-200">{detail.label}</p>
+                      <section id="detail-classification" className="mt-4 scroll-mt-4 overflow-hidden rounded-[24px] border border-[#ccd9e3] bg-[#f7fafc] shadow-[0_14px_34px_rgba(24,49,73,0.09)]">
+                        <header className="relative overflow-hidden bg-gradient-to-r from-[#153750] via-[#1b4868] to-[#245d83] px-5 py-4 text-white">
+                          <div className={`absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b ${CLASS_STYLE[active.key].header}`} />
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-white/65">Detail Analysis · {active.title}</div>
+                              <h2 className="mt-1 text-base font-black tracking-tight">{detailActivity.toUpperCase()} — {detail.label}</h2>
+                              <p className="mt-1 text-[10px] text-[#cfdeea]">Analisis per akun untuk periode {dashboard.periodLabel}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex overflow-hidden rounded-lg border border-white/20 bg-black/10">
+                                <button type="button" onClick={() => moveDetail(-1)} aria-label="Aktivitas sebelumnya" className="border-r border-white/15 p-2 hover:bg-white/10"><ArrowLeft className="h-3.5 w-3.5" /></button>
+                                <button type="button" onClick={() => moveDetail(1)} aria-label="Aktivitas berikutnya" className="p-2 hover:bg-white/10"><ArrowRight className="h-3.5 w-3.5" /></button>
+                              </div>
+                              <button type="button" onClick={() => openLegacyDetail(detailActivity)} className="rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-[10px] font-bold transition hover:bg-white/20">
+                                Buka Detail Per Akun <ArrowRight className="ml-1 inline h-3 w-3" />
+                              </button>
+                            </div>
                           </div>
-                          <button type="button" onClick={() => openLegacyDetail(detailActivity)} className="rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-[10px] font-bold hover:bg-white/20">
-                            Buka Detail Per Akun <ArrowRight className="ml-1 inline h-3 w-3" />
-                          </button>
                         </header>
+
+                        <div className="grid gap-2.5 border-b border-[#dbe4eb] bg-gradient-to-b from-[#eef4f8] to-[#f7fafc] p-3 sm:grid-cols-2 xl:grid-cols-4">
+                          {[
+                            { label: ACTIVITY_META[detailActivity].previous, value: fmtAmount(total.previous), percent: false },
+                            { label: ACTIVITY_META[detailActivity].current, value: fmtAmount(total.current), percent: false },
+                            { label: ACTIVITY_META[detailActivity].movement, value: fmtAmount(total.movement), percent: false },
+                            { label: ACTIVITY_META[detailActivity].pct, value: fmtPercent(total.percent), percent: true },
+                          ].map((item) => (
+                            <div key={item.label} className="rounded-[14px] border border-white bg-gradient-to-b from-white to-[#f7fafc] px-4 py-3 shadow-[0_4px_12px_rgba(29,57,83,0.055)]">
+                              <div className="text-[8px] font-black uppercase tracking-[0.1em] text-[#8292a1]">{item.label}</div>
+                              <div className={`mt-1.5 truncate text-base font-black tracking-[-0.02em] ${item.percent ? percentTone(active.key, total.percent) : 'text-[#17324a]'}`}>{item.value}</div>
+                            </div>
+                          ))}
+                        </div>
                         <div className="overflow-x-auto">
                           <table className="w-full min-w-[850px] text-xs">
-                            <thead className="bg-slate-100 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Account</th><th className="px-4 py-3">Description</th><th className="px-4 py-3 text-right">Previous</th><th className="px-4 py-3 text-right">Current</th><th className="px-4 py-3 text-right">Movement</th><th className="px-4 py-3 text-right">%</th></tr></thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {detail.rows.map((row) => <tr key={row.accountCode}><td className="px-4 py-3 font-bold text-slate-700">{row.accountCode}</td><td className="px-4 py-3 text-slate-600">{row.description}</td><td className="px-4 py-3 text-right text-slate-800">{fmtAmount(row.previous)}</td><td className="px-4 py-3 text-right text-slate-800">{fmtAmount(row.current)}</td><td className="px-4 py-3 text-right text-slate-800">{fmtAmount(row.movement)}</td><td className={`px-4 py-3 text-right font-bold ${percentTone(active.key, row.percent)}`}>{fmtPercent(row.percent)}</td></tr>)}
+                            <thead className="bg-[#1d4c6d] text-left text-[9px] uppercase tracking-[0.08em] text-white"><tr><th className="px-4 py-3">Account</th><th className="px-4 py-3">Description</th><th className="px-4 py-3 text-right">Previous</th><th className="px-4 py-3 text-right">Current</th><th className="px-4 py-3 text-right">Movement</th><th className="px-4 py-3 text-right">%</th></tr></thead>
+                            <tbody className="divide-y divide-[#e5ebf0] bg-white">
+                              {detail.rows.map((row) => <tr key={row.accountCode} className="transition-colors hover:bg-[#f4f8fb]"><td className="px-4 py-3 font-bold text-[#25465f]">{row.accountCode}</td><td className="px-4 py-3 text-slate-600">{row.description}</td><td className="px-4 py-3 text-right tabular-nums text-slate-800">{fmtAmount(row.previous)}</td><td className="px-4 py-3 text-right tabular-nums text-slate-800">{fmtAmount(row.current)}</td><td className="px-4 py-3 text-right tabular-nums text-slate-800">{fmtAmount(row.movement)}</td><td className={`px-4 py-3 text-right font-bold tabular-nums ${percentTone(active.key, row.percent)}`}>{fmtPercent(row.percent)}</td></tr>)}
                             </tbody>
-                            <tfoot className="border-t-2 border-slate-300 bg-slate-50 font-black"><tr><td className="px-4 py-3" colSpan={2}>TOTAL</td><td className="px-4 py-3 text-right">{fmtAmount(total.previous)}</td><td className="px-4 py-3 text-right">{fmtAmount(total.current)}</td><td className="px-4 py-3 text-right">{fmtAmount(total.movement)}</td><td className={`px-4 py-3 text-right ${percentTone(active.key, total.percent)}`}>{fmtPercent(total.percent)}</td></tr></tfoot>
+                            <tfoot className="border-t-2 border-[#7890a2] bg-[#e8f0f5] font-black text-[#17324a]"><tr><td className="px-4 py-3.5 tracking-wide" colSpan={2}>TOTAL</td><td className="px-4 py-3.5 text-right tabular-nums">{fmtAmount(total.previous)}</td><td className="px-4 py-3.5 text-right tabular-nums">{fmtAmount(total.current)}</td><td className="px-4 py-3.5 text-right tabular-nums">{fmtAmount(total.movement)}</td><td className={`px-4 py-3.5 text-right tabular-nums ${percentTone(active.key, total.percent)}`}>{fmtPercent(total.percent)}</td></tr></tfoot>
                           </table>
                         </div>
-                        <section className="border-t border-slate-200">
-                          <h3 className="bg-[#214f72] px-5 py-3 text-xs font-black text-white">Reasons</h3>
-                          <div className="grid gap-2 p-4 md:grid-cols-2">
+                        <section className="border-t border-[#cbd8e2]">
+                          <h3 className="bg-gradient-to-r from-[#173d5a] to-[#245d83] px-5 py-3 text-xs font-black tracking-wide text-white">Detail Penjelasan Reasons</h3>
+                          <div className="divide-y divide-[#dce6ed] bg-[#eef5f8] px-4">
                             {detail.rows.filter((row) => row.reason).length > 0 ? detail.rows.filter((row) => row.reason).map((row) => (
-                              <div key={row.accountCode} className="rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="text-[10px] font-black text-[#214f72]">{row.accountCode} · {row.description}</div><p className="mt-1 text-xs leading-5 text-slate-600">{row.reason}</p></div>
-                            )) : <p className="text-xs text-slate-500">Belum ada Reasons yang tervalidasi untuk comparison ini.</p>}
+                              <div key={row.accountCode} className="grid gap-1 py-3.5 md:grid-cols-[240px_minmax(0,1fr)] md:gap-5">
+                                <div><div className="text-[10px] font-black text-[#214f72]">{row.accountCode}</div><div className="mt-0.5 text-[10px] leading-4 text-slate-500">{row.description}</div></div>
+                                <p className="border-l-2 border-[#aec4d3] pl-3 text-xs leading-5 text-slate-700">{row.reason}</p>
+                              </div>
+                            )) : <p className="py-5 text-center text-xs text-slate-500">Belum ada Reasons yang tervalidasi untuk comparison ini.</p>}
                           </div>
                         </section>
                       </section>
