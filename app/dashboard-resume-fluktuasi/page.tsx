@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ArrowRight, BarChart3, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BarChart3, FileSpreadsheet, RefreshCw, Search } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
@@ -151,6 +151,7 @@ export default function DashboardResumeFluktuasiPage() {
   const [activeClassification, setActiveClassification] = useState<ClassificationKey>('beban-bunga');
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [detailActivity, setDetailActivity] = useState<ActivityKey | null>(null);
+  const [detailSearch, setDetailSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const requestRef = useRef(0);
@@ -197,6 +198,7 @@ export default function DashboardResumeFluktuasiPage() {
   );
 
   const openDetail = (activity: ActivityKey) => {
+    setDetailSearch('');
     setDetailActivity(activity);
     requestAnimationFrame(() => document.getElementById('detail-classification')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
@@ -207,11 +209,10 @@ export default function DashboardResumeFluktuasiPage() {
     router.push(`/detail-akun-fluktuasi?${query.toString()}`);
   };
 
-  const moveDetail = (direction: -1 | 1) => {
-    if (!detailActivity) return;
-    const activities: ActivityKey[] = ['mom', 'yoy', 'ytd'];
-    const currentIndex = activities.indexOf(detailActivity);
-    setDetailActivity(activities[(currentIndex + direction + activities.length) % activities.length]);
+  const closeDetail = () => {
+    setDetailActivity(null);
+    setDetailSearch('');
+    requestAnimationFrame(() => document.getElementById('dashboard-resume')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
 
   return (
@@ -228,7 +229,7 @@ export default function DashboardResumeFluktuasiPage() {
         />
 
         <main className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-[#f8fafc] via-[#f1f5f8] to-[#eaf0f4] p-3 sm:p-4 xl:p-5">
-          <div className="mx-auto max-w-[1720px] space-y-3">
+          <div className="mx-auto max-w-[1860px] space-y-3">
             <section className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-gradient-to-r from-[#eef4f8] to-[#f8fbfd] p-3 shadow-[0_7px_18px_rgba(32,58,82,0.05)] sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -257,6 +258,7 @@ export default function DashboardResumeFluktuasiPage() {
                     const next = event.target.value;
                     setSelectedPeriod(next);
                     setDetailActivity(null);
+                    setDetailSearch('');
                     void loadDashboard(next);
                   }}
                   className="min-w-36 rounded-xl border border-slate-300 bg-white/90 px-3 py-2 text-xs font-bold normal-case tracking-normal text-slate-700 outline-none transition focus:border-[#245d87] focus:ring-2 focus:ring-[#245d87]/10"
@@ -275,7 +277,7 @@ export default function DashboardResumeFluktuasiPage() {
             )}
 
             {loading && !dashboard ? <LoadingState /> : active && dashboard ? (
-              <section className="grid gap-4 lg:grid-cols-[250px_minmax(0,1fr)]">
+              <section id="dashboard-resume" className="scroll-mt-4 grid gap-4 lg:grid-cols-[250px_minmax(0,1fr)]">
                 <aside className="relative h-fit overflow-hidden rounded-[20px] border border-white/10 bg-gradient-to-b from-[#173a58] to-[#204d70] p-3.5 shadow-[0_14px_32px_rgba(24,49,73,0.13)] lg:sticky lg:top-0">
                   <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-[#3b8bd0] via-[#1e9a77] via-50% to-[#7858c9]" />
                   <div className="px-2 pb-3 pt-1 text-[9px] font-black uppercase tracking-[0.14em] text-[#d9e7f1]">Klasifikasi</div>
@@ -287,7 +289,7 @@ export default function DashboardResumeFluktuasiPage() {
                         <button
                           type="button"
                           key={classification.key}
-                          onClick={() => { setActiveClassification(classification.key); setDetailActivity(null); }}
+                          onClick={() => { setActiveClassification(classification.key); setDetailActivity(null); setDetailSearch(''); }}
                           className={`grid min-w-[205px] grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-[13px] border px-3 py-3 text-left transition lg:min-w-0 ${selected
                             ? `border-white/30 bg-gradient-to-b ${style.active} text-white shadow-[0_8px_20px_rgba(10,31,49,0.24)]`
                             : 'border-white/10 bg-white/[0.055] text-[#d8e5ee] hover:translate-x-0.5 hover:bg-white/10'
@@ -305,6 +307,13 @@ export default function DashboardResumeFluktuasiPage() {
                 </aside>
 
                 <div className="min-w-0">
+                  <div className={`mb-2 flex items-center justify-between rounded-[14px] border border-slate-200/80 bg-white/75 px-4 py-2.5 shadow-[0_4px_12px_rgba(29,57,83,0.045)] ${CLASS_STYLE[active.key].title}`}>
+                    <div>
+                      <div className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-400">Selected Classification</div>
+                      <div className="mt-0.5 text-sm font-black">{active.title}</div>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-500">{dashboard.periodLabel}</span>
+                  </div>
                   <article className="overflow-hidden rounded-[24px] border border-[#d5e0e8] bg-gradient-to-b from-[#fdfefe] to-[#f5f8fb] shadow-[0_14px_34px_rgba(24,49,73,0.09)]">
                     <header className={`flex flex-col gap-2 border-b border-white/20 bg-gradient-to-b ${CLASS_STYLE[active.key].header} px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between`}>
                       <div>
@@ -326,7 +335,7 @@ export default function DashboardResumeFluktuasiPage() {
                             type="button"
                             key={activity}
                             onClick={() => openDetail(activity)}
-                            className={`group relative min-h-[286px] overflow-hidden bg-gradient-to-b ${style.panel} p-4 text-left transition hover:-translate-y-0.5 hover:shadow-[inset_0_0_0_999px_rgba(255,255,255,0.06)] ${index < 2 ? 'border-b border-[#dde6ed] lg:border-b-0 lg:border-r' : ''}`}
+                            className={`group relative min-h-[232px] overflow-hidden bg-gradient-to-b ${style.panel} p-4 text-left transition hover:-translate-y-0.5 hover:shadow-[inset_0_0_0_999px_rgba(255,255,255,0.06)] ${index < 2 ? 'border-b border-[#dde6ed] lg:border-b-0 lg:border-r' : ''}`}
                           >
                             <span className={`absolute inset-x-0 top-0 h-1.5 ${style.accent}`} />
                             <div className="mt-1 flex items-center justify-between gap-2">
@@ -343,7 +352,7 @@ export default function DashboardResumeFluktuasiPage() {
                               </div>
                             ) : (
                               <>
-                                <div className="mt-5 grid grid-cols-[1fr_auto] items-end gap-3">
+                                <div className="mt-3.5 grid grid-cols-[1fr_auto] items-end gap-3">
                                   <div>
                                     <div className="text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#8292a1]">{meta.pct}</div>
                                     <div className={`mt-1 text-[30px] font-black leading-none tracking-[-0.04em] ${percentTone(active.key, data.kpi.percent)}`}>
@@ -356,7 +365,7 @@ export default function DashboardResumeFluktuasiPage() {
                                   </div>
                                 </div>
 
-                                <div className="mt-4 grid grid-cols-2 gap-2">
+                                <div className="mt-3 grid grid-cols-2 gap-2">
                                   <div className="rounded-[13px] border border-slate-200/80 bg-gradient-to-b from-white/95 to-[#f7fafc] p-2.5 shadow-[0_4px_10px_rgba(29,57,83,0.04)]">
                                     <span className="block text-[7px] font-extrabold uppercase text-[#8192a2]">{meta.current}</span>
                                     <b className="mt-1 block text-[11px] text-[#17324a]">{fmtAmount(data.kpi.current)}</b>
@@ -369,7 +378,7 @@ export default function DashboardResumeFluktuasiPage() {
                               </>
                             )}
 
-                            <div className="mt-3 flex items-center justify-end gap-1 text-[9px] font-black text-[#245d87] opacity-70 transition group-hover:opacity-100">
+                            <div className="mt-2 flex items-center justify-end gap-1 text-[9px] font-black text-[#245d87] opacity-70 transition group-hover:opacity-100">
                               Detail Analysis <ArrowRight className="h-3.5 w-3.5" />
                             </div>
                           </button>
@@ -381,61 +390,71 @@ export default function DashboardResumeFluktuasiPage() {
                   {detailActivity && (() => {
                     const detail = active.activities[detailActivity];
                     const total = detail.kpi;
+                    const query = detailSearch.trim().toLocaleLowerCase('id-ID');
+                    const visibleRows = query
+                      ? detail.rows.filter((row) => `${row.accountCode} ${row.description}`.toLocaleLowerCase('id-ID').includes(query))
+                      : detail.rows;
+                    const reasonRows = detail.rows.filter((row) => row.reason);
+                    const kpiCards = [
+                      { label: ACTIVITY_META[detailActivity].previous, value: fmtAmount(total.previous), tone: 'border-[#7eb2da] from-[#eef7ff] to-[#f8fbff]', line: 'bg-[#3b8bd0]', percent: false },
+                      { label: ACTIVITY_META[detailActivity].current, value: fmtAmount(total.current), tone: 'border-[#88cbb7] from-[#effaf6] to-[#f9fdfb]', line: 'bg-[#1e9a77]', percent: false },
+                      { label: ACTIVITY_META[detailActivity].movement, value: fmtAmount(total.movement), tone: 'border-[#e2bd75] from-[#fff8e9] to-[#fffdf8]', line: 'bg-[#c98b2a]', percent: false },
+                      { label: ACTIVITY_META[detailActivity].pct, value: fmtPercent(total.percent), tone: 'border-[#b6a0df] from-[#f6f1ff] to-[#fcfaff]', line: 'bg-[#7858c9]', percent: true },
+                    ];
                     return (
-                      <section id="detail-classification" className="mt-4 scroll-mt-4 overflow-hidden rounded-[24px] border border-[#ccd9e3] bg-[#f7fafc] shadow-[0_14px_34px_rgba(24,49,73,0.09)]">
-                        <header className="relative overflow-hidden bg-gradient-to-r from-[#153750] via-[#1b4868] to-[#245d83] px-5 py-4 text-white">
-                          <div className={`absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b ${CLASS_STYLE[active.key].header}`} />
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                              <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-white/65">Detail Analysis · {active.title}</div>
-                              <h2 className="mt-1 text-base font-black tracking-tight">{detailActivity.toUpperCase()} — {detail.label}</h2>
-                              <p className="mt-1 text-[10px] text-[#cfdeea]">Analisis per akun untuk periode {dashboard.periodLabel}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="flex overflow-hidden rounded-lg border border-white/20 bg-black/10">
-                                <button type="button" onClick={() => moveDetail(-1)} aria-label="Aktivitas sebelumnya" className="border-r border-white/15 p-2 hover:bg-white/10"><ArrowLeft className="h-3.5 w-3.5" /></button>
-                                <button type="button" onClick={() => moveDetail(1)} aria-label="Aktivitas berikutnya" className="p-2 hover:bg-white/10"><ArrowRight className="h-3.5 w-3.5" /></button>
-                              </div>
-                              <button type="button" onClick={() => openLegacyDetail(detailActivity)} className="rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-[10px] font-bold transition hover:bg-white/20">
-                                Buka Detail Per Akun <ArrowRight className="ml-1 inline h-3 w-3" />
-                              </button>
-                            </div>
-                          </div>
-                        </header>
+                      <section id="detail-classification" className="mt-4 scroll-mt-4 space-y-3">
+                        <button type="button" onClick={closeDetail} className="inline-flex items-center gap-1.5 rounded-lg border border-[#b9cbd8] bg-white/80 px-3 py-2 text-[9px] font-black uppercase tracking-[0.08em] text-[#214f72] shadow-sm transition hover:bg-white">
+                          <ArrowLeft className="h-3.5 w-3.5" /> Dashboard Resume
+                        </button>
 
-                        <div className="grid gap-2.5 border-b border-[#dbe4eb] bg-gradient-to-b from-[#eef4f8] to-[#f7fafc] p-3 sm:grid-cols-2 xl:grid-cols-4">
-                          {[
-                            { label: ACTIVITY_META[detailActivity].previous, value: fmtAmount(total.previous), percent: false },
-                            { label: ACTIVITY_META[detailActivity].current, value: fmtAmount(total.current), percent: false },
-                            { label: ACTIVITY_META[detailActivity].movement, value: fmtAmount(total.movement), percent: false },
-                            { label: ACTIVITY_META[detailActivity].pct, value: fmtPercent(total.percent), percent: true },
-                          ].map((item) => (
-                            <div key={item.label} className="rounded-[14px] border border-white bg-gradient-to-b from-white to-[#f7fafc] px-4 py-3 shadow-[0_4px_12px_rgba(29,57,83,0.055)]">
-                              <div className="text-[8px] font-black uppercase tracking-[0.1em] text-[#8292a1]">{item.label}</div>
-                              <div className={`mt-1.5 truncate text-base font-black tracking-[-0.02em] ${item.percent ? percentTone(active.key, total.percent) : 'text-[#17324a]'}`}>{item.value}</div>
+                        <div className="overflow-hidden rounded-[22px] border border-[#ccd9e3] bg-[#f7fafc] shadow-[0_14px_34px_rgba(24,49,73,0.09)]">
+                          <div className="border-b border-[#d7e1e8] bg-[#edf3f7] p-3">
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                              {dashboard.classifications.map((classification) => {
+                                const selected = classification.key === active.key;
+                                const style = CLASS_STYLE[classification.key];
+                                return <button type="button" key={classification.key} onClick={() => { setActiveClassification(classification.key); setDetailSearch(''); }} className={`shrink-0 rounded-lg border px-3 py-2 text-[9px] font-extrabold transition ${selected ? `border-transparent bg-gradient-to-r ${style.active} text-white shadow-sm` : 'border-[#ccd8e1] bg-white text-slate-600 hover:border-[#9fb5c5]'}`}><span className={`mr-2 inline-block h-1.5 w-1.5 rounded-full ${style.dot}`} />{classification.title}</button>;
+                              })}
                             </div>
-                          ))}
-                        </div>
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-[850px] text-xs">
-                            <thead className="bg-[#1d4c6d] text-left text-[9px] uppercase tracking-[0.08em] text-white"><tr><th className="px-4 py-3">Account</th><th className="px-4 py-3">Description</th><th className="px-4 py-3 text-right">Previous</th><th className="px-4 py-3 text-right">Current</th><th className="px-4 py-3 text-right">Movement</th><th className="px-4 py-3 text-right">%</th></tr></thead>
-                            <tbody className="divide-y divide-[#e5ebf0] bg-white">
-                              {detail.rows.map((row) => <tr key={row.accountCode} className="transition-colors hover:bg-[#f4f8fb]"><td className="px-4 py-3 font-bold text-[#25465f]">{row.accountCode}</td><td className="px-4 py-3 text-slate-600">{row.description}</td><td className="px-4 py-3 text-right tabular-nums text-slate-800">{fmtAmount(row.previous)}</td><td className="px-4 py-3 text-right tabular-nums text-slate-800">{fmtAmount(row.current)}</td><td className="px-4 py-3 text-right tabular-nums text-slate-800">{fmtAmount(row.movement)}</td><td className={`px-4 py-3 text-right font-bold tabular-nums ${percentTone(active.key, row.percent)}`}>{fmtPercent(row.percent)}</td></tr>)}
-                            </tbody>
-                            <tfoot className="border-t-2 border-[#7890a2] bg-[#e8f0f5] font-black text-[#17324a]"><tr><td className="px-4 py-3.5 tracking-wide" colSpan={2}>TOTAL</td><td className="px-4 py-3.5 text-right tabular-nums">{fmtAmount(total.previous)}</td><td className="px-4 py-3.5 text-right tabular-nums">{fmtAmount(total.current)}</td><td className="px-4 py-3.5 text-right tabular-nums">{fmtAmount(total.movement)}</td><td className={`px-4 py-3.5 text-right tabular-nums ${percentTone(active.key, total.percent)}`}>{fmtPercent(total.percent)}</td></tr></tfoot>
-                          </table>
-                        </div>
-                        <section className="border-t border-[#cbd8e2]">
-                          <h3 className="bg-gradient-to-r from-[#173d5a] to-[#245d83] px-5 py-3 text-xs font-black tracking-wide text-white">Detail Penjelasan Reasons</h3>
-                          <div className="divide-y divide-[#dce6ed] bg-[#eef5f8] px-4">
-                            {detail.rows.filter((row) => row.reason).length > 0 ? detail.rows.filter((row) => row.reason).map((row) => (
-                              <div key={row.accountCode} className="grid gap-1 py-3.5 md:grid-cols-[240px_minmax(0,1fr)] md:gap-5">
-                                <div><div className="text-[10px] font-black text-[#214f72]">{row.accountCode}</div><div className="mt-0.5 text-[10px] leading-4 text-slate-500">{row.description}</div></div>
-                                <p className="border-l-2 border-[#aec4d3] pl-3 text-xs leading-5 text-slate-700">{row.reason}</p>
-                              </div>
-                            )) : <p className="py-5 text-center text-xs text-slate-500">Belum ada Reasons yang tervalidasi untuk comparison ini.</p>}
+                            <div className="mt-2 flex gap-1.5">
+                              {(['mom', 'yoy', 'ytd'] as ActivityKey[]).map((activity) => <button type="button" key={activity} onClick={() => { setDetailActivity(activity); setDetailSearch(''); }} className={`min-w-16 rounded-lg border px-3 py-1.5 text-[9px] font-black ${activity === detailActivity ? 'border-[#173d5a] bg-[#173d5a] text-white' : 'border-[#c7d5df] bg-white text-[#36576e]'}`}>{ACTIVITY_META[activity].title}</button>)}
+                            </div>
                           </div>
-                        </section>
+
+                          <header className={`flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r ${CLASS_STYLE[active.key].header} px-5 py-3.5 text-white`}>
+                            <div><h2 className="text-sm font-black">Detail {active.title}</h2><p className="mt-1 text-[9px] text-white/75">{detailActivity.toUpperCase()} · {detail.label}</p></div>
+                            <button type="button" onClick={() => openLegacyDetail(detailActivity)} className="rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-[9px] font-bold transition hover:bg-white/20">Buka Detail Per Akun <ArrowRight className="ml-1 inline h-3 w-3" /></button>
+                          </header>
+
+                          <div className="grid gap-2.5 border-b border-[#dbe4eb] bg-[#f3f7fa] p-3 sm:grid-cols-2 xl:grid-cols-4">
+                            {kpiCards.map((item) => <div key={item.label} className={`relative overflow-hidden rounded-[14px] border bg-gradient-to-b px-4 py-3 shadow-[0_4px_12px_rgba(29,57,83,0.045)] ${item.tone}`}><span className={`absolute inset-x-0 top-0 h-1 ${item.line}`} /><div className="text-[8px] font-black uppercase tracking-[0.1em] text-[#718697]">{item.label}</div><div className={`mt-1.5 truncate text-base font-black tracking-[-0.02em] ${item.percent ? percentTone(active.key, total.percent) : 'text-[#17324a]'}`}>{item.value}</div></div>)}
+                          </div>
+
+                          <section className="border-b border-[#cbd8e2] bg-white">
+                            <div className="flex flex-col gap-2 border-b border-[#dce5eb] bg-[#f7fafc] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div><h3 className="text-xs font-black text-[#173d5a]">Detail Account-Description</h3><p className="mt-0.5 text-[9px] text-slate-500">Pareto berdasarkan gross absolute movement</p></div>
+                              <label className="relative block w-full sm:w-72"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={detailSearch} onChange={(event) => setDetailSearch(event.target.value)} placeholder="Cari Account / Description..." className="w-full rounded-lg border border-[#c8d6e0] bg-white py-2 pl-9 pr-3 text-[10px] text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#245d87] focus:ring-2 focus:ring-[#245d87]/10" /></label>
+                            </div>
+                            <div className="max-h-[410px] overflow-auto">
+                              <table className="w-full min-w-[850px] table-fixed text-xs">
+                                <colgroup><col className="w-[12%]" /><col className="w-[28%]" /><col className="w-[15%]" /><col className="w-[15%]" /><col className="w-[15%]" /><col className="w-[15%]" /></colgroup>
+                                <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#173d5a] to-[#245d83] text-left text-[9px] uppercase tracking-[0.08em] text-white"><tr><th className="px-4 py-2.5">Account</th><th className="px-4 py-2.5">Description</th><th className="px-4 py-2.5 text-right">Previous</th><th className="px-4 py-2.5 text-right">Current</th><th className="px-4 py-2.5 text-right">Movement</th><th className="px-4 py-2.5 text-right">%</th></tr></thead>
+                                <tbody className="divide-y divide-[#e5ebf0] bg-white">
+                                  {visibleRows.map((row) => <tr key={row.accountCode} className="transition-colors hover:bg-[#f4f8fb]"><td className="px-4 py-2.5 font-bold text-[#25465f]">{row.accountCode}</td><td className="px-4 py-2.5 text-slate-600"><span>{row.description}</span>{row.paretoSelected && <span className="ml-2 inline-flex rounded-full border border-[#e5bd6b] bg-[#fff6df] px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wide text-[#92620d]">Pareto</span>}</td><td className="px-4 py-2.5 text-right tabular-nums text-slate-800">{fmtAmount(row.previous)}</td><td className="px-4 py-2.5 text-right tabular-nums text-slate-800">{fmtAmount(row.current)}</td><td className="px-4 py-2.5 text-right tabular-nums text-slate-800">{fmtAmount(row.movement)}</td><td className={`px-4 py-2.5 text-right font-bold tabular-nums ${percentTone(active.key, row.percent)}`}>{fmtPercent(row.percent)}</td></tr>)}
+                                  {visibleRows.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-xs text-slate-500">Account atau Description tidak ditemukan.</td></tr>}
+                                </tbody>
+                              </table>
+                            </div>
+                            <div className="overflow-x-auto"><table className="w-full min-w-[850px] table-fixed text-xs"><colgroup><col className="w-[12%]" /><col className="w-[28%]" /><col className="w-[15%]" /><col className="w-[15%]" /><col className="w-[15%]" /><col className="w-[15%]" /></colgroup><tfoot className="border-t-2 border-[#7890a2] bg-[#e8f0f5] font-black text-[#17324a]"><tr><td className="px-4 py-3 tracking-wide" colSpan={2}>TOTAL</td><td className="px-4 py-3 text-right tabular-nums">{fmtAmount(total.previous)}</td><td className="px-4 py-3 text-right tabular-nums">{fmtAmount(total.current)}</td><td className="px-4 py-3 text-right tabular-nums">{fmtAmount(total.movement)}</td><td className={`px-4 py-3 text-right tabular-nums ${percentTone(active.key, total.percent)}`}>{fmtPercent(total.percent)}</td></tr></tfoot></table></div>
+                          </section>
+
+                          <section>
+                            <div className="bg-gradient-to-r from-[#173d5a] to-[#245d83] px-5 py-3 text-white"><h3 className="text-xs font-black tracking-wide">Detail Penjelasan Reasons</h3><p className="mt-0.5 text-[9px] text-white/65">Penjelasan tervalidasi untuk account pada comparison terpilih</p></div>
+                            <div className="divide-y divide-[#dce6ed] bg-[#eef5f8] px-4">
+                              {reasonRows.length > 0 ? reasonRows.map((row) => <div key={row.accountCode} className="grid gap-2 py-3 md:grid-cols-[245px_minmax(0,1fr)] md:gap-5"><div className="self-center"><div className="text-[10px] font-black text-[#214f72]">{row.accountCode}</div><div className="mt-0.5 text-[9px] leading-4 text-slate-500">{row.description}</div></div><p className="rounded-lg border border-[#d6e1e8] border-l-[3px] border-l-[#8aa9bd] bg-white/75 px-3 py-2 text-xs leading-5 text-slate-700 shadow-[0_2px_7px_rgba(29,57,83,0.035)]">{row.reason}</p></div>) : <p className="py-5 text-center text-xs text-slate-500">Belum ada Reasons yang tervalidasi untuk comparison ini.</p>}
+                            </div>
+                          </section>
+                        </div>
                       </section>
                     );
                   })()}
