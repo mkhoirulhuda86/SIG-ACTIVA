@@ -48,6 +48,8 @@ model User {
   costRawV2CalculationRunsStarted   CostRawV2CalculationRun[]  @relation("CostRawV2CalculationRunStartedBy")
   costCycleUploads                  CostCycleUpload[]          @relation("CostCycleUploadUploadedBy")
   costCycleIssuesResolved           CostCycleValidationIssue[] @relation("CostCycleIssueResolvedBy")
+  costCycleRunsGenerated            CostCycleChangeRun[]       @relation("CostCycleRunGeneratedBy")
+  costCycleReferencesUpdated        CostCycleReference[]       @relation("CostCycleReferenceUpdatedBy")
 
   @@map("users")
 }
@@ -120,6 +122,7 @@ model CostCycleUpload {
   uploadedBy            User                       @relation("CostCycleUploadUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
   sourceRows            CostCycleSourceRow[]
   validationIssues      CostCycleValidationIssue[]
+  changeRuns            CostCycleChangeRun[]
 
   @@unique([periodId, version])
   @@unique([periodId, fileHashSha256])
@@ -200,9 +203,67 @@ model CostCycleReference {
   active               Boolean                        @default(true)
   createdAt            DateTime                       @default(now())
   updatedAt            DateTime                       @updatedAt
+  updatedById          Int?
+  updatedBy            User?                          @relation("CostCycleReferenceUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
 
   @@index([active, reviewStatus])
+  @@index([updatedById])
   @@map("cost_cycle_references")
+}
+
+model CostCycleChangeRun {
+  id                Int                      @id @default(autoincrement())
+  uploadId          Int
+  sourceVersion     Int
+  sourceHashSha256  String
+  masterFingerprint String
+  changedCcCount    Int
+  warningCount      Int                      @default(0)
+  generatedById     Int
+  generatedAt       DateTime                 @default(now())
+  upload            CostCycleUpload          @relation(fields: [uploadId], references: [id], onDelete: Restrict)
+  generatedBy       User                     @relation("CostCycleRunGeneratedBy", fields: [generatedById], references: [id], onDelete: Restrict)
+  changes           CostCycleChange[]
+  files             CostCycleGeneratedFile[]
+
+  @@index([uploadId, generatedAt])
+  @@index([generatedById])
+  @@map("cost_cycle_change_runs")
+}
+
+model CostCycleChange {
+  id                    BigInt             @id @default(autoincrement())
+  runId                 Int
+  receiverCc            String
+  baselineStatus        String
+  targetStatus          String
+  action                String
+  referenceCc           String?
+  referenceSource       String?
+  referenceReviewStatus String?
+  referenceConfidence   String?
+  fixedAffectedRows     Int
+  variableAffectedRows  Int
+  issueSummaryJson      Json?
+  run                   CostCycleChangeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, receiverCc])
+  @@map("cost_cycle_changes")
+}
+
+model CostCycleGeneratedFile {
+  id             Int                @id @default(autoincrement())
+  runId          Int
+  cycle          String
+  fileName       String
+  rowCount       Int
+  fileHashSha256 String
+  storageKey     String             @unique
+  createdAt      DateTime           @default(now())
+  run            CostCycleChangeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@map("cost_cycle_generated_files")
 }
 
 enum CostNatureCalculationType {

@@ -67,3 +67,13 @@ export async function activeCycleReceiverCcs(prisma: PrismaClient) {
   const masters = await prisma.costCycleCcMaster.findMany({ where: { active: true }, select: { receiverCc: true } });
   return new Set(masters.map(master => master.receiverCc));
 }
+
+export async function removeCycleUploadIfUnreferenced(dependencies: {
+  findReference: () => Promise<{ id: number } | null>;
+  remove: () => Promise<unknown>;
+}) {
+  // A failed lookup can mean the transaction committed but its acknowledgement
+  // was lost. In that case fail closed and retain the object.
+  const persisted = await dependencies.findReference().catch(() => undefined);
+  if (persisted === null) await dependencies.remove().catch(() => undefined);
+}
