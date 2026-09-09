@@ -10,6 +10,7 @@ import {
   activeCycleReceiverCcs,
   DuplicateCycleUploadError,
   persistCycleUpload,
+  removeCycleUploadIfUnreferenced,
 } from "@/lib/cost-structure/cycle/repository/upload-repository";
 import { costStructureStorage } from "@/lib/cost-structure/storage/supabase-storage";
 import { verifyCycleUpload } from "@/lib/cost-structure/cycle/storage/upload-policy";
@@ -102,19 +103,12 @@ export async function POST(request: NextRequest) {
     // A commit acknowledgement can be ambiguous on infrastructure failure.
     // Remove only when the database can confirm that no persisted upload
     // references this newly uploaded storage object.
-    let safeToRemove = false;
-    try {
-      const persisted = await prisma.costCycleUpload.findFirst({
-        where: { storageKey: pending.objectKey },
-        select: { id: true },
-      });
-      safeToRemove = persisted === null;
-    } catch {
-      safeToRemove = false;
-    }
-    if (safeToRemove) {
-      await costStructureStorage.remove(pending.objectKey).catch(() => undefined);
-    }
+    await removeCycleUploadIfUnreferenced({
+      findReference: () => prisma.costCycleUpload.findFirst({
+        where: { storageKey: pending.objectKey }, select: { id: true },
+      }),
+      remove: () => costStructureStorage.remove(pending.objectKey),
+    });
 
     console.error("Cycle upload completion failed", error);
     return NextResponse.json(
