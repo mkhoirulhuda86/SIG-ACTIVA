@@ -2846,13 +2846,9 @@ export default function FluktuasiOIPage() {
         setRekapSheetData(normalizeRekapDescriptions(autoRekap));
       }
 
-      // Canonical rekap source: persisted akun-periode data.
-      // This guarantees old periods stay intact when appending a new upload.
-      if (latestDbRecords.length > 0) {
-        const dbRekap = buildRekapFromAkunPeriodes(latestDbRecords);
-        rekapData = dbRekap;
-        setRekapSheetData(normalizeRekapDescriptions(dbRekap));
-      }
+      // Preserve the parsed source sheet Rekap (including its structure and Reasons).
+      // A synthetic Rekap is only used above when the workbook has no sheet Rekap.
+      // Normalized account-period records remain authoritative for dashboard amounts.
 
       // -- Save snapshot to database (non-blocking) ---------------------------
       // Keep upload responsive; snapshot persistence runs in background.

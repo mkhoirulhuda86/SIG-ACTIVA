@@ -13,7 +13,7 @@ async function collectTests(directory) {
   return files;
 }
 
-const roots = [path.resolve('lib/cost-structure'), path.resolve('lib/cost-fluctuation')];
+const roots = [path.resolve('lib/cost-structure'), path.resolve('lib/cost-fluctuation'), path.resolve('lib/fluktuasi')];
 const tests = (await Promise.all(roots.map(collectTests))).flat().sort();
 if (tests.length === 0) {
   console.error('No Cost Structure tests found.');

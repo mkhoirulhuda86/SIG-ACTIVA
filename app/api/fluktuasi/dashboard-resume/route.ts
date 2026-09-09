@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireFinanceRead } from '@/lib/api-auth';
+import { buildPareto, percentOf, previousMonth, previousYear, selectBestSnapshot as chooseBestSnapshot, snapshotReasonMatches, ytdPeriods } from '@/lib/fluktuasi/dashboard-resume';
 
 type ActivityKey = 'mom' | 'yoy' | 'ytd';
 type ClassificationKey = 'beban-bunga' | 'pendapatan-lain' | 'pendapatan-bunga' | 'selisih-kurs';
@@ -47,22 +48,22 @@ const CLASSIFICATIONS: Array<{
 }> = [
   {
     key: 'beban-bunga',
-    title: 'BEBAN BUNGA',
+    title: 'Beban Bunga',
     fallbackAccounts: ['71510001', '71510002', '71510003', '71510004', '71510005', '71510098', '71510099'],
   },
   {
     key: 'pendapatan-lain',
-    title: 'PENDAPATAN LAIN-LAIN',
+    title: 'Pendapatan Lain-Lain',
     fallbackAccounts: ['71410001', '71410009', '71421001', '71421002', '71421009', '71430001', '71430002', '71440001', '71460001', '71460002', '71460009', '71560001'],
   },
   {
     key: 'pendapatan-bunga',
-    title: 'PENDAPATAN BUNGA',
+    title: 'Pendapatan Bunga',
     fallbackAccounts: ['71310001', '71310002', '71320001', '71320002'],
   },
   {
     key: 'selisih-kurs',
-    title: 'LABA (RUGI) SELISIH KURS',
+    title: 'Laba (Rugi) Selisih Kurs',
     fallbackAccounts: ['71610001', '71610002', '71620001', '71620002', '71620004'],
   },
 ];
@@ -99,30 +100,6 @@ const FALLBACK_DESCRIPTIONS: Record<string, string> = {
 };
 
 const MONTHS_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-
-function parseNumber(value: unknown): number {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  if (value === null || value === undefined || value === '') return 0;
-  let text = String(value).trim();
-  if (!text) return 0;
-  let negative = false;
-  if (/^\(.*\)$/.test(text)) {
-    negative = true;
-    text = text.slice(1, -1);
-  }
-  if (text.startsWith('-')) {
-    negative = true;
-    text = text.slice(1);
-  }
-  if (text.endsWith('-')) {
-    negative = true;
-    text = text.slice(0, -1);
-  }
-  const digits = text.replace(/[^\d]/g, '');
-  if (!digits) return 0;
-  const number = Number(digits);
-  return negative ? -number : number;
-}
 
 function amountColToPeriod(ac: AmountCol): string {
   const label = String(ac.label ?? '').trim();
@@ -196,15 +173,7 @@ function selectBestSnapshot(
     candidates.push({ id: imp.id, fileName: imp.fileName, createdAt: imp.createdAt, rekap, currentPeriod, score });
   }
 
-  const exact = candidates.filter((candidate) => candidate.currentPeriod === period);
-  const pool = exact.length > 0 ? exact : candidates.filter((candidate) => candidate.currentPeriod <= period);
-  if (pool.length === 0) return null;
-
-  return pool.sort((a, b) => {
-    if (a.currentPeriod !== b.currentPeriod) return b.currentPeriod.localeCompare(a.currentPeriod);
-    if (a.score !== b.score) return b.score - a.score;
-    return b.createdAt.getTime() - a.createdAt.getTime();
-  })[0];
+  return chooseBestSnapshot(candidates, period);
 }
 
 function parseClassificationKey(value: string): ClassificationKey | null {
@@ -248,42 +217,18 @@ function buildSnapshotAccountMeta(snapshot: SnapshotCandidate | null) {
   }
 
   for (const item of CLASSIFICATIONS) {
-    if ((accountOrder.get(item.key) ?? []).length === 0) accountOrder.set(item.key, [...item.fallbackAccounts]);
+    const allowed = new Set(item.fallbackAccounts);
+    const ordered = (accountOrder.get(item.key) ?? []).filter((code) => allowed.has(code));
+    for (const code of item.fallbackAccounts) if (!ordered.includes(code)) ordered.push(code);
+    accountOrder.set(item.key, ordered);
   }
   return { accountOrder, descriptions, reasons };
-}
-
-function previousMonth(period: string): string {
-  const [yearText, monthText] = period.split('.');
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const previous = month === 1 ? 12 : month - 1;
-  const previousYear = month === 1 ? year - 1 : year;
-  return `${previousYear}.${String(previous).padStart(2, '0')}`;
-}
-
-function previousYear(period: string): string {
-  const [yearText, monthText] = period.split('.');
-  return `${Number(yearText) - 1}.${monthText}`;
-}
-
-function ytdPeriods(period: string, yearOffset = 0): string[] {
-  const [yearText, monthText] = period.split('.');
-  const year = Number(yearText) + yearOffset;
-  const month = Number(monthText);
-  return Array.from({ length: month }, (_, index) => `${year}.${String(index + 1).padStart(2, '0')}`);
 }
 
 function periodLabel(period: string): string {
   const [yearText, monthText] = period.split('.');
   const month = Number(monthText);
   return `${MONTHS_ID[month - 1] ?? monthText} ${yearText}`;
-}
-
-function percentOf(previous: number, current: number): number | null {
-  const movement = current - previous;
-  if (previous === 0) return current === 0 ? 0 : null;
-  return (movement / Math.abs(previous)) * 100;
 }
 
 function getReason(row: RekapRow | undefined, activity: ActivityKey): string {
@@ -347,7 +292,7 @@ export async function GET(request: NextRequest) {
 
     const [amountRecords, imports] = await Promise.all([
       prisma.fluktuasiAkunPeriode.findMany({
-        select: { accountCode: true, periode: true, amount: true },
+        select: { accountCode: true, periode: true, amount: true, remark: true, klasifikasi: true },
         orderBy: [{ periode: 'asc' }, { accountCode: 'asc' }],
       }),
       prisma.fluktuasiImport.findMany({
@@ -367,6 +312,7 @@ export async function GET(request: NextRequest) {
     const availablePeriods = new Set(periodOptions);
     const amountMap = new Map<string, number>();
     for (const row of amountRecords) amountMap.set(`${row.accountCode}|${row.periode}`, Number(row.amount ?? 0));
+    const recordMap = new Map(amountRecords.map((row) => [`${row.accountCode}|${row.periode}`, row]));
 
     const classifications = CLASSIFICATIONS.map((classification) => {
       const accounts = accountOrder.get(classification.key) ?? classification.fallbackAccounts;
@@ -386,27 +332,21 @@ export async function GET(request: NextRequest) {
             current,
             movement,
             percent: available ? percentOf(previous, current) : null,
-            reason: getReason(reasons.get(accountCode), activity),
+            reason: (() => {
+              const snapshotRow = reasons.get(accountCode);
+              const snapshotMovement = activity === 'mom' ? snapshotRow?.gapMoM : activity === 'yoy' ? snapshotRow?.gapYoY : snapshotRow?.gapYtD;
+              const sourceReason = snapshotReasonMatches(snapshotMovement, movement) ? getReason(snapshotRow, activity) : '';
+              if (sourceReason) return sourceReason;
+              const fallbackRecords = periods.currentPeriods.map((p) => recordMap.get(`${accountCode}|${p}`)).filter(Boolean);
+              const values = fallbackRecords.map((record) => String(record?.remark || record?.klasifikasi || '').trim()).filter(Boolean);
+              return [...new Set(values)].join('; ');
+            })(),
           };
         });
 
-        const grossMovement = rawRows.reduce((sum, row) => sum + Math.abs(row.movement), 0);
-        const sortedDrivers = [...rawRows].sort((a, b) => Math.abs(b.movement) - Math.abs(a.movement));
-        const paretoMeta = new Map<string, { contribution: number; cumulative: number; selected: boolean }>();
-        let cumulative = 0;
-        for (const row of sortedDrivers) {
-          const contribution = grossMovement === 0 ? 0 : Math.abs(row.movement) / grossMovement;
-          cumulative += contribution;
-          const selected = grossMovement > 0 && cumulative - contribution < 0.8;
-          paretoMeta.set(row.accountCode, { contribution, cumulative, selected });
-        }
-
-        const rows = rawRows.map((row) => ({
-          ...row,
-          paretoContribution: paretoMeta.get(row.accountCode)?.contribution ?? 0,
-          paretoCumulative: paretoMeta.get(row.accountCode)?.cumulative ?? 0,
-          paretoSelected: paretoMeta.get(row.accountCode)?.selected ?? false,
-        }));
+        const rankedRows = buildPareto(rawRows);
+        const rankMap = new Map(rankedRows.map((row) => [row.accountCode, row]));
+        const rows = rawRows.map((row) => rankMap.get(row.accountCode) ?? { ...row, paretoContribution: 0, paretoCumulative: 0, paretoSelected: false });
         const previous = rows.reduce((sum, row) => sum + row.previous, 0);
         const current = rows.reduce((sum, row) => sum + row.current, 0);
         const movement = current - previous;

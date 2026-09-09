@@ -912,6 +912,19 @@ export default function DetailAkunFluktuasiPage() {
   const [compPeriodeRaw, setCompPeriodeRaw]     = useState('');
   const [activeAccountTab, setActiveAccountTab] = useState<AccountTabDef['key']>('beban-bunga');
 
+  // Preserve the existing page while accepting drill-down context from Dashboard Resume.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const classification = params.get('classification');
+    const activity = params.get('activity');
+    const period = params.get('periode') || params.get('period');
+    if (classification && ['beban-bunga', 'pendapatan-lain', 'pendapatan-bunga', 'selisih-kurs'].includes(classification)) {
+      setActiveAccountTab(classification as AccountTabDef['key']);
+    }
+    if (activity === 'mom' || activity === 'yoy' || activity === 'ytd') setCompMode(activity);
+    if (period && /^\d{4}\.\d{2}$/.test(period)) setCompPeriodeRaw(period);
+  }, []);
+
   // Filters
   const [selectedYear,      setSelectedYear]      = useState<string>('all');
   const [searchAkunRaw,     setSearchAkunRaw]     = useState('');
