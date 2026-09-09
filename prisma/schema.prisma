@@ -46,8 +46,163 @@ model User {
   costRawV2Uploads                  CostRawV2Upload[]          @relation("CostRawV2UploadUploadedBy")
   costRawV2ValidationIssuesResolved CostRawV2ValidationIssue[] @relation("CostRawV2ValidationIssueResolvedBy")
   costRawV2CalculationRunsStarted   CostRawV2CalculationRun[]  @relation("CostRawV2CalculationRunStartedBy")
+  costCycleUploads                  CostCycleUpload[]          @relation("CostCycleUploadUploadedBy")
+  costCycleIssuesResolved           CostCycleValidationIssue[] @relation("CostCycleIssueResolvedBy")
 
   @@map("users")
+}
+
+enum CostCyclePeriodStatus {
+  OPEN
+  VALIDATING
+  READY
+  INVALID
+}
+
+enum CostCycleUploadStatus {
+  VALIDATING
+  VALIDATED
+  INVALID
+  SUPERSEDED
+}
+
+enum CostCycleIssueSeverity {
+  INFO
+  WARNING
+  ERROR
+}
+
+enum CostCycleReferenceReviewStatus {
+  VALIDATED
+  PROPOSED
+  MANUAL_REQUIRED
+}
+
+/// Isolated monthly lifecycle for SAP allocation-cycle maintenance.
+model CostCyclePeriod {
+  id           Int                   @id @default(autoincrement())
+  fiscalYear   Int
+  fiscalPeriod Int
+  status       CostCyclePeriodStatus @default(OPEN)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  uploads      CostCycleUpload[]
+
+  @@unique([fiscalYear, fiscalPeriod])
+  @@index([status])
+  @@map("cost_cycle_periods")
+}
+
+model CostCycleUpload {
+  id                    Int                        @id @default(autoincrement())
+  periodId              Int
+  version               Int
+  originalFileName      String
+  fileHashSha256        String
+  fileSizeBytes         BigInt
+  storageProvider       String
+  storageKey            String                     @unique
+  isActiveVersion       Boolean                    @default(true)
+  status                CostCycleUploadStatus      @default(VALIDATING)
+  totalRowCount         Int                        @default(0)
+  fixedRowCount         Int                        @default(0)
+  variableRowCount      Int                        @default(0)
+  uniqueReceiverCcCount Int                        @default(0)
+  errorCount            Int                        @default(0)
+  warningCount          Int                        @default(0)
+  uploadedById          Int
+  uploadedAt            DateTime                   @default(now())
+  validatedAt           DateTime?
+  supersededAt          DateTime?
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+  period                CostCyclePeriod            @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  uploadedBy            User                       @relation("CostCycleUploadUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  sourceRows            CostCycleSourceRow[]
+  validationIssues      CostCycleValidationIssue[]
+
+  @@unique([periodId, version])
+  @@unique([periodId, fileHashSha256])
+  @@index([periodId, isActiveVersion])
+  @@index([uploadedById])
+  @@index([status])
+  @@map("cost_cycle_uploads")
+}
+
+model CostCycleSourceRow {
+  id              BigInt          @id @default(autoincrement())
+  uploadId        Int
+  sourceOrder     Int
+  sourceRowNumber Int
+  sourceSheetName String
+  cycle           String
+  startDate       DateTime        @db.Date
+  segmentName     String
+  receiverCc      String
+  portion         Decimal         @db.Decimal(20, 6)
+  rawDataJson     Json?
+  createdAt       DateTime        @default(now())
+  upload          CostCycleUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@unique([uploadId, sourceOrder])
+  @@unique([uploadId, cycle, segmentName, receiverCc])
+  @@index([uploadId, receiverCc])
+  @@map("cost_cycle_source_rows")
+}
+
+model CostCycleValidationIssue {
+  id              BigInt                 @id @default(autoincrement())
+  uploadId        Int
+  sourceRowNumber Int?
+  issueCode       String
+  severity        CostCycleIssueSeverity
+  message         String
+  metadataJson    Json?
+  resolvedAt      DateTime?
+  resolvedById    Int?
+  resolutionNote  String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  upload          CostCycleUpload        @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  resolvedBy      User?                  @relation("CostCycleIssueResolvedBy", fields: [resolvedById], references: [id], onDelete: Restrict)
+
+  @@index([uploadId, severity])
+  @@index([resolvedById])
+  @@map("cost_cycle_validation_issues")
+}
+
+model CostCycleCcMaster {
+  id                  Int      @id @default(autoincrement())
+  receiverCc          String   @unique
+  receiverDescription String
+  plantCode           String
+  plantName           String
+  processCode         String
+  processLabel        String
+  displayOrder        Int
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([active, plantCode, displayOrder])
+  @@map("cost_cycle_cc_masters")
+}
+
+model CostCycleReference {
+  id                   Int                            @id @default(autoincrement())
+  receiverCc           String                         @unique
+  peerGroup            String
+  preferredReferenceCc String?
+  fallbackReferenceCcs Json
+  confidence           String
+  reviewStatus         CostCycleReferenceReviewStatus
+  notes                String?
+  active               Boolean                        @default(true)
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+
+  @@index([active, reviewStatus])
+  @@map("cost_cycle_references")
 }
 
 enum CostNatureCalculationType {
