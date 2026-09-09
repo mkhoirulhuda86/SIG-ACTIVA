@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
+import ReasonPersistenceBridge from './ReasonPersistenceBridge';
 
 const IDB_NAME = 'fluktuasi-oi-v1';
 const IDB_STORE = 'sheets';
@@ -77,5 +78,10 @@ export default function FluktuasiOILayout({ children }: { children: ReactNode })
     return <div className="min-h-screen bg-gray-50" aria-busy="true" />;
   }
 
-  return children;
+  return (
+    <>
+      <ReasonPersistenceBridge />
+      {children}
+    </>
+  );
 }
