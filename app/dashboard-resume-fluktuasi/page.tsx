@@ -203,12 +203,6 @@ export default function DashboardResumeFluktuasiPage() {
     requestAnimationFrame(() => document.getElementById('detail-classification')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
 
-  const openLegacyDetail = (activity: ActivityKey) => {
-    if (!active || !dashboard?.period) return;
-    const query = new URLSearchParams({ classification: active.key, activity, periode: dashboard.period });
-    router.push(`/detail-akun-fluktuasi?${query.toString()}`);
-  };
-
   const closeDetail = () => {
     setDetailActivity(null);
     setDetailSearch('');
@@ -277,189 +271,286 @@ export default function DashboardResumeFluktuasiPage() {
             )}
 
             {loading && !dashboard ? <LoadingState /> : active && dashboard ? (
-              <section id="dashboard-resume" className="scroll-mt-4 grid gap-4 lg:grid-cols-[250px_minmax(0,1fr)]">
-                <aside className="relative h-fit overflow-hidden rounded-[20px] border border-white/10 bg-gradient-to-b from-[#173a58] to-[#204d70] p-3.5 shadow-[0_14px_32px_rgba(24,49,73,0.13)] lg:sticky lg:top-0">
-                  <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-[#3b8bd0] via-[#1e9a77] via-50% to-[#7858c9]" />
-                  <div className="px-2 pb-3 pt-1 text-[9px] font-black uppercase tracking-[0.14em] text-[#d9e7f1]">Klasifikasi</div>
-                  <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
-                    {dashboard.classifications.map((classification) => {
-                      const style = CLASS_STYLE[classification.key];
-                      const selected = classification.key === active.key;
-                      return (
-                        <button
-                          type="button"
-                          key={classification.key}
-                          onClick={() => { setActiveClassification(classification.key); setDetailActivity(null); setDetailSearch(''); }}
-                          className={`grid min-w-[205px] grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-[13px] border px-3 py-3 text-left transition lg:min-w-0 ${selected
-                            ? `border-white/30 bg-gradient-to-b ${style.active} text-white shadow-[0_8px_20px_rgba(10,31,49,0.24)]`
-                            : 'border-white/10 bg-white/[0.055] text-[#d8e5ee] hover:translate-x-0.5 hover:bg-white/10'
-                          }`}
-                        >
-                          <span className={`h-2 w-2 rounded-full ${style.dot}`} />
-                          <span className="text-[10px] font-extrabold leading-4">{classification.title}</span>
-                          <span className={`rounded-full px-1.5 py-0.5 text-[8px] ${selected ? 'bg-white/15 text-white' : 'bg-white/[0.07] text-[#9fb4c5]'}`}>
-                            {classification.accountCount}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </aside>
+              detailActivity ? (() => {
+                const detail = active.activities[detailActivity];
+                const total = detail.kpi;
+                const query = detailSearch.trim().toLocaleLowerCase('id-ID');
+                const visibleRows = query
+                  ? detail.rows.filter((row) => `${row.accountCode} ${row.description}`.toLocaleLowerCase('id-ID').includes(query))
+                  : detail.rows;
+                const reasonRows = detail.rows.filter((row) => row.reason);
+                const kpiCards = [
+                  { label: ACTIVITY_META[detailActivity].previous, value: fmtAmount(total.previous), tone: 'border-[#c8dff2] from-[#edf6fd] to-[#eaf3fb]', line: 'bg-[#2f80d0]', percent: false },
+                  { label: ACTIVITY_META[detailActivity].current, value: fmtAmount(total.current), tone: 'border-[#c9e4d9] from-[#eef9f5] to-[#eaf6f1]', line: 'bg-[#1d9a78]', percent: false },
+                  { label: ACTIVITY_META[detailActivity].movement, value: fmtAmount(total.movement), tone: 'border-[#ecd5ab] from-[#fff7ea] to-[#fff3df]', line: 'bg-[#c88a2b]', percent: false },
+                  { label: ACTIVITY_META[detailActivity].pct, value: fmtPercent(total.percent), tone: 'border-[#d9cdef] from-[#f5f0fd] to-[#f1ebfb]', line: 'bg-[#7657c8]', percent: true },
+                ];
 
-                <div className="min-w-0">
-                  <div className={`mb-2 flex items-center justify-between rounded-[14px] border border-slate-200/80 bg-white/75 px-4 py-2.5 shadow-[0_4px_12px_rgba(29,57,83,0.045)] ${CLASS_STYLE[active.key].title}`}>
-                    <div>
-                      <div className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-400">Selected Classification</div>
-                      <div className="mt-0.5 text-sm font-black">{active.title}</div>
+                return (
+                  <section id="detail-classification" className="scroll-mt-4">
+                    <div className="mb-3 flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-start">
+                      <div className="min-w-0">
+                        <h2 className="text-lg font-black tracking-[-0.02em] text-[#1d405e]">Detail {active.title}</h2>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={closeDetail}
+                        className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-[10px] border border-[#173d5a] bg-gradient-to-b from-[#214f72] to-[#173d5a] px-3 py-2.5 text-[9px] font-black uppercase tracking-[0.04em] text-white shadow-[0_7px_16px_rgba(23,61,90,0.18)] transition hover:-translate-y-0.5 hover:from-[#2a5d83] hover:to-[#1b4767]"
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" /> Dashboard Resume
+                      </button>
                     </div>
-                    <span className="text-[10px] font-bold text-slate-500">{dashboard.periodLabel}</span>
-                  </div>
-                  <article className="overflow-hidden rounded-[24px] border border-[#d5e0e8] bg-gradient-to-b from-[#fdfefe] to-[#f5f8fb] shadow-[0_14px_34px_rgba(24,49,73,0.09)]">
-                    <header className={`flex flex-col gap-2 border-b border-white/20 bg-gradient-to-b ${CLASS_STYLE[active.key].header} px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between`}>
-                      <div>
-                        <div className="text-[13px] font-black tracking-wide">{active.title}</div>
-                        <div className="mt-1 text-[9px] text-white/75">Aggregation Detail Account-Description · {active.accountCount} akun</div>
-                      </div>
-                      <div className="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-[9px] font-bold">
-                        {dashboard.periodLabel}
-                      </div>
-                    </header>
 
-                    <div className="grid lg:grid-cols-3">
-                      {(['mom', 'yoy', 'ytd'] as ActivityKey[]).map((activity, index) => {
-                        const data = active.activities[activity];
-                        const meta = ACTIVITY_META[activity];
-                        const style = ACTIVITY_STYLE[activity];
+                    <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+                      {dashboard.classifications.map((classification) => {
+                        const selected = classification.key === active.key;
+                        const style = CLASS_STYLE[classification.key];
                         return (
                           <button
                             type="button"
-                            key={activity}
-                            onClick={() => openDetail(activity)}
-                            className={`group relative min-h-[232px] overflow-hidden bg-gradient-to-b ${style.panel} p-4 text-left transition hover:-translate-y-0.5 hover:shadow-[inset_0_0_0_999px_rgba(255,255,255,0.06)] ${index < 2 ? 'border-b border-[#dde6ed] lg:border-b-0 lg:border-r' : ''}`}
+                            key={classification.key}
+                            onClick={() => { setActiveClassification(classification.key); setDetailSearch(''); }}
+                            className={`shrink-0 rounded-full border px-3 py-1.5 text-[9px] font-extrabold transition hover:-translate-y-0.5 ${selected
+                              ? `border-transparent bg-gradient-to-r ${style.active} text-white shadow-[0_6px_14px_rgba(36,93,135,0.16)]`
+                              : 'border-[#dce5ec] bg-white text-[#557087] hover:bg-[#f6f8fb]'
+                            }`}
                           >
-                            <span className={`absolute inset-x-0 top-0 h-1.5 ${style.accent}`} />
-                            <div className="mt-1 flex items-center justify-between gap-2">
-                              <span className="text-xs font-black text-[#27485f]">{meta.title}</span>
-                              <span className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-wide text-white ${style.badge}`}>
-                                REKAP · {meta.title}
-                              </span>
-                            </div>
-                            <div className="mt-1 text-[9px] text-slate-400">{data.label}</div>
-
-                            {!data.available ? (
-                              <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-xs font-semibold text-amber-800">
-                                Data pembanding belum lengkap: {data.missingPeriods.join(', ')}
-                              </div>
-                            ) : (
-                              <>
-                                <div className="mt-3.5 grid grid-cols-[1fr_auto] items-end gap-3">
-                                  <div>
-                                    <div className="text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#8292a1]">{meta.pct}</div>
-                                    <div className={`mt-1 text-[30px] font-black leading-none tracking-[-0.04em] ${percentTone(active.key, data.kpi.percent)}`}>
-                                      {fmtPercent(data.kpi.percent)}
-                                    </div>
-                                  </div>
-                                  <div className="text-right">
-                                    <div className="text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#8292a1]">{meta.movement}</div>
-                                    <div className="mt-1 text-base font-black text-[#17324a]">{fmtAmount(data.kpi.movement)}</div>
-                                  </div>
-                                </div>
-
-                                <div className="mt-3 grid grid-cols-2 gap-2">
-                                  <div className="rounded-[13px] border border-slate-200/80 bg-gradient-to-b from-white/95 to-[#f7fafc] p-2.5 shadow-[0_4px_10px_rgba(29,57,83,0.04)]">
-                                    <span className="block text-[7px] font-extrabold uppercase text-[#8192a2]">{meta.current}</span>
-                                    <b className="mt-1 block text-[11px] text-[#17324a]">{fmtAmount(data.kpi.current)}</b>
-                                  </div>
-                                  <div className="rounded-[13px] border border-slate-200/80 bg-gradient-to-b from-white/95 to-[#f7fafc] p-2.5 shadow-[0_4px_10px_rgba(29,57,83,0.04)]">
-                                    <span className="block text-[7px] font-extrabold uppercase text-[#8192a2]">{meta.previous}</span>
-                                    <b className="mt-1 block text-[11px] text-[#17324a]">{fmtAmount(data.kpi.previous)}</b>
-                                  </div>
-                                </div>
-                              </>
-                            )}
-
-                            <div className="mt-2 flex items-center justify-end gap-1 text-[9px] font-black text-[#245d87] opacity-70 transition group-hover:opacity-100">
-                              Detail Analysis <ArrowRight className="h-3.5 w-3.5" />
-                            </div>
+                            {classification.title}
                           </button>
                         );
                       })}
                     </div>
-                  </article>
 
-                  {detailActivity && (() => {
-                    const detail = active.activities[detailActivity];
-                    const total = detail.kpi;
-                    const query = detailSearch.trim().toLocaleLowerCase('id-ID');
-                    const visibleRows = query
-                      ? detail.rows.filter((row) => `${row.accountCode} ${row.description}`.toLocaleLowerCase('id-ID').includes(query))
-                      : detail.rows;
-                    const reasonRows = detail.rows.filter((row) => row.reason);
-                    const kpiCards = [
-                      { label: ACTIVITY_META[detailActivity].previous, value: fmtAmount(total.previous), tone: 'border-[#7eb2da] from-[#eef7ff] to-[#f8fbff]', line: 'bg-[#3b8bd0]', percent: false },
-                      { label: ACTIVITY_META[detailActivity].current, value: fmtAmount(total.current), tone: 'border-[#88cbb7] from-[#effaf6] to-[#f9fdfb]', line: 'bg-[#1e9a77]', percent: false },
-                      { label: ACTIVITY_META[detailActivity].movement, value: fmtAmount(total.movement), tone: 'border-[#e2bd75] from-[#fff8e9] to-[#fffdf8]', line: 'bg-[#c98b2a]', percent: false },
-                      { label: ACTIVITY_META[detailActivity].pct, value: fmtPercent(total.percent), tone: 'border-[#b6a0df] from-[#f6f1ff] to-[#fcfaff]', line: 'bg-[#7858c9]', percent: true },
-                    ];
-                    return (
-                      <section id="detail-classification" className="mt-4 scroll-mt-4 space-y-3">
-                        <button type="button" onClick={closeDetail} className="inline-flex items-center gap-1.5 rounded-lg border border-[#b9cbd8] bg-white/80 px-3 py-2 text-[9px] font-black uppercase tracking-[0.08em] text-[#214f72] shadow-sm transition hover:bg-white">
-                          <ArrowLeft className="h-3.5 w-3.5" /> Dashboard Resume
+                    <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
+                      {(['mom', 'yoy', 'ytd'] as ActivityKey[]).map((activity) => (
+                        <button
+                          type="button"
+                          key={activity}
+                          onClick={() => { setDetailActivity(activity); setDetailSearch(''); }}
+                          className={`shrink-0 rounded-full border px-3 py-1.5 text-[9px] font-extrabold transition hover:-translate-y-0.5 ${activity === detailActivity
+                            ? 'border-[#245d87] bg-[#245d87] text-white shadow-[0_6px_14px_rgba(36,93,135,0.18)]'
+                            : 'border-[#dce5ec] bg-white text-[#557087] hover:bg-[#f6f8fb]'
+                          }`}
+                        >
+                          {ACTIVITY_META[activity].title}
                         </button>
+                      ))}
+                    </div>
 
-                        <div className="overflow-hidden rounded-[22px] border border-[#ccd9e3] bg-[#f7fafc] shadow-[0_14px_34px_rgba(24,49,73,0.09)]">
-                          <div className="border-b border-[#d7e1e8] bg-[#edf3f7] p-3">
-                            <div className="flex gap-2 overflow-x-auto pb-1">
-                              {dashboard.classifications.map((classification) => {
-                                const selected = classification.key === active.key;
-                                const style = CLASS_STYLE[classification.key];
-                                return <button type="button" key={classification.key} onClick={() => { setActiveClassification(classification.key); setDetailSearch(''); }} className={`shrink-0 rounded-lg border px-3 py-2 text-[9px] font-extrabold transition ${selected ? `border-transparent bg-gradient-to-r ${style.active} text-white shadow-sm` : 'border-[#ccd8e1] bg-white text-slate-600 hover:border-[#9fb5c5]'}`}><span className={`mr-2 inline-block h-1.5 w-1.5 rounded-full ${style.dot}`} />{classification.title}</button>;
-                              })}
-                            </div>
-                            <div className="mt-2 flex gap-1.5">
-                              {(['mom', 'yoy', 'ytd'] as ActivityKey[]).map((activity) => <button type="button" key={activity} onClick={() => { setDetailActivity(activity); setDetailSearch(''); }} className={`min-w-16 rounded-lg border px-3 py-1.5 text-[9px] font-black ${activity === detailActivity ? 'border-[#173d5a] bg-[#173d5a] text-white' : 'border-[#c7d5df] bg-white text-[#36576e]'}`}>{ACTIVITY_META[activity].title}</button>)}
-                            </div>
+                    <div className="mb-3 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+                      {kpiCards.map((item) => (
+                        <div
+                          key={item.label}
+                          className={`relative overflow-hidden rounded-[16px] border bg-gradient-to-b px-4 py-3.5 shadow-[0_7px_18px_rgba(32,58,82,0.06)] ${item.tone}`}
+                        >
+                          <span className={`absolute inset-x-0 top-0 h-1 ${item.line}`} />
+                          <div className="text-[8px] font-black uppercase tracking-[0.03em] text-[#6f8295]">{item.label}</div>
+                          <div className={`mt-1.5 truncate text-lg font-black tracking-[-0.015em] ${item.percent ? percentTone(active.key, total.percent) : 'text-[#17324a]'}`}>
+                            {item.value}
                           </div>
-
-                          <header className={`flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r ${CLASS_STYLE[active.key].header} px-5 py-3.5 text-white`}>
-                            <div><h2 className="text-sm font-black">Detail {active.title}</h2><p className="mt-1 text-[9px] text-white/75">{detailActivity.toUpperCase()} · {detail.label}</p></div>
-                            <button type="button" onClick={() => openLegacyDetail(detailActivity)} className="rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-[9px] font-bold transition hover:bg-white/20">Buka Detail Per Akun <ArrowRight className="ml-1 inline h-3 w-3" /></button>
-                          </header>
-
-                          <div className="grid gap-2.5 border-b border-[#dbe4eb] bg-[#f3f7fa] p-3 sm:grid-cols-2 xl:grid-cols-4">
-                            {kpiCards.map((item) => <div key={item.label} className={`relative overflow-hidden rounded-[14px] border bg-gradient-to-b px-4 py-3 shadow-[0_4px_12px_rgba(29,57,83,0.045)] ${item.tone}`}><span className={`absolute inset-x-0 top-0 h-1 ${item.line}`} /><div className="text-[8px] font-black uppercase tracking-[0.1em] text-[#718697]">{item.label}</div><div className={`mt-1.5 truncate text-base font-black tracking-[-0.02em] ${item.percent ? percentTone(active.key, total.percent) : 'text-[#17324a]'}`}>{item.value}</div></div>)}
-                          </div>
-
-                          <section className="border-b border-[#cbd8e2] bg-white">
-                            <div className="flex flex-col gap-2 border-b border-[#dce5eb] bg-[#f7fafc] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                              <div><h3 className="text-xs font-black text-[#173d5a]">Detail Account-Description</h3><p className="mt-0.5 text-[9px] text-slate-500">Pareto berdasarkan gross absolute movement</p></div>
-                              <label className="relative block w-full sm:w-72"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={detailSearch} onChange={(event) => setDetailSearch(event.target.value)} placeholder="Cari Account / Description..." className="w-full rounded-lg border border-[#c8d6e0] bg-white py-2 pl-9 pr-3 text-[10px] text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#245d87] focus:ring-2 focus:ring-[#245d87]/10" /></label>
-                            </div>
-                            <div className="max-h-[410px] overflow-auto">
-                              <table className="w-full min-w-[850px] table-fixed text-xs">
-                                <colgroup><col className="w-[12%]" /><col className="w-[28%]" /><col className="w-[15%]" /><col className="w-[15%]" /><col className="w-[15%]" /><col className="w-[15%]" /></colgroup>
-                                <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#173d5a] to-[#245d83] text-left text-[9px] uppercase tracking-[0.08em] text-white"><tr><th className="px-4 py-2.5">Account</th><th className="px-4 py-2.5">Description</th><th className="px-4 py-2.5 text-right">Previous</th><th className="px-4 py-2.5 text-right">Current</th><th className="px-4 py-2.5 text-right">Movement</th><th className="px-4 py-2.5 text-right">%</th></tr></thead>
-                                <tbody className="divide-y divide-[#e5ebf0] bg-white">
-                                  {visibleRows.map((row) => <tr key={row.accountCode} className="transition-colors hover:bg-[#f4f8fb]"><td className="px-4 py-2.5 font-bold text-[#25465f]">{row.accountCode}</td><td className="px-4 py-2.5 text-slate-600"><span>{row.description}</span>{row.paretoSelected && <span className="ml-2 inline-flex rounded-full border border-[#e5bd6b] bg-[#fff6df] px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wide text-[#92620d]">Pareto</span>}</td><td className="px-4 py-2.5 text-right tabular-nums text-slate-800">{fmtAmount(row.previous)}</td><td className="px-4 py-2.5 text-right tabular-nums text-slate-800">{fmtAmount(row.current)}</td><td className="px-4 py-2.5 text-right tabular-nums text-slate-800">{fmtAmount(row.movement)}</td><td className={`px-4 py-2.5 text-right font-bold tabular-nums ${percentTone(active.key, row.percent)}`}>{fmtPercent(row.percent)}</td></tr>)}
-                                  {visibleRows.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-xs text-slate-500">Account atau Description tidak ditemukan.</td></tr>}
-                                </tbody>
-                              </table>
-                            </div>
-                            <div className="overflow-x-auto"><table className="w-full min-w-[850px] table-fixed text-xs"><colgroup><col className="w-[12%]" /><col className="w-[28%]" /><col className="w-[15%]" /><col className="w-[15%]" /><col className="w-[15%]" /><col className="w-[15%]" /></colgroup><tfoot className="border-t-2 border-[#7890a2] bg-[#e8f0f5] font-black text-[#17324a]"><tr><td className="px-4 py-3 tracking-wide" colSpan={2}>TOTAL</td><td className="px-4 py-3 text-right tabular-nums">{fmtAmount(total.previous)}</td><td className="px-4 py-3 text-right tabular-nums">{fmtAmount(total.current)}</td><td className="px-4 py-3 text-right tabular-nums">{fmtAmount(total.movement)}</td><td className={`px-4 py-3 text-right tabular-nums ${percentTone(active.key, total.percent)}`}>{fmtPercent(total.percent)}</td></tr></tfoot></table></div>
-                          </section>
-
-                          <section>
-                            <div className="bg-gradient-to-r from-[#173d5a] to-[#245d83] px-5 py-3 text-white"><h3 className="text-xs font-black tracking-wide">Detail Penjelasan Reasons</h3><p className="mt-0.5 text-[9px] text-white/65">Penjelasan tervalidasi untuk account pada comparison terpilih</p></div>
-                            <div className="divide-y divide-[#dce6ed] bg-[#eef5f8] px-4">
-                              {reasonRows.length > 0 ? reasonRows.map((row) => <div key={row.accountCode} className="grid gap-2 py-3 md:grid-cols-[245px_minmax(0,1fr)] md:gap-5"><div className="self-center"><div className="text-[10px] font-black text-[#214f72]">{row.accountCode}</div><div className="mt-0.5 text-[9px] leading-4 text-slate-500">{row.description}</div></div><p className="rounded-lg border border-[#d6e1e8] border-l-[3px] border-l-[#8aa9bd] bg-white/75 px-3 py-2 text-xs leading-5 text-slate-700 shadow-[0_2px_7px_rgba(29,57,83,0.035)]">{row.reason}</p></div>) : <p className="py-5 text-center text-xs text-slate-500">Belum ada Reasons yang tervalidasi untuk comparison ini.</p>}
-                            </div>
-                          </section>
                         </div>
-                      </section>
-                    );
-                  })()}
-                </div>
-              </section>
+                      ))}
+                    </div>
+
+                    <section className="overflow-hidden rounded-[20px] border border-[#e3e9ef] bg-white/95 shadow-[0_8px_24px_rgba(24,49,73,0.06)]">
+                      <div className="flex flex-col gap-3 border-b border-[#d6e0e8] bg-gradient-to-b from-[#edf3f8] to-[#e6eef5] px-4 py-3.5 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <h3 className="text-sm font-black text-[#183d5a]">Detail Account-Description</h3>
+                        </div>
+                        <label className="relative block w-full sm:w-72">
+                          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                          <input
+                            value={detailSearch}
+                            onChange={(event) => setDetailSearch(event.target.value)}
+                            placeholder="Cari Account / Description..."
+                            className="h-[34px] w-full rounded-[10px] border border-[#bfcfdd] bg-[#f8fbfd] pl-9 pr-3 text-[9px] text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#6f95b5] focus:ring-2 focus:ring-[#2f80d0]/10"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="max-h-[480px] overflow-auto">
+                        <table className="w-full min-w-[850px] border-collapse text-[10px]">
+                          <thead className="sticky top-0 z-10 bg-gradient-to-b from-[#2a5c83] to-[#214d70] text-white">
+                            <tr>
+                              <th className="border-b border-[#183d5a] px-3 py-2.5 text-left text-[8px] font-black uppercase tracking-[0.06em]">Account</th>
+                              <th className="border-b border-[#183d5a] px-3 py-2.5 text-left text-[8px] font-black uppercase tracking-[0.06em]">Description</th>
+                              <th className="border-b border-[#183d5a] px-3 py-2.5 text-right text-[8px] font-black uppercase tracking-[0.06em]">Previous</th>
+                              <th className="border-b border-[#183d5a] px-3 py-2.5 text-right text-[8px] font-black uppercase tracking-[0.06em]">Current</th>
+                              <th className="border-b border-[#183d5a] px-3 py-2.5 text-right text-[8px] font-black uppercase tracking-[0.06em]">Movement</th>
+                              <th className="border-b border-[#183d5a] px-3 py-2.5 text-right text-[8px] font-black uppercase tracking-[0.06em]">%</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {visibleRows.map((row, index) => (
+                              <tr key={row.accountCode} className={`${index % 2 === 1 ? 'bg-[#f8fafc]' : 'bg-white'} transition-colors hover:bg-[#eef5fa]`}>
+                                <td className="border-b border-[#eef2f5] px-3 py-2.5 text-left font-black text-[#244864]">{row.accountCode}</td>
+                                <td className="border-b border-[#eef2f5] px-3 py-2.5 text-left text-slate-600">
+                                  <span>{row.description}</span>
+                                  {row.paretoSelected && (
+                                    <span className="ml-1.5 inline-flex rounded-full border border-[#e5c77b] bg-[#fff3da] px-1.5 py-0.5 text-[7px] font-black uppercase text-[#8c6118]">Pareto</span>
+                                  )}
+                                </td>
+                                <td className="border-b border-[#eef2f5] px-3 py-2.5 text-right tabular-nums text-slate-800">{fmtAmount(row.previous)}</td>
+                                <td className="border-b border-[#eef2f5] px-3 py-2.5 text-right tabular-nums text-slate-800">{fmtAmount(row.current)}</td>
+                                <td className="border-b border-[#eef2f5] px-3 py-2.5 text-right tabular-nums text-slate-800">{fmtAmount(row.movement)}</td>
+                                <td className={`border-b border-[#eef2f5] px-3 py-2.5 text-right font-black tabular-nums ${percentTone(active.key, row.percent)}`}>{fmtPercent(row.percent)}</td>
+                              </tr>
+                            ))}
+                            {visibleRows.length === 0 && (
+                              <tr>
+                                <td colSpan={6} className="px-4 py-8 text-center text-xs text-slate-500">Account atau Description tidak ditemukan.</td>
+                              </tr>
+                            )}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t-2 border-[#b8cad8] bg-[#edf4f9] font-black text-[#17324a]">
+                              <td className="px-3 py-3 text-left" colSpan={2}>TOTAL</td>
+                              <td className="px-3 py-3 text-right tabular-nums">{fmtAmount(total.previous)}</td>
+                              <td className="px-3 py-3 text-right tabular-nums">{fmtAmount(total.current)}</td>
+                              <td className="px-3 py-3 text-right tabular-nums">{fmtAmount(total.movement)}</td>
+                              <td className={`px-3 py-3 text-right tabular-nums ${percentTone(active.key, total.percent)}`}>{fmtPercent(total.percent)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </section>
+
+                    <section className="mt-3.5 overflow-hidden rounded-[20px] border border-[#cfdae4] bg-[#eaf1f6] shadow-[0_8px_24px_rgba(24,49,73,0.06)]">
+                      <div className="border-b border-[#12334d] bg-gradient-to-b from-[#173b59] to-[#12334d] px-4 py-3.5 text-white">
+                        <h3 className="text-sm font-black">Detail Penjelasan Reasons</h3>
+                        <p className="mt-0.5 text-[9px] text-[#c8d8e5]">Teks ditampilkan apa adanya dari AA / AD / AG sesuai activity dan Account-Description.</p>
+                      </div>
+                      <div>
+                        {reasonRows.length > 0 ? reasonRows.map((row, index) => (
+                          <div key={row.accountCode} className="grid border-b border-[#e3e9ef] last:border-b-0 md:grid-cols-[220px_minmax(0,1fr)]">
+                            <div className="border-b border-[#cad7e2] bg-gradient-to-b from-[#dfeaf3] to-[#e8f0f6] px-4 py-3.5 md:border-b-0 md:border-r">
+                              <div className="text-[10px] font-black text-[#244864]">{row.accountCode}</div>
+                              <div className="mt-1 text-[9px] leading-4 text-[#5f7386]">{row.description}</div>
+                            </div>
+                            <div className={`px-4 py-3.5 ${index % 2 === 1 ? 'bg-[#e8f1f6]' : 'bg-[#edf4f8]'}`}>
+                              <p className={`rounded-xl border border-[#c7d7e3] px-3 py-2.5 text-[10px] leading-[1.62] text-[#2f4b62] shadow-[0_2px_8px_rgba(34,55,75,0.035)] ${index % 2 === 1 ? 'bg-[#dfeaf2]' : 'bg-[#e4eef5]'}`}>
+                                {row.reason}
+                              </p>
+                            </div>
+                          </div>
+                        )) : (
+                          <p className="px-4 py-5 text-[9px] text-[#94a1ad]">Belum ada Reasons yang tervalidasi untuk comparison ini.</p>
+                        )}
+                      </div>
+                    </section>
+                  </section>
+                );
+              })() : (
+                <section id="dashboard-resume" className="scroll-mt-4 grid gap-[18px] lg:grid-cols-[250px_minmax(0,1fr)]">
+                  <aside className="relative h-fit overflow-hidden rounded-[20px] border border-white/10 bg-gradient-to-b from-[#173a58] to-[#204d70] p-3.5 shadow-[0_14px_32px_rgba(24,49,73,0.13)] lg:sticky lg:top-0">
+                    <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-[#3b8bd0] via-[#1e9a77] via-50% to-[#7858c9]" />
+                    <div className="px-2 pb-3 pt-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#d9e7f1]">Klasifikasi</div>
+                    <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
+                      {dashboard.classifications.map((classification) => {
+                        const style = CLASS_STYLE[classification.key];
+                        const selected = classification.key === active.key;
+                        return (
+                          <button
+                            type="button"
+                            key={classification.key}
+                            onClick={() => { setActiveClassification(classification.key); setDetailSearch(''); }}
+                            className={`grid min-w-[205px] grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-[13px] border px-3 py-3 text-left transition lg:min-w-0 ${selected
+                              ? `border-white/30 bg-gradient-to-b ${style.active} text-white shadow-[0_8px_20px_rgba(10,31,49,0.24)]`
+                              : 'border-white/10 bg-white/[0.055] text-[#d8e5ee] hover:translate-x-0.5 hover:bg-white/10'
+                            }`}
+                          >
+                            <span className={`h-2 w-2 rounded-full ${style.dot}`} />
+                            <span className="text-[10px] font-extrabold leading-4">{classification.title}</span>
+                            <span className={`rounded-full px-1.5 py-0.5 text-[8px] ${selected ? 'bg-white/15 text-white' : 'bg-white/[0.07] text-[#9fb4c5]'}`}>
+                              {classification.accountCount}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </aside>
+
+                  <div className="min-w-0">
+                    <div className="mb-2.5 flex items-center justify-between gap-3 px-0.5">
+                      <div className={`text-xs font-black ${CLASS_STYLE[active.key].title}`}>{active.title}</div>
+                      <div className="text-[8px] font-medium text-[#8294a4]">{dashboard.periodLabel}</div>
+                    </div>
+
+                    <article className="overflow-hidden rounded-[24px] border border-[#d5e0e8] bg-gradient-to-b from-[#fdfefe] to-[#f5f8fb] shadow-[0_14px_34px_rgba(24,49,73,0.09)]">
+                      <header className={`flex flex-col gap-2 border-b border-white/20 bg-gradient-to-b ${CLASS_STYLE[active.key].header} px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between`}>
+                        <div>
+                          <div className="text-[13px] font-black tracking-wide">{active.title}</div>
+                          <div className="mt-1 text-[9px] text-white/75">Aggregation Detail Account-Description · {active.accountCount} akun</div>
+                        </div>
+                        <div className="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-[9px] font-bold">
+                          {dashboard.periodLabel}
+                        </div>
+                      </header>
+
+                      <div className="grid lg:grid-cols-3">
+                        {(['mom', 'yoy', 'ytd'] as ActivityKey[]).map((activity, index) => {
+                          const data = active.activities[activity];
+                          const meta = ACTIVITY_META[activity];
+                          const style = ACTIVITY_STYLE[activity];
+                          return (
+                            <button
+                              type="button"
+                              key={activity}
+                              onClick={() => openDetail(activity)}
+                              className={`group relative min-h-[226px] overflow-hidden bg-gradient-to-b ${style.panel} p-[18px] text-left transition hover:-translate-y-0.5 hover:shadow-[inset_0_0_0_999px_rgba(255,255,255,0.06)] ${index < 2 ? 'border-b border-[#dde6ed] lg:border-b-0 lg:border-r' : ''}`}
+                            >
+                              <span className={`absolute inset-x-0 top-0 h-1.5 ${style.accent}`} />
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-black text-[#27485f]">{meta.title}</span>
+                                <span className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-wide text-white ${style.badge}`}>
+                                  REKAP · {meta.title}
+                                </span>
+                              </div>
+                              <div className="mt-1 text-[9px] text-slate-400">{data.label}</div>
+
+                              {!data.available ? (
+                                <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-xs font-semibold text-amber-800">
+                                  Data pembanding belum lengkap: {data.missingPeriods.join(', ')}
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="mt-2.5 grid grid-cols-[1fr_.9fr] items-end gap-3">
+                                    <div>
+                                      <div className="text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#8292a1]">{meta.pct}</div>
+                                      <div className={`mt-1 text-[30px] font-black leading-none tracking-[-0.04em] ${percentTone(active.key, data.kpi.percent)}`}>
+                                        {fmtPercent(data.kpi.percent)}
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#8292a1]">{meta.movement}</div>
+                                      <div className="mt-1 text-base font-black text-[#17324a]">{fmtAmount(data.kpi.movement)}</div>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-2.5 grid grid-cols-2 gap-2">
+                                    <div className="rounded-[13px] border border-slate-200/80 bg-gradient-to-b from-white/95 to-[#f7fafc] p-2.5 shadow-[0_4px_10px_rgba(29,57,83,0.04)]">
+                                      <span className="block text-[7px] font-extrabold uppercase text-[#8192a2]">{meta.current}</span>
+                                      <b className="mt-1 block text-[10px] text-[#17324a]">{fmtAmount(data.kpi.current)}</b>
+                                    </div>
+                                    <div className="rounded-[13px] border border-slate-200/80 bg-gradient-to-b from-white/95 to-[#f7fafc] p-2.5 shadow-[0_4px_10px_rgba(29,57,83,0.04)]">
+                                      <span className="block text-[7px] font-extrabold uppercase text-[#8192a2]">{meta.previous}</span>
+                                      <b className="mt-1 block text-[10px] text-[#17324a]">{fmtAmount(data.kpi.previous)}</b>
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+
+                              <div className="mt-2 flex items-center justify-end gap-1 text-[9px] font-black text-[#245d87] opacity-70 transition group-hover:opacity-100">
+                                Detail Analysis <ArrowRight className="h-3.5 w-3.5" />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </article>
+                  </div>
+                </section>
+              )
             ) : !loading ? (
               <div className="grid min-h-[360px] place-items-center rounded-[24px] border border-slate-200 bg-slate-50/80 text-center">
                 <div>
