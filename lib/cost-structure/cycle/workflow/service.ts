@@ -4,22 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { costStructureStorage } from "@/lib/cost-structure/storage/supabase-storage";
 import { runCycleEngine } from "../engine";
 import { generateCycleWorkbooks } from "../export";
+import { createCycleWorkflow, CycleWorkflowError } from "./core";
+export { CycleWorkflowError } from "./core";
 import type {
   CycleCcMaster,
   CycleReferenceConfig,
   CycleSourceRow,
-  CycleTargetChange,
 } from "../contracts";
-
-export class CycleWorkflowError extends Error {
-  constructor(
-    message: string,
-    readonly code: string,
-    readonly status = 409,
-  ) {
-    super(message);
-  }
-}
 
 const dateOnly = (date: Date) => date.toISOString().slice(0, 10);
 const jsonArray = (value: Prisma.JsonValue): string[] =>
@@ -97,134 +88,31 @@ export async function loadActiveCycle(
   };
 }
 
-export async function previewCycle(input: {
-  fiscalYear: number;
-  fiscalPeriod: number;
-  targets: CycleTargetChange[];
-}) {
-  const state = await loadActiveCycle(input.fiscalYear, input.fiscalPeriod);
-  const result = runCycleEngine(
-    state.rows,
-    state.ccMaster,
-    input.targets,
-    state.references,
-  );
-  const masterByCc = new Map(state.ccMaster.map((m) => [m.receiverCc, m]));
-  return {
-    state,
-    result,
-    changes: result.actions
-      .filter((a) => a.action !== "NO_CHANGE")
-      .map((a) => ({ ...masterByCc.get(a.receiverCc), ...a })),
-  };
-}
+const productionWorkflow = createCycleWorkflow({
+  loadActiveCycle,
+  runEngine: runCycleEngine,
+  generateWorkbooks: generateCycleWorkbooks,
+  uploadGenerated: (key, bytes, contentType) => costStructureStorage.upload(key, bytes, contentType),
+  removeGenerated: (key) => costStructureStorage.remove(key),
+  createStorageKey: (year, period, fileName) => `cycle/generated/${year}/${String(period).padStart(2, "0")}/${randomUUID()}-${fileName}`,
+  createRun: async ({ upload, fingerprint, changes, result, stored, userId }) => prisma.costCycleChangeRun.create({
+    data: {
+      uploadId: upload.id, sourceVersion: upload.version, sourceHashSha256: upload.fileHashSha256,
+      masterFingerprint: fingerprint, changedCcCount: changes.length,
+      warningCount: result.issues.filter((issue) => issue.severity === "WARNING").length,
+      generatedById: userId,
+      changes: { create: changes.map((change) => ({
+        receiverCc: change.receiverCc, baselineStatus: change.baselineStatus, targetStatus: change.targetStatus,
+        action: change.action, referenceCc: change.referenceCc, referenceSource: change.referenceSource,
+        referenceReviewStatus: change.referenceReviewStatus, referenceConfidence: change.referenceConfidence,
+        fixedAffectedRows: change.fixedAffectedRows, variableAffectedRows: change.variableAffectedRows,
+        issueSummaryJson: result.issues.filter((issue) => issue.receiverCc === change.receiverCc) as Prisma.InputJsonValue,
+      })) },
+      files: { create: stored.map((file) => ({ cycle: file.cycle, fileName: file.fileName, rowCount: file.rowCount, fileHashSha256: file.hash, storageKey: file.storageKey })) },
+    },
+    include: { files: true },
+  }),
+});
 
-export async function generateCycle(input: {
-  fiscalYear: number;
-  fiscalPeriod: number;
-  expectedUploadId: number;
-  expectedVersion: number;
-  expectedHash: string;
-  expectedMasterFingerprint: string;
-  targets: CycleTargetChange[];
-  userId: number;
-}) {
-  const preview = await previewCycle(input);
-  const { upload, fingerprint } = preview.state;
-  if (
-    upload.id !== input.expectedUploadId ||
-    upload.version !== input.expectedVersion ||
-    upload.fileHashSha256 !== input.expectedHash
-  )
-    throw new CycleWorkflowError(
-      "Source aktif berubah. Lakukan preview ulang.",
-      "STALE_ACTIVE_UPLOAD",
-    );
-  if (fingerprint !== input.expectedMasterFingerprint)
-    throw new CycleWorkflowError(
-      "Master/reference berubah. Lakukan preview ulang.",
-      "STALE_CONFIGURATION",
-    );
-  if (preview.result.generationBlocked)
-    throw new CycleWorkflowError(
-      "Generation diblokir oleh validation error.",
-      "GENERATION_BLOCKED",
-      422,
-    );
-  if (preview.changes.length === 0)
-    throw new CycleWorkflowError(
-      "Tidak ada perubahan aktual untuk dihasilkan.",
-      "NO_CHANGES",
-      422,
-    );
-  const outputs = await generateCycleWorkbooks(
-    preview.result.deltaByCycle,
-    input,
-  );
-  const stored: Array<
-    (typeof outputs)[number] & { hash: string; storageKey: string }
-  > = [];
-  try {
-    for (const output of outputs) {
-      const storageKey = `cycle/generated/${input.fiscalYear}/${String(input.fiscalPeriod).padStart(2, "0")}/${randomUUID()}-${output.fileName}`;
-      await costStructureStorage.upload(
-        storageKey,
-        output.buffer,
-        output.contentType,
-      );
-      stored.push({
-        ...output,
-        storageKey,
-        hash: createHash("sha256").update(output.buffer).digest("hex"),
-      });
-    }
-    const run = await prisma.costCycleChangeRun.create({
-      data: {
-        uploadId: upload.id,
-        sourceVersion: upload.version,
-        sourceHashSha256: upload.fileHashSha256,
-        masterFingerprint: fingerprint,
-        changedCcCount: preview.changes.length,
-        warningCount: preview.result.issues.filter(
-          (i) => i.severity === "WARNING",
-        ).length,
-        generatedById: input.userId,
-        changes: {
-          create: preview.changes.map((c) => ({
-            receiverCc: c.receiverCc,
-            baselineStatus: c.baselineStatus,
-            targetStatus: c.targetStatus,
-            action: c.action,
-            referenceCc: c.referenceCc,
-            referenceSource: c.referenceSource,
-            referenceReviewStatus: c.referenceReviewStatus,
-            referenceConfidence: c.referenceConfidence,
-            fixedAffectedRows: c.fixedAffectedRows,
-            variableAffectedRows: c.variableAffectedRows,
-            issueSummaryJson: preview.result.issues.filter(
-              (i) => i.receiverCc === c.receiverCc,
-            ) as Prisma.InputJsonValue,
-          })),
-        },
-        files: {
-          create: stored.map((f) => ({
-            cycle: f.cycle,
-            fileName: f.fileName,
-            rowCount: f.rowCount,
-            fileHashSha256: f.hash,
-            storageKey: f.storageKey,
-          })),
-        },
-      },
-      include: { files: true },
-    });
-    return run;
-  } catch (error) {
-    await Promise.all(
-      stored.map((f) =>
-        costStructureStorage.remove(f.storageKey).catch(() => undefined),
-      ),
-    );
-    throw error;
-  }
-}
+export const previewCycle = productionWorkflow.preview;
+export const generateCycle = productionWorkflow.generate;
