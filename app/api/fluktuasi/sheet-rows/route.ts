@@ -4,6 +4,12 @@ import { prisma } from '@/lib/prisma';
 import { requireFinanceRead, requireFinanceWrite } from '@/lib/api-auth';
 import { logAuditEvent } from '@/lib/audit';
 
+const NO_STORE_HEADERS = {
+  'Cache-Control': 'private, no-store, max-age=0, must-revalidate',
+  Pragma: 'no-cache',
+  Expires: '0',
+} as const;
+
 const dbErrorMessage = (error: unknown, fallback: string): string => {
   const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
   if (/planLimitReached/i.test(message)) {
@@ -34,7 +40,10 @@ export async function GET(req: NextRequest) {
       )];
 
       if (accountCodes.length === 0) {
-        return NextResponse.json({ success: true, data: [] });
+        return NextResponse.json(
+          { success: true, data: [] },
+          { headers: NO_STORE_HEADERS },
+        );
       }
 
       const records = await prisma.fluktuasiSheetRows.findMany({
@@ -47,22 +56,31 @@ export async function GET(req: NextRequest) {
           klasifikasiColIdx: true,
           docnoColIdx: true,
           fileName: true,
+          updatedAt: true,
         },
         orderBy: { accountCode: 'asc' },
       });
 
-      return NextResponse.json({ success: true, data: records });
+      return NextResponse.json(
+        { success: true, data: records },
+        { headers: NO_STORE_HEADERS },
+      );
     }
 
     if (accountCode) {
-      // Single account
       const record = await prisma.fluktuasiSheetRows.findUnique({
         where: { accountCode },
       });
       if (!record) {
-        return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
+        return NextResponse.json(
+          { success: false, error: 'Not found' },
+          { status: 404, headers: NO_STORE_HEADERS },
+        );
       }
-      return NextResponse.json({ success: true, data: record });
+      return NextResponse.json(
+        { success: true, data: record },
+        { headers: NO_STORE_HEADERS },
+      );
     }
 
     // All accounts (metadata only — no rows, to keep response small)
@@ -74,15 +92,19 @@ export async function GET(req: NextRequest) {
         klasifikasiColIdx: true,
         docnoColIdx: true,
         fileName: true,
+        updatedAt: true,
       },
       orderBy: { accountCode: 'asc' },
     });
-    return NextResponse.json({ success: true, data: records });
+    return NextResponse.json(
+      { success: true, data: records },
+      { headers: NO_STORE_HEADERS },
+    );
   } catch (error) {
     console.error('Error fetching sheet rows:', error);
     return NextResponse.json(
       { success: false, error: dbErrorMessage(error, 'Gagal mengambil data sheet rows') },
-      { status: 500 },
+      { status: 500, headers: NO_STORE_HEADERS },
     );
   }
 }
@@ -115,7 +137,7 @@ export async function POST(req: NextRequest) {
     if (!accountCode || !Array.isArray(headers) || !Array.isArray(rows)) {
       return NextResponse.json(
         { success: false, error: 'accountCode, headers dan rows wajib diisi' },
-        { status: 400 },
+        { status: 400, headers: NO_STORE_HEADERS },
       );
     }
 
@@ -141,12 +163,15 @@ export async function POST(req: NextRequest) {
     });
 
     logAuditEvent({ request: req, user: auth.user, action: 'fluktuasi.sheet_rows.upsert', target: accountCode, success: true });
-    return NextResponse.json({ success: true, id: record.id });
+    return NextResponse.json(
+      { success: true, id: record.id, updatedAt: record.updatedAt },
+      { headers: NO_STORE_HEADERS },
+    );
   } catch (error) {
     console.error('Error upserting sheet rows:', error);
     return NextResponse.json(
       { success: false, error: dbErrorMessage(error, 'Gagal menyimpan sheet rows') },
-      { status: 500 },
+      { status: 500, headers: NO_STORE_HEADERS },
     );
   }
 }
@@ -159,12 +184,15 @@ export async function DELETE(req: NextRequest) {
 
     const { count } = await prisma.fluktuasiSheetRows.deleteMany();
     logAuditEvent({ request: req, user: auth.user, action: 'fluktuasi.sheet_rows.delete_all', success: true, detail: `deleted=${count}` });
-    return NextResponse.json({ success: true, deleted: count });
+    return NextResponse.json(
+      { success: true, deleted: count },
+      { headers: NO_STORE_HEADERS },
+    );
   } catch (error) {
     console.error('Error deleting sheet rows:', error);
     return NextResponse.json(
       { success: false, error: dbErrorMessage(error, 'Gagal menghapus sheet rows') },
-      { status: 500 },
+      { status: 500, headers: NO_STORE_HEADERS },
     );
   }
 }
