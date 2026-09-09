@@ -37,6 +37,17 @@ const getSnapshotSheets = (value: unknown): SnapshotSheet[] => {
     .filter((sheet): sheet is SnapshotSheet => sheet !== null);
 };
 
+const isUsableRekapSnapshot = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.rows) && record.rows.length > 0 &&
+    Array.isArray(record.amountCols) && record.amountCols.length > 0
+  );
+};
+
+const REKAP_RECOVERY_WINDOW_MS = 2 * 60 * 1000;
+
 // GET: Ambil data fluktuasi terakhir. Database selalu menjadi source of truth.
 export async function GET(req: NextRequest) {
   try {
@@ -73,6 +84,40 @@ export async function GET(req: NextRequest) {
         },
         { status: 404, headers: NO_STORE_HEADERS },
       );
+    }
+
+    // saveToDatabase dapat membuat beberapa snapshot berurutan untuk file yang sama
+    // (full -> compact -> null fallback). Jika snapshot terakhir hanya berisi JSON null,
+    // pulihkan rekap valid dari retry yang sama dalam jendela waktu yang sempit.
+    let rekapSheetData = latestData.rekapSheetData;
+    let rekapSnapshotId = latestData.id;
+
+    if (!isUsableRekapSnapshot(rekapSheetData)) {
+      const recentSnapshots = await prisma.fluktuasiImport.findMany({
+        where: {
+          uploadedBy,
+          fileName: latestData.fileName,
+          createdAt: {
+            gte: new Date(latestData.createdAt.getTime() - REKAP_RECOVERY_WINDOW_MS),
+            lte: latestData.createdAt,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: {
+          id: true,
+          rekapSheetData: true,
+        },
+      });
+
+      const recovered = recentSnapshots.find((snapshot) =>
+        isUsableRekapSnapshot(snapshot.rekapSheetData),
+      );
+
+      if (recovered) {
+        rekapSheetData = recovered.rekapSheetData;
+        rekapSnapshotId = recovered.id;
+      }
     }
 
     // fluktuasi_imports menyimpan snapshot ringan (rows dikosongkan agar payload kecil).
@@ -137,7 +182,9 @@ export async function GET(req: NextRequest) {
           id: latestData.id,
           fileName: latestData.fileName,
           sheetDataList: mergedSheets,
-          rekapSheetData: latestData.rekapSheetData,
+          rekapSheetData,
+          rekapSnapshotId,
+          rekapRecovered: rekapSnapshotId !== latestData.id,
           createdAt: latestData.createdAt,
           updatedAt: latestData.updatedAt,
           sheetRowsUpdatedAt,
