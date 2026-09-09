@@ -150,6 +150,31 @@ input[type="password"] {
   color: #000000 !important;
 }
 
+/* Dashboard Resume Fluktuasi: match standalone HTML alignment and sidebar text. */
+#dashboard-resume article > div.grid {
+  align-items: stretch;
+}
+
+#dashboard-resume article > div.grid > button {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  align-content: flex-start;
+  justify-content: flex-start;
+  vertical-align: top;
+}
+
+#dashboard-resume aside button,
+#dashboard-resume aside button > span:nth-child(2),
+#dashboard-resume aside button > span:last-child {
+  color: #ffffff !important;
+}
+
+#dashboard-resume aside button > span:last-child {
+  opacity: 0.78;
+}
+
 /* ─── GSAP / anime.js Animation Helpers ──────────────────────────── */
 
 /* Elements start hidden for GSAP to animate in */
