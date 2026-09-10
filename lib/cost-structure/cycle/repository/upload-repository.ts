@@ -15,7 +15,10 @@ export async function persistCycleUpload(prisma: PrismaClient, input: {
       where: { fiscalYear_fiscalPeriod: { fiscalYear: input.fiscalYear, fiscalPeriod: input.fiscalPeriod } },
       create: { fiscalYear: input.fiscalYear, fiscalPeriod: input.fiscalPeriod, status: 'VALIDATING' }, update: { status: 'VALIDATING' },
     });
-    const duplicate = await tx.costCycleUpload.findUnique({ where: { periodId_fileHashSha256: { periodId: period.id, fileHashSha256: input.hash } } });
+    const duplicate = await tx.costCycleUpload.findUnique({
+      where: { periodId_fileHashSha256: { periodId: period.id, fileHashSha256: input.hash } },
+      select: { id: true, version: true, status: true, uploadedAt: true },
+    });
     if (duplicate) throw new DuplicateCycleUploadError(duplicate);
     const latest = await tx.costCycleUpload.aggregate({ where: { periodId: period.id }, _max: { version: true } });
     const currentActive = await tx.costCycleUpload.findFirst({
