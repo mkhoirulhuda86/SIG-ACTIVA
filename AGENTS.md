@@ -172,6 +172,42 @@ Enforce permissions in API/server code, not only in UI.
 - Do not proceed from Engine 1 company 2000 to 7000 until the 2000 golden tests pass.
 - Do not proceed to Engine 2 until Engine 1 finalized outputs pass golden reconciliation for both companies.
 
+## Remote push and Vercel preview-build discipline
+
+Repository changes that trigger remote preview builds must be batched deliberately.
+
+- Do not push one file, one minor fix, or one small refactor at a time.
+- Collect a meaningful task package in the working tree, run applicable tests/lint/build, then push the package once.
+- Local commits are allowed, but remote pushes should be minimized and normally occur once when the assigned task is complete.
+- Parallel branches may work independently, but each lane should avoid incremental remote pushes unless a remote push is strictly required to unblock another lane.
+- Do not create/update extra remote branches merely for experimentation when local work is sufficient.
+- Treat Vercel preview-build quota as a shared project resource.
+
+## Update Cycle SAP submodule
+
+`Update Cycle SAP` is a separate operational submodule under Cost Structure. It supports monthly SAP allocation-cycle maintenance and must not alter the authoritative Engine 1 or Engine 2 accounting results described above.
+
+Before changing any of these namespaces, read **all** documents under `docs/cost-structure-cycle/` in addition to the existing Cost Structure documentation:
+
+```text
+app/cost-structure/cycle/*
+app/api/cost-structure/cycle/*
+lib/cost-structure/cycle/*
+CostCycle* Prisma models
+```
+
+Cycle-specific rules:
+
+- use isolated `CostCycle*` models and lifecycle; do not repurpose existing CostPeriod/CostUpload/CostSourceRow or Raw V2 models;
+- source workbook contains both `7FT1GF` Fixed Cost and `7VT1GF` Variable Cost;
+- UI control grain is one toggle per Receiver Cost Center, never per Segment;
+- authoritative allocation/reference logic stays server-side and deterministic;
+- private SAP workbooks and private row-level golden data must never be committed to GitHub;
+- generated output is a controlled delta workbook for manual SAP upload, not direct SAP posting;
+- preserve the file ownership and parallel-work boundaries defined in `docs/cost-structure-cycle/DEVELOPMENT_PLAN.md` when tasks are running concurrently.
+
+When a generic Cost Structure rule conflicts with a Cycle-specific business rule, `docs/cost-structure-cycle/*` governs only the isolated Cycle domain. It must not be used to change existing Engine 1/Engine 2 behavior.
+
 ## Required checks before completion of any coding task
 
 Run the repository's applicable lint, build and tests. Report any existing unrelated failures separately; do not hide them by weakening checks.
