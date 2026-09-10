@@ -68,6 +68,16 @@ export async function loadActiveCycle(
     );
   const dbRows = await prisma.costCycleSourceRow.findMany({
     where: { uploadId: upload.id },
+    select: {
+      sourceRowNumber: true,
+      sourceOrder: true,
+      sourceSheetName: true,
+      cycle: true,
+      startDate: true,
+      segmentName: true,
+      receiverCc: true,
+      portion: true,
+    },
     orderBy: { sourceOrder: "asc" },
   });
   const rows: CycleSourceRow[] = dbRows.map((r) => ({
