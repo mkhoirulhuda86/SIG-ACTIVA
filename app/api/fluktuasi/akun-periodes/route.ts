@@ -4,6 +4,12 @@ import { broadcast } from '@/lib/sse';
 import { sendPushToAll } from '@/lib/webpush';
 import { checkFluktuasiAlerts } from '@/lib/notificationChecker';
 
+const NO_STORE_HEADERS = {
+  'Cache-Control': 'private, no-store, max-age=0, must-revalidate',
+  Pragma: 'no-cache',
+  Expires: '0',
+} as const;
+
 const dbErrorMessage = (error: unknown, fallback: string): string => {
   const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
   if (/planLimitReached/i.test(message)) {
@@ -37,15 +43,15 @@ export async function GET(req: NextRequest) {
       orderBy: slim ? undefined : [{ accountCode: 'asc' }, { periode: 'asc' }],
     });
 
-    const res = NextResponse.json({ success: true, data: records });
-    // Allow CDN/browser to serve stale while revalidating (30 s fresh, 60 s stale)
-    res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
-    return res;
+    return NextResponse.json(
+      { success: true, data: records },
+      { headers: NO_STORE_HEADERS },
+    );
   } catch (error) {
     console.error('Error fetching akun periodes:', error);
     return NextResponse.json(
       { success: false, error: dbErrorMessage(error, 'Gagal mengambil data akun periode') },
-      { status: 500 },
+      { status: 500, headers: NO_STORE_HEADERS },
     );
   }
 }

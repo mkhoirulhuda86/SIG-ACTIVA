@@ -1,7 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { NextRequest } from 'next/server';
 import { requireFinanceRead } from '@/lib/api-auth';
+
+const NO_STORE_HEADERS = {
+  'Cache-Control': 'private, no-store, max-age=0, must-revalidate',
+  Pragma: 'no-cache',
+  Expires: '0',
+} as const;
 
 const parseNum = (val: unknown): number => {
   if (typeof val === 'number') return val;
@@ -34,34 +39,23 @@ const parseNum = (val: unknown): number => {
   return negative ? -n : n;
 };
 
-/**
- * Convert an AmountCol descriptor to a YYYY.MM period string.
- * Handles both:
- *  - Synthetic rekap (buildRekapFromAkunPeriodes): label is already "YYYY.MM"
- *  - Real Excel rekap: parse year from yearLabel, month from dateLabel / label text
- */
 function amountColToPeriode(ac: {
   label?: unknown;
   yearLabel?: unknown;
   dateLabel?: unknown;
 }): string {
   const labelStr = String(ac.label ?? '');
-
-  // Synthetic rekap stores label as "YYYY.MM" directly
   if (/^\d{4}\.\d{2}$/.test(labelStr)) return labelStr;
 
-  // Real Excel rekap: extract 4-digit year from yearLabel
   const yr = String(ac.yearLabel ?? '').match(/20\d{2}/)?.[0];
   if (!yr) return '';
 
-  // Combine dateLabel + label to find month abbreviation
   const text = (String(ac.dateLabel ?? '') + ' ' + labelStr).toLowerCase();
-
   const MONTHS: [string, number][] = [
     ['jan', 1], ['feb', 2], ['mar', 3], ['apr', 4],
     ['mei', 5], ['may', 5],
     ['jun', 6], ['jul', 7],
-    ['aug', 8], ['agt', 8],
+    ['aug', 8], ['agt', 8], ['agu', 8],
     ['sep', 9],
     ['oct', 10], ['okt', 10],
     ['nov', 11],
@@ -75,21 +69,42 @@ function amountColToPeriode(ac: {
   return '';
 }
 
+type FinalReasonRow = {
+  accountCode: string;
+  comparisonType: 'MOM' | 'YOY' | 'YTD';
+  currentPeriod: string;
+  comparisonPeriod: string;
+  userComment: string;
+  updatedAt: Date;
+};
+
 // GET /api/fluktuasi/rekap-amounts
-// Returns per-account per-period amounts extracted from all stored FluktuasiImport.rekapSheetData.
-// Covers accounts that only appear in the REKAP sheet and not in individual account sheets.
+// Returns per-account per-period amounts/reasons from stored rekap snapshots.
+// Final user comments override generated/system reasons so Dashboard Resume and
+// the working table use the same reviewed narrative.
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireFinanceRead(request);
     if ('error' in auth) return auth.error;
 
-    // Fetch all imports oldest-first so latest values overwrite older ones.
-    const imports = await prisma.fluktuasiImport.findMany({
-      select: { rekapSheetData: true, createdAt: true },
-      orderBy: { createdAt: 'asc' },
-    });
+    const [imports, finalReasons] = await Promise.all([
+      prisma.fluktuasiImport.findMany({
+        select: { rekapSheetData: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.$queryRaw<FinalReasonRow[]>`
+        SELECT
+          "accountCode",
+          "comparisonType",
+          "currentPeriod",
+          "comparisonPeriod",
+          "userComment",
+          "updatedAt"
+        FROM "fluktuasi_reason_overrides"
+        ORDER BY "updatedAt" ASC, "id" ASC
+      `,
+    ]);
 
-    // Merge map: "accountCode|periode" -> payload (latest import wins)
     const dataMap = new Map<string, {
       amount: number;
       reasonMoM: string;
@@ -120,7 +135,6 @@ export async function GET(request: NextRequest) {
 
         const values = Array.isArray(r.values) ? r.values : [];
         const accountCode = String(values[accountColIdx] ?? '').trim();
-        // Only include real account codes (5+ digits)
         if (!accountCode || !/^\d{5,}$/.test(accountCode)) continue;
 
         const reasonMoM = String(r.reasonMoM ?? '').trim();
@@ -136,7 +150,6 @@ export async function GET(request: NextRequest) {
             dateLabel?: unknown;
           };
 
-          // Skip cumulative / YTD columns — only use monthly point-in-time columns
           if (a.isCumulative) continue;
 
           const colIdx = typeof a.colIdx === 'number' ? a.colIdx : -1;
@@ -156,6 +169,24 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Rows are ordered oldest -> newest. If a user reviewed the same current
+    // period with more than one comparison pair, the latest final comment wins
+    // for the resume while the detailed table still restores the exact pair.
+    for (const reason of finalReasons) {
+      const key = `${reason.accountCode}|${reason.currentPeriod}`;
+      const current = dataMap.get(key) ?? {
+        amount: 0,
+        reasonMoM: '',
+        reasonYoY: '',
+        reasonYtD: '',
+      };
+
+      if (reason.comparisonType === 'MOM') current.reasonMoM = reason.userComment;
+      if (reason.comparisonType === 'YOY') current.reasonYoY = reason.userComment;
+      if (reason.comparisonType === 'YTD') current.reasonYtD = reason.userComment;
+      dataMap.set(key, current);
+    }
+
     const data = [...dataMap.entries()].map(([key, payload]) => {
       const pipeIdx = key.indexOf('|');
       return {
@@ -168,14 +199,15 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const res = NextResponse.json({ success: true, data });
-    res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
-    return res;
+    return NextResponse.json(
+      { success: true, data },
+      { headers: NO_STORE_HEADERS },
+    );
   } catch (error) {
     console.error('Error fetching rekap amounts:', error);
     return NextResponse.json(
       { success: false, error: 'Gagal mengambil data rekap amounts' },
-      { status: 500 },
+      { status: 500, headers: NO_STORE_HEADERS },
     );
   }
 }
