@@ -47,6 +47,7 @@ const menuItems: MenuItem[] = [
     requireAdmin: false,
     badge: null,
     children: [
+      { label: 'Dashboard Resume', href: '/dashboard-resume-fluktuasi' },
       { label: 'Overview Fluktuasi', href: '/overview-fluktuasi' },
       { label: 'Detail Per Akun', href: '/detail-akun-fluktuasi' },
     ],

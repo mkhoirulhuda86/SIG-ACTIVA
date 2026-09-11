@@ -1,0 +1,198 @@
+/* Scoped visual alignment for Dashboard Resume only.
+   Palette follows the existing SIG ACTIVA light menu/card system. */
+
+#dashboard-main {
+  background: #f0f4fa !important;
+}
+
+#dashboard-main > div > section:first-child {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05) !important;
+}
+
+#dashboard-resume {
+  align-items: start;
+}
+
+#dashboard-resume aside {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+#dashboard-resume aside > div:first-child {
+  width: 4px !important;
+  background: #ef4444 !important;
+}
+
+#dashboard-resume aside > div:nth-child(2) {
+  color: #64748b !important;
+}
+
+#dashboard-resume aside button {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #64748b !important;
+  box-shadow: none !important;
+}
+
+#dashboard-resume aside button:hover {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #334155 !important;
+  transform: translateX(2px);
+}
+
+#dashboard-resume aside button > span:nth-child(2),
+#dashboard-resume aside button > span:last-child {
+  color: inherit !important;
+}
+
+#dashboard-resume aside button > span:last-child {
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+
+#dashboard-resume aside button[class*="from-[#2f80c5]"],
+#dashboard-resume aside button[class*="from-[#1c9271]"],
+#dashboard-resume aside button[class*="from-[#d1922d]"],
+#dashboard-resume aside button[class*="from-[#7a58c8]"] {
+  background: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+  color: #be123c !important;
+  box-shadow: 0 1px 2px rgba(190, 18, 60, 0.06) !important;
+}
+
+#dashboard-resume aside button[class*="from-[#2f80c5]"] > span:nth-child(2),
+#dashboard-resume aside button[class*="from-[#1c9271]"] > span:nth-child(2),
+#dashboard-resume aside button[class*="from-[#d1922d]"] > span:nth-child(2),
+#dashboard-resume aside button[class*="from-[#7a58c8]"] > span:nth-child(2) {
+  color: #be123c !important;
+}
+
+#dashboard-resume aside button[class*="from-[#2f80c5]"] > span:last-child,
+#dashboard-resume aside button[class*="from-[#1c9271]"] > span:last-child,
+#dashboard-resume aside button[class*="from-[#d1922d]"] > span:last-child,
+#dashboard-resume aside button[class*="from-[#7a58c8]"] > span:last-child {
+  background: #ffe4e6 !important;
+  color: #be123c !important;
+}
+
+#dashboard-resume article {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+#dashboard-resume article > header {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-bottom-color: #e2e8f0 !important;
+  border-left-color: #ef4444 !important;
+}
+
+#dashboard-resume article > header > div:first-child {
+  color: #0f172a !important;
+}
+
+#dashboard-resume article > header > div:last-child {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  color: #64748b !important;
+}
+
+#dashboard-resume article > div.grid {
+  align-items: stretch;
+}
+
+#dashboard-resume article > div.grid > button {
+  display: flex !important;
+  height: 100% !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  align-content: flex-start !important;
+  justify-content: flex-start !important;
+  vertical-align: top !important;
+}
+
+/* Keep activity identity subtle, matching other light cards. */
+#dashboard-resume article > div.grid > button:nth-child(1) {
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%) !important;
+}
+
+#dashboard-resume article > div.grid > button:nth-child(2) {
+  background: linear-gradient(180deg, #f7fcfa 0%, #ffffff 100%) !important;
+}
+
+#dashboard-resume article > div.grid > button:nth-child(3) {
+  background: linear-gradient(180deg, #fbf9ff 0%, #ffffff 100%) !important;
+}
+
+/* The app has a global button color override; these selectors restore
+   intended contrast only on this route. */
+#dashboard-main button[class*="bg-[#245d87]"],
+#dashboard-main button[class*="from-[#214f72]"],
+#dashboard-main button[class*="from-[#2f80c5]"],
+#dashboard-main button[class*="from-[#1c9271]"],
+#dashboard-main button[class*="from-[#d1922d]"],
+#dashboard-main button[class*="from-[#7a58c8]"] {
+  color: #ffffff !important;
+}
+
+/* Desktop-only sidebar collapse handle. The Dashboard Resume page keeps the
+   existing mobile drawer behavior; this only releases the 16rem desktop gutter. */
+.dashboard-sidebar-toggle {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .dashboard-resume-route > div:first-child > div:first-child,
+  .dashboard-resume-route > div:first-child > div:nth-child(2) {
+    transition: transform 220ms ease, margin-left 220ms ease;
+  }
+
+  html.dashboard-resume-sidebar-collapsed .dashboard-resume-route > div:first-child > div:first-child {
+    transform: translateX(-100%) !important;
+    pointer-events: none;
+  }
+
+  html.dashboard-resume-sidebar-collapsed .dashboard-resume-route > div:first-child > div:nth-child(2) {
+    margin-left: 0 !important;
+  }
+
+  .dashboard-sidebar-toggle {
+    position: fixed;
+    top: 50%;
+    left: 244px;
+    z-index: 70;
+    display: inline-flex;
+    width: 30px;
+    height: 46px;
+    transform: translateY(-50%);
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e2e8f0;
+    border-radius: 0 12px 12px 0;
+    background: #ffffff;
+    color: #64748b !important;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.10);
+    transition: left 220ms ease, background 160ms ease, color 160ms ease;
+  }
+
+  .dashboard-sidebar-toggle:hover {
+    background: #f8fafc;
+    color: #be123c !important;
+  }
+
+  html.dashboard-resume-sidebar-collapsed .dashboard-sidebar-toggle {
+    left: 0;
+  }
+}
+
+@media (max-width: 1023px) {
+  #dashboard-resume aside {
+    position: static !important;
+  }
+}
