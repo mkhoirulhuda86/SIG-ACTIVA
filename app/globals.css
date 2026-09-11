@@ -99,12 +99,10 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif !important;
 }
 
-/* Smooth scrolling */
 html {
   scroll-behavior: smooth;
 }
 
-/* Optimized scrolling */
 * {
   -webkit-overflow-scrolling: touch;
 }
@@ -115,7 +113,6 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif !important;
 }
 
-/* Optimize rendering for animations */
 @media (prefers-reduced-motion: no-preference) {
   .transition-transform,
   .transition-colors,
@@ -133,7 +130,6 @@ input::placeholder {
   color: #9ca3af !important;
 }
 
-/* Ensure input text is visible even with autofill */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
@@ -144,15 +140,111 @@ input:-webkit-autofill:active {
   transition: background-color 5000s ease-in-out 0s;
 }
 
-/* Ensure text inputs have black text */
 input[type="text"],
 input[type="password"] {
   color: #000000 !important;
 }
 
-/* ─── GSAP / anime.js Animation Helpers ──────────────────────────── */
+/* Dashboard Resume Fluktuasi: match standalone HTML alignment and sidebar text. */
+#dashboard-resume article > div.grid {
+  align-items: stretch;
+}
 
-/* Elements start hidden for GSAP to animate in */
+#dashboard-resume article > div.grid > button {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  align-content: flex-start;
+  justify-content: flex-start;
+  vertical-align: top;
+}
+
+#dashboard-resume aside button,
+#dashboard-resume aside button > span:nth-child(2),
+#dashboard-resume aside button > span:last-child {
+  color: #ffffff !important;
+}
+
+#dashboard-resume aside button > span:last-child {
+  opacity: 0.88;
+}
+
+/* Dashboard Resume Fluktuasi: brighter SIG ACTIVA palette. */
+#dashboard-main {
+  background: linear-gradient(180deg, #fbfcfe 0%, #f5f8fb 100%) !important;
+}
+
+#dashboard-resume aside {
+  background: linear-gradient(180deg, #3d78a4 0%, #4d8bb5 100%) !important;
+  border-color: rgba(255, 255, 255, 0.42) !important;
+  box-shadow: 0 12px 28px rgba(54, 105, 143, 0.16) !important;
+}
+
+#dashboard-resume aside > div:first-child {
+  opacity: 0.9;
+}
+
+#dashboard-resume aside button {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow: none !important;
+}
+
+#dashboard-resume aside button:hover {
+  background: rgba(255, 255, 255, 0.19) !important;
+}
+
+#dashboard-resume aside button[class*="from-[#2f80c5]"] {
+  background: linear-gradient(180deg, #4d9adb 0%, #3a84c2 100%) !important;
+  border-color: rgba(255, 255, 255, 0.48) !important;
+  box-shadow: 0 8px 18px rgba(42, 108, 160, 0.18) !important;
+}
+
+#dashboard-resume aside button[class*="from-[#1c9271]"] {
+  background: linear-gradient(180deg, #35b58d 0%, #249873 100%) !important;
+  border-color: rgba(255, 255, 255, 0.48) !important;
+  box-shadow: 0 8px 18px rgba(32, 137, 103, 0.18) !important;
+}
+
+#dashboard-resume aside button[class*="from-[#d1922d]"] {
+  background: linear-gradient(180deg, #ebb34f 0%, #d89a32 100%) !important;
+  border-color: rgba(255, 255, 255, 0.48) !important;
+  box-shadow: 0 8px 18px rgba(194, 133, 35, 0.18) !important;
+}
+
+#dashboard-resume aside button[class*="from-[#7a58c8]"] {
+  background: linear-gradient(180deg, #9274dc 0%, #7a5bc5 100%) !important;
+  border-color: rgba(255, 255, 255, 0.48) !important;
+  box-shadow: 0 8px 18px rgba(104, 77, 177, 0.18) !important;
+}
+
+#dashboard-resume article {
+  border-color: #dfe8ef !important;
+  box-shadow: 0 12px 28px rgba(46, 88, 121, 0.07) !important;
+}
+
+#dashboard-resume article > header[class*="from-[#1f6fb2]"] {
+  background: linear-gradient(180deg, #4a95d1 0%, #367fb8 100%) !important;
+}
+
+#dashboard-resume article > header[class*="from-[#178567]"] {
+  background: linear-gradient(180deg, #3aaa86 0%, #268c6c 100%) !important;
+}
+
+#dashboard-resume article > header[class*="from-[#c9861e]"] {
+  background: linear-gradient(180deg, #e7ab43 0%, #cb8e2b 100%) !important;
+}
+
+#dashboard-resume article > header[class*="from-[#6f4bbd]"] {
+  background: linear-gradient(180deg, #8b6bd4 0%, #7153bd 100%) !important;
+}
+
+#dashboard-resume article > div.grid > button {
+  filter: saturate(0.92) brightness(1.02);
+}
+
+/* ─── GSAP / anime.js Animation Helpers ──────────────────────────── */
 .gsap-reveal {
   opacity: 0;
   transform: translateY(24px);
@@ -170,7 +262,6 @@ input[type="password"] {
   transform: scale(0.9);
 }
 
-/* Glassmorphism card effect */
 .glass-card {
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(16px);
@@ -179,7 +270,6 @@ input[type="password"] {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
 }
 
-/* Gradient mesh background for login */
 .gradient-mesh {
   background: 
     radial-gradient(at 20% 30%, hsl(0 84% 95%) 0px, transparent 50%),
@@ -188,7 +278,6 @@ input[type="password"] {
     hsl(0 0% 98%);
 }
 
-/* Animated gradient border */
 .animated-border {
   position: relative;
   background: linear-gradient(white, white) padding-box,
@@ -196,7 +285,6 @@ input[type="password"] {
   border: 2px solid transparent;
 }
 
-/* Pulse glow for active states */
 @keyframes pulseGlow {
   0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.3); }
   50% { box-shadow: 0 0 0 8px hsl(var(--primary) / 0); }
@@ -205,13 +293,11 @@ input[type="password"] {
   animation: pulseGlow 2s ease-in-out infinite;
 }
 
-/* Shimmer loading effect */
 @keyframes shimmer {
   0% { background-position: -1000px 0; }
   100% { background-position: 1000px 0; }
 }
 
-/* Custom Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -242,7 +328,6 @@ input[type="password"] {
   100% { transform: translateX(100%); }
 }
 
-/* Animation Classes */
 .animate-fadeIn { animation: fadeIn 0.5s ease-out forwards; }
 .animate-slideInLeft { animation: slideInLeft 0.5s ease-out forwards; }
 .animate-slideInRight { animation: slideInRight 0.5s ease-out forwards; }
@@ -255,7 +340,6 @@ input[type="password"] {
   animation: shimmer 2s infinite;
 }
 
-/* Stagger Animation Delays */
 .delay-100 { animation-delay: 0.1s; }
 .delay-200 { animation-delay: 0.2s; }
 .delay-300 { animation-delay: 0.3s; }
@@ -263,18 +347,15 @@ input[type="password"] {
 .delay-500 { animation-delay: 0.5s; }
 .delay-600 { animation-delay: 0.6s; }
 
-/* Smooth Transitions */
 .transition-smooth {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Custom Scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-/* Loading Skeleton */
 .skeleton {
   background: linear-gradient(90deg, #f0f0f0 0%, #e0e0e0 50%, #f0f0f0 100%);
   background-size: 1000px 100%;
@@ -283,7 +364,6 @@ input[type="password"] {
   min-height: 20px;
 }
 
-/* Hover Effects */
 .hover-lift {
   transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
 }
@@ -292,22 +372,18 @@ input[type="password"] {
   box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.12), 0 6px 12px -4px rgba(0, 0, 0, 0.06);
 }
 
-/* Focus Visible */
 *:focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
 }
 
-/* Performance Optimization */
 * { -webkit-tap-highlight-color: transparent; }
 
-/* Optimize table scrolling on mobile */
 .overflow-x-auto {
   -webkit-overflow-scrolling: touch;
   scroll-snap-type: x proximity;
 }
 
-/* Better touch targets for mobile */
 @media (max-width: 640px) {
   button, a, input, select, textarea {
     min-height: 44px;
@@ -315,7 +391,6 @@ input[type="password"] {
   }
 }
 
-/* Reduce motion for users who prefer it */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
