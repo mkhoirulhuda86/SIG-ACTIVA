@@ -4657,6 +4657,7 @@ export default function FluktuasiOIPage() {
                     <div className="flex flex-col gap-1">
                       {/* Text area — editable */}
                       <textarea
+                        data-source-reason={template}
                         rows={displayed ? Math.min(14, displayed.split('\n').length + 2) : 3}
                         value={displayed || ''}
                         placeholder={loading ? 'Generating AI...' : ''}
