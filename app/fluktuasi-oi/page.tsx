@@ -1273,6 +1273,12 @@ const buildTemplateReason = (
       .filter(b => b.currAmount !== 0 || b.prevAmount !== 0)
       .map(b => {
         const bGap = b.currAmount - b.prevAmount;
+        if (side === 'mom') {
+          const movement = bGap > 0 ? 'kenaikan' : bGap < 0 ? 'penurunan' : 'tidak berubah';
+          return bGap === 0
+            ? `   - ${b.klasifikasi} ${fmtAmt(b.currAmount)} (${movement})`
+            : `   - ${b.klasifikasi} ${fmtAmt(b.currAmount)} (${movement} ${fmtAmt(bGap)})`;
+        }
         const sign = bGap > 0 ? '+' : '';
         return `   - ${b.klasifikasi} ${fmtAmt(b.currAmount)} (${sign}${fmtAmt(bGap)})`;
       });
