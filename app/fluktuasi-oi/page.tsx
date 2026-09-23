@@ -1241,6 +1241,44 @@ const getGapMovement = (accountCode: string, gap: number): 'Kenaikan' | 'Penurun
   return isIncrease ? 'Kenaikan' : 'Penurunan';
 };
 
+const YOY_PRINCIPAL_REASON_ACCOUNTS = new Set(['71510001', '71510002']);
+const MONTH_NAMES_ID = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+];
+
+const formatYoYPrincipalPeriod = (ac: AmountCol | undefined, relation: 'previous' | 'current'): string => {
+  if (!ac) return '';
+  const normalized = `${ac.yearLabel ?? ''} ${ac.dateLabel ?? ''} ${ac.label ?? ''}`;
+  const year = normalized.match(/20\d{2}/)?.[0] ?? '';
+  let month = 0;
+
+  const db = ac.label.match(/^20\d{2}\.(\d{2})$/);
+  if (db) month = Number(db[1]);
+
+  if (!month) {
+    const monthMap: Record<string, number> = {
+      jan: 1, feb: 2, mar: 3, apr: 4, mei: 5, may: 5, jun: 6,
+      jul: 7, aug: 8, agu: 8, sep: 9, oct: 10, okt: 10, nov: 11,
+      dec: 12, des: 12,
+    };
+    const lower = normalized.toLowerCase();
+    for (const [token, value] of Object.entries(monthMap)) {
+      if (new RegExp(`\\b${token}`, 'i').test(lower)) {
+        month = value;
+        break;
+      }
+    }
+  }
+
+  const monthLabel = month >= 1 && month <= 12 ? MONTH_NAMES_ID[month - 1] : '';
+  const periodLabel = [monthLabel, year].filter(Boolean).join(' ');
+  const relationLabel = relation === 'previous'
+    ? 'Periode YoY Tahun sebelumnya'
+    : 'Periode YoY Tahun sekarang';
+  return periodLabel ? `Saldo Pokok ${periodLabel} (${relationLabel})` : `Saldo Pokok (${relationLabel})`;
+};
+
 /** Build a full deterministic analysis string from period data (pre-AI) */
 const buildTemplateReason = (
   gap: number,
@@ -1308,7 +1346,16 @@ const buildTemplateReason = (
       .map(b => {
         const bGap = b.currAmount - b.prevAmount;
         const movement = getGapMovement(accountCode, bGap);
-        return `   - ${movement} ${b.klasifikasi} senilai ${fmtAmt(bGap)}`;
+        const driverLine = `   - ${movement} ${b.klasifikasi} senilai ${fmtAmt(bGap)}`;
+
+        const normalizedAccountCode = (accountCode.match(/\d{8}/)?.[0] ?? accountCode).trim();
+        if (side === 'yoy' && YOY_PRINCIPAL_REASON_ACCOUNTS.has(normalizedAccountCode)) {
+          const previousPrincipal = formatYoYPrincipalPeriod(prevAC, 'previous');
+          const currentPrincipal = formatYoYPrincipalPeriod(currAC, 'current');
+          return [driverLine, `        ${previousPrincipal}`, `        ${currentPrincipal}`].join('\n');
+        }
+
+        return driverLine;
       });
     if (breakdownLines.length > 0) {
       return [header, ...breakdownLines].join('\n');
