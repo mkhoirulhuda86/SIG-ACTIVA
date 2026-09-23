@@ -1225,11 +1225,28 @@ const FMT_M   = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maxim
 const fmtRp  = (n: number) => FMT_RP.format(n);
 const fmtPct = (n: number) => FMT_PCT.format(n) + '%';
 
+const DIRECT_GAP_DIRECTION_ACCOUNTS = new Set([
+  '71510001',
+  '71510002',
+  '71510003',
+  '71510004',
+  '71510098',
+  '71560001',
+]);
+
+const getGapMovement = (accountCode: string, gap: number): 'Kenaikan' | 'Penurunan' => {
+  const normalizedCode = (accountCode.match(/\d{8}/)?.[0] ?? accountCode).trim();
+  const directDirection = DIRECT_GAP_DIRECTION_ACCOUNTS.has(normalizedCode);
+  const isIncrease = directDirection ? gap > 0 : gap < 0;
+  return isIncrease ? 'Kenaikan' : 'Penurunan';
+};
+
 /** Build a full deterministic analysis string from period data (pre-AI) */
 const buildTemplateReason = (
   gap: number,
   pct: number,
   accountName: string,
+  accountCode: string,
   side: 'mom' | 'yoy' | 'ytd',
   amountCols: AmountCol[],
   rowValues: (string | number)[],
@@ -1252,8 +1269,7 @@ const buildTemplateReason = (
   // Materiality threshold for Rekap Reason MoM/YoY: fluctuations below Rp1 million are not shown.
   if (side !== 'ytd' && Math.abs(gap) < 1_000_000) return '';
 
-  const dir    = gap > 0 ? 'Kenaikan' : 'Penurunan';
-  const dirLow = gap > 0 ? 'kenaikan' : 'penurunan';
+  const dir = getGapMovement(accountCode, gap);
   const abs    = Math.abs(gap);
   const fmtAmt = (n: number) => {
     const a = Math.abs(n);
@@ -1284,14 +1300,14 @@ const buildTemplateReason = (
       .sort((a, b) => {
         const aGap = a.currAmount - a.prevAmount;
         const bGap = b.currAmount - b.prevAmount;
-        const totalDirection = gap > 0 ? 1 : -1;
-        const aPriority = Math.sign(aGap) === totalDirection ? 0 : 1;
-        const bPriority = Math.sign(bGap) === totalDirection ? 0 : 1;
+        const totalMovement = getGapMovement(accountCode, gap);
+        const aPriority = getGapMovement(accountCode, aGap) === totalMovement ? 0 : 1;
+        const bPriority = getGapMovement(accountCode, bGap) === totalMovement ? 0 : 1;
         return aPriority - bPriority;
       })
       .map(b => {
         const bGap = b.currAmount - b.prevAmount;
-        const movement = bGap > 0 ? 'Kenaikan' : 'Penurunan';
+        const movement = getGapMovement(accountCode, bGap);
         return `   - ${movement} ${b.klasifikasi} senilai ${fmtAmt(bGap)}`;
       });
     if (breakdownLines.length > 0) {
@@ -3836,15 +3852,15 @@ export default function FluktuasiOIPage() {
       const prevYoYPer = amountColIndexToPeriode(amountCols, effYP);
 
       const mom = Math.abs(row.gapMoM) !== 0
-        ? buildTemplateReason(row.gapMoM, row.pctMoM, descVal, 'mom', amountCols, row.values, effMC, effMP, undefined,
+        ? buildTemplateReason(row.gapMoM, row.pctMoM, descVal, acctCode, 'mom', amountCols, row.values, effMC, effMP, undefined,
             getBreakdown(acctCode, currPer, prevMoMPer))
         : '';
       const yoy = Math.abs(row.gapYoY) !== 0
-        ? buildTemplateReason(row.gapYoY, row.pctYoY, descVal, 'yoy', amountCols, row.values, effYC, effYP, undefined,
+        ? buildTemplateReason(row.gapYoY, row.pctYoY, descVal, acctCode, 'yoy', amountCols, row.values, effYC, effYP, undefined,
             getBreakdown(acctCode, amountColIndexToPeriode(amountCols, effYC), prevYoYPer))
         : '';
       const ytd = Math.abs(row.gapYtD) !== 0
-        ? buildTemplateReason(row.gapYtD, row.pctYtD, descVal, 'ytd', amountCols, row.values, effYtdC, effYtdP, undefined,
+        ? buildTemplateReason(row.gapYtD, row.pctYtD, descVal, acctCode, 'ytd', amountCols, row.values, effYtdC, effYtdP, undefined,
             getYtdBreakdown(acctCode, ytdCurrPeriodKeys, ytdPrevPeriodKeys))
         : '';
       map.set(idx, { mom, yoy, ytd });
