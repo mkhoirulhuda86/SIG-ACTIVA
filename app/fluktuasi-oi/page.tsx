@@ -1272,6 +1272,17 @@ const buildTemplateReason = (
     const breakdownLines = subBreakdown
       // Only show classifications that actually moved. Unchanged items add noise to the reason.
       .filter(b => (b.currAmount - b.prevAmount) !== 0)
+      // For MoM/YoY, list drivers that move in the same direction as the total fluctuation first.
+      // Keep the existing relative order within each direction group.
+      .sort((a, b) => {
+        if (side === 'ytd') return 0;
+        const aGap = a.currAmount - a.prevAmount;
+        const bGap = b.currAmount - b.prevAmount;
+        const totalDirection = gap > 0 ? 1 : -1;
+        const aPriority = Math.sign(aGap) === totalDirection ? 0 : 1;
+        const bPriority = Math.sign(bGap) === totalDirection ? 0 : 1;
+        return aPriority - bPriority;
+      })
       .map(b => {
         const bGap = b.currAmount - b.prevAmount;
         const movement = bGap > 0 ? 'Kenaikan' : 'Penurunan';
