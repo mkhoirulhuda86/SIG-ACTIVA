@@ -1273,12 +1273,7 @@ const formatYoYPrincipalPeriod = (ac: AmountCol | undefined, relation: 'previous
 
   const monthLabel = month >= 1 && month <= 12 ? MONTH_NAMES_ID[month - 1] : '';
   const periodLabel = [monthLabel, year].filter(Boolean).join(' ');
-  if (relation === 'previous') {
-    return periodLabel ? `Saldo Pokok ${periodLabel}` : 'Saldo Pokok';
-  }
-  return periodLabel
-    ? `Saldo Pokok ${periodLabel} (Periode YoY Tahun sekarang)`
-    : 'Saldo Pokok (Periode YoY Tahun sekarang)';
+  return periodLabel ? `Saldo Pokok ${periodLabel}` : 'Saldo Pokok';
 };
 
 /** Build a full deterministic analysis string from period data (pre-AI) */
