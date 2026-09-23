@@ -4981,8 +4981,11 @@ export default function FluktuasiOIPage() {
                         // Whether to hide Reason column (all non-detail rows)
                         const hideReason = isCategory || isAccountSubtotal || isSectionTotal;
                         const isSpecial  = row.type === 'category' || row.type === 'subtotal';
-                        const gapColor  = (v: number) =>
-                          isSpecial ? '#fff' : v < 0 ? '#b91c1c' : v > 0 ? '#15803d' : '#374151';
+                        const gapColor = (v: number) => {
+                          if (isSpecial) return '#fff';
+                          if (v === 0) return '#374151';
+                          return getGapMovement(acctVal, v) === 'Kenaikan' ? '#15803d' : '#b91c1c';
+                        };
                         const rowHasData = hasData(row);
                         return (
                           <tr key={ri} className="js-rekap-row">
