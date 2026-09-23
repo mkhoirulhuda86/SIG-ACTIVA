@@ -149,9 +149,6 @@ const setTextareaValue = (textarea: HTMLTextAreaElement, value: string): void =>
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
 };
 
-const normalizeReasonText = (value: string): string =>
-  String(value ?? '').replace(/\r\n/g, '\n').trim();
-
 export default function ReasonPersistenceBridge() {
   const [status, setStatus] = useState<SaveStatus>('idle');
   const overridesRef = useRef<Map<string, ReasonOverride>>(new Map());
@@ -180,25 +177,11 @@ export default function ReasonPersistenceBridge() {
       const override = overridesRef.current.get(meta.key);
       if (!override) continue;
 
-      const authoritativeSource = textarea.dataset.sourceReason ?? '';
-      const version = `${meta.key}|${override.updatedAt}|${override.userComment}|${authoritativeSource}`;
+      const version = `${meta.key}|${override.updatedAt}|${override.userComment}`;
       if (appliedRef.current.get(textarea) === version) continue;
 
-      // A saved override belongs to the generated reason version that existed when
-      // the user edited it. If the system's authoritative reason has since changed,
-      // ignore the stale override so the latest main-data reason is shown automatically.
-      const hasSourceChanged =
-        normalizeReasonText(override.generatedReason) !== '' &&
-        normalizeReasonText(authoritativeSource) !== '' &&
-        normalizeReasonText(override.generatedReason) !== normalizeReasonText(authoritativeSource);
-
       appliedRef.current.set(textarea, version);
-      if (hasSourceChanged) {
-        sourceReasonRef.current.set(textarea, authoritativeSource);
-        continue;
-      }
-
-      sourceReasonRef.current.set(textarea, authoritativeSource || override.generatedReason || textarea.value);
+      sourceReasonRef.current.set(textarea, override.generatedReason || textarea.value);
       if (textarea.value !== override.userComment) {
         setTextareaValue(textarea, override.userComment);
       }
@@ -279,7 +262,7 @@ export default function ReasonPersistenceBridge() {
     const onFocusIn = (event: FocusEvent) => {
       const textarea = event.target instanceof HTMLTextAreaElement ? event.target : null;
       if (!textarea || !textarea.closest('tr.js-rekap-row')) return;
-      sourceReasonRef.current.set(textarea, textarea.dataset.sourceReason ?? textarea.value);
+      sourceReasonRef.current.set(textarea, textarea.value);
     };
 
     const onInput = (event: Event) => {
