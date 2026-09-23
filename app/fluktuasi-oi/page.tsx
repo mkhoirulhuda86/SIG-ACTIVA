@@ -1249,6 +1249,9 @@ const buildTemplateReason = (
   if (gap === 0)
     return `Tidak ada fluktuasi ${modeLabel} — nilai ${name} tidak berubah pada periode ini.`;
 
+  // Materiality threshold for Rekap Reason MoM/YoY: fluctuations below Rp1 million are not shown.
+  if (side !== 'ytd' && Math.abs(gap) < 1_000_000) return '';
+
   const dir    = gap > 0 ? 'Kenaikan' : 'Penurunan';
   const dirLow = gap > 0 ? 'kenaikan' : 'penurunan';
   const abs    = Math.abs(gap);
@@ -1270,8 +1273,11 @@ const buildTemplateReason = (
   // Sub-breakdown lines per klasifikasi
   if (subBreakdown && subBreakdown.length > 0) {
     const breakdownLines = subBreakdown
-      // Only show classifications that actually moved. Unchanged items add noise to the reason.
-      .filter(b => (b.currAmount - b.prevAmount) !== 0)
+      // MoM/YoY only show material drivers (>= Rp1 million). YtD behavior remains unchanged.
+      .filter(b => {
+        const bGap = b.currAmount - b.prevAmount;
+        return side === 'ytd' ? bGap !== 0 : Math.abs(bGap) >= 1_000_000;
+      })
       // For MoM/YoY, list drivers that move in the same direction as the total fluctuation first.
       // Keep the existing relative order within each direction group.
       .sort((a, b) => {
@@ -1291,6 +1297,9 @@ const buildTemplateReason = (
     if (breakdownLines.length > 0) {
       return [header, ...breakdownLines].join('\n');
     }
+    // If source breakdown exists but every MoM/YoY driver is below Rp1 million,
+    // keep only the material account-level header and suppress immaterial detail lines.
+    if (side !== 'ytd') return header;
   }
 
   // Fallback: no breakdown available
