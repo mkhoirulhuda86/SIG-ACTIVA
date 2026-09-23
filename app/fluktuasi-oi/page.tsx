@@ -1270,13 +1270,12 @@ const buildTemplateReason = (
   // Sub-breakdown lines per klasifikasi
   if (subBreakdown && subBreakdown.length > 0) {
     const breakdownLines = subBreakdown
-      .filter(b => b.currAmount !== 0 || b.prevAmount !== 0)
+      // Only show classifications that actually moved. Unchanged items add noise to the reason.
+      .filter(b => (b.currAmount - b.prevAmount) !== 0)
       .map(b => {
         const bGap = b.currAmount - b.prevAmount;
-        const movement = bGap > 0 ? 'kenaikan' : bGap < 0 ? 'penurunan' : 'tidak berubah';
-        return bGap === 0
-          ? `   - ${b.klasifikasi} ${fmtAmt(b.currAmount)} (${movement})`
-          : `   - ${b.klasifikasi} ${fmtAmt(b.currAmount)} (${movement} ${fmtAmt(bGap)})`;
+        const movement = bGap > 0 ? 'Kenaikan' : 'Penurunan';
+        return `   - ${movement} ${b.klasifikasi} senilai ${fmtAmt(bGap)}`;
       });
     if (breakdownLines.length > 0) {
       return [header, ...breakdownLines].join('\n');
