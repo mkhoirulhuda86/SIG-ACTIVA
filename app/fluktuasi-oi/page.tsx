@@ -1241,6 +1241,37 @@ const getGapMovement = (accountCode: string, gap: number): 'Kenaikan' | 'Penurun
   return isIncrease ? 'Kenaikan' : 'Penurunan';
 };
 
+const REASON_TITLE_ACRONYMS: Record<string, string> = {
+  PSAK: 'PSAK',
+  ROU: 'RoU',
+  OI: 'OI',
+  EXP: 'EXP',
+  KI: 'KI',
+  SLL: 'SLL',
+  BNI: 'BNI',
+  BSI: 'BSI',
+  SLA: 'SLA',
+  K3: 'K3',
+};
+
+const formatReasonAccountName = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return 'Akun ini';
+
+  return trimmed
+    .split(/\s+/)
+    .map((token) => {
+      const bare = token.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '');
+      const preserved = REASON_TITLE_ACRONYMS[bare.toUpperCase()];
+      if (preserved) return token.replace(bare, preserved);
+
+      return token
+        .toLowerCase()
+        .replace(/(^|[-(/])([a-z])/g, (_match, prefix: string, letter: string) => prefix + letter.toUpperCase());
+    })
+    .join(' ');
+};
+
 const YOY_PRINCIPAL_REASON_ACCOUNTS = new Set(['71510001', '71510002']);
 const MONTH_NAMES_ID = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -1290,7 +1321,7 @@ const buildTemplateReason = (
   klasifikasi?: string,
   subBreakdown?: { klasifikasi: string; currAmount: number; prevAmount: number }[],
 ): string => {
-  const name = accountName || 'Akun ini';
+  const name = formatReasonAccountName(accountName);
   const absPct = Math.abs(pct);
   const currAC    = amountCols[currIdx];
   const ytdUpTo   = side === 'ytd' ? getAmountColMonthLabel(currAC) : '';
