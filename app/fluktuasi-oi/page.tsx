@@ -1273,15 +1273,15 @@ const buildTemplateReason = (
   // Sub-breakdown lines per klasifikasi
   if (subBreakdown && subBreakdown.length > 0) {
     const breakdownLines = subBreakdown
-      // MoM/YoY only show material drivers (>= Rp1 million). YtD behavior remains unchanged.
+      // Show only material drivers (>= Rp1 million) for MoM, YoY, and YtD.
       .filter(b => {
         const bGap = b.currAmount - b.prevAmount;
-        return side === 'ytd' ? bGap !== 0 : Math.abs(bGap) >= 1_000_000;
+        return Math.abs(bGap) >= 1_000_000;
       })
-      // For MoM/YoY, list drivers that move in the same direction as the total fluctuation first.
-      // Keep the existing relative order within each direction group.
+      // List drivers that move in the same direction as the total fluctuation first.
+      // Example: if the total is a decrease, show all decreases before increases.
+      // Preserve the existing relative order within each direction group.
       .sort((a, b) => {
-        if (side === 'ytd') return 0;
         const aGap = a.currAmount - a.prevAmount;
         const bGap = b.currAmount - b.prevAmount;
         const totalDirection = gap > 0 ? 1 : -1;
@@ -1297,9 +1297,9 @@ const buildTemplateReason = (
     if (breakdownLines.length > 0) {
       return [header, ...breakdownLines].join('\n');
     }
-    // If source breakdown exists but every MoM/YoY driver is below Rp1 million,
+    // If source breakdown exists but every driver is below Rp1 million,
     // keep only the material account-level header and suppress immaterial detail lines.
-    if (side !== 'ytd') return header;
+    return header;
   }
 
   // Fallback: no breakdown available
