@@ -45,6 +45,186 @@ function parseNum(val: any): number {
   return isNaN(n) ? 0 : n;
 }
 
+type ExportKeyword = {
+  keyword: string;
+  type: string;
+  result: string;
+  priority: number;
+  accountCodes: string;
+  sourceColumn: string;
+};
+
+function parseSourceColumns(raw: string): string[] {
+  return [...new Set(
+    String(raw ?? '')
+      .split(/[,|/]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+  )];
+}
+
+function normalizeColName(v: string): string {
+  return String(v ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/_\d+$/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function resolveRowKey(rowData: Record<string, any>, sourceCol: string): string | null {
+  const keys = Object.keys(rowData);
+  const dataKeys = keys.filter((k) => !k.startsWith('__'));
+
+  if (/^[A-Za-z]+$/.test(sourceCol.trim())) {
+    const letters = sourceCol.trim().toUpperCase();
+    let colIndex = 0;
+    for (const ch of letters) colIndex = (colIndex * 26) + (ch.charCodeAt(0) - 64);
+    const idx0 = colIndex - 1;
+    if (idx0 >= 0 && idx0 < dataKeys.length) return dataKeys[idx0];
+  }
+
+  const exact = keys.find((k) => k === sourceCol);
+  if (exact) return exact;
+
+  const ci = keys.find((k) => k.toLowerCase() === sourceCol.toLowerCase());
+  if (ci) return ci;
+
+  const targetNorm = normalizeColName(sourceCol);
+  if (!targetNorm) return null;
+  return keys.find((k) => normalizeColName(k) === targetNorm) ?? null;
+}
+
+function matchExportKeywords(
+  text: string,
+  keywords: ExportKeyword[],
+  type: 'klasifikasi' | 'remark',
+  docno: string,
+  rowData: Record<string, any>,
+): string {
+  const relevant = keywords
+    .filter((kw) => kw.type === type)
+    .sort((a, b) => b.priority - a.priority);
+  const positive = relevant.filter((kw) => !kw.keyword.toLowerCase().startsWith('not:'));
+  const negative = relevant.filter((kw) => kw.keyword.toLowerCase().startsWith('not:'));
+
+  const textStr = String(text ?? '').trim();
+  const textLower = textStr.toLowerCase();
+  const docnoStr = String(docno ?? '').trim();
+
+  const effectiveText = (kw: ExportKeyword): { str: string; lower: string } => {
+    const sourceCols = parseSourceColumns(kw.sourceColumn ?? '');
+    if (sourceCols.length > 0) {
+      const values = sourceCols
+        .map((col) => {
+          const key = resolveRowKey(rowData, col);
+          return key ? String(rowData[key] ?? '').trim() : '';
+        })
+        .filter(Boolean);
+      if (values.length > 0) {
+        const combined = values.join(' | ');
+        return { str: combined, lower: combined.toLowerCase() };
+      }
+
+      const combined = Object.entries(rowData)
+        .filter(([k]) => !k.startsWith('__'))
+        .map(([, v]) => String(v ?? '').trim())
+        .filter(Boolean)
+        .join(' | ')
+        .trim();
+      if (combined) return { str: combined, lower: combined.toLowerCase() };
+    }
+    return { str: textStr, lower: textLower };
+  };
+
+  for (const kw of positive) {
+    const kwLower = kw.keyword.toLowerCase();
+
+    if (kwLower.startsWith('col:')) {
+      const withoutPrefix = kw.keyword.slice(4);
+      const colonIdx = withoutPrefix.indexOf(':');
+      if (colonIdx < 0) continue;
+      const colName = withoutPrefix.slice(0, colonIdx).trim();
+      const pattern = withoutPrefix.slice(colonIdx + 1).trim();
+      const key = resolveRowKey(rowData, colName);
+      const colValue = key ? String(rowData[key] ?? '').trim() : '';
+      if (!colValue) continue;
+
+      let matched = false;
+      if (pattern.toLowerCase().startsWith('regex:')) {
+        try { matched = new RegExp(pattern.slice(6).trim(), 'i').test(colValue); } catch {}
+      } else if (pattern.startsWith('*') && pattern.endsWith('*') && pattern.length > 2) {
+        matched = colValue.toLowerCase().includes(pattern.slice(1, -1).toLowerCase());
+      } else if (pattern.endsWith('*')) {
+        matched = colValue.toLowerCase().startsWith(pattern.slice(0, -1).toLowerCase());
+      } else if (pattern.startsWith('*')) {
+        matched = colValue.toLowerCase().endsWith(pattern.slice(1).toLowerCase());
+      } else {
+        matched = colValue.toLowerCase().includes(pattern.toLowerCase());
+      }
+      if (matched) return String(kw.result || colValue).trim();
+      continue;
+    }
+
+    if (kwLower.startsWith('docno:')) {
+      if (!docnoStr) continue;
+      const pattern = kw.keyword.slice(6).trim();
+      if (pattern.toLowerCase().startsWith('regex:')) {
+        try {
+          if (new RegExp(pattern.slice(6).trim(), 'i').test(docnoStr)) return String(kw.result ?? '').trim();
+        } catch {}
+      } else if (docnoStr.startsWith(pattern)) {
+        return String(kw.result ?? '').trim();
+      }
+      continue;
+    }
+
+    if (kwLower.startsWith('regex:')) {
+      try {
+        const { str } = effectiveText(kw);
+        const match = str.match(new RegExp(kw.keyword.slice(6).trim(), 'i'));
+        if (match) {
+          let result = kw.result;
+          if (!result || result.trim() === '{match}') result = match[0];
+          else {
+            for (let i = 1; i < match.length; i++) {
+              result = result.replace(new RegExp(`\\{${i}\\}`, 'g'), match[i] ?? '');
+            }
+            result = result.replace(/\{match\}/gi, match[0]);
+          }
+          return String(result ?? '').trim();
+        }
+      } catch {}
+      continue;
+    }
+
+    if (effectiveText(kw).lower.includes(kw.keyword.toLowerCase())) {
+      return String(kw.result ?? '').trim();
+    }
+  }
+
+  for (const kw of negative) {
+    const exclusions = kw.keyword
+      .slice(4)
+      .trim()
+      .split(/[,|]/)
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    const effLower = effectiveText(kw).lower;
+    if (!exclusions.some((excl) => effLower.includes(excl))) return String(kw.result ?? '').trim();
+  }
+
+  return '';
+}
+
+function findSourceColIdx(headers: string[], candidates: string[]): number {
+  const norm = (s: string) => String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+  for (const candidate of candidates) {
+    const idx = headers.findIndex((h) => norm(h).includes(norm(candidate)));
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
 // ─── POST handler ────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const auth = await requireFinanceRead(req);
@@ -118,6 +298,20 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const exportKeywords: ExportKeyword[] = includeAkunSheets
+    ? await prisma.fluktuasiKeyword.findMany({
+        select: {
+          keyword: true,
+          type: true,
+          result: true,
+          priority: true,
+          accountCodes: true,
+          sourceColumn: true,
+        },
+        orderBy: { priority: 'desc' },
+      })
+    : [];
+
   // ──────────────────────────────────────────────────────────────────────────
   // 1. Kode Akun Sheets
   // ──────────────────────────────────────────────────────────────────────────
@@ -146,12 +340,41 @@ export async function POST(req: NextRequest) {
     const rows: any[] = Array.isArray(sd.rows) && sd.rows.length > 0
       ? sd.rows
       : (sheetRowsByCode.get(sheetKey) ?? sheetRowsByCode.get(numericSheetKey) ?? []);
+
+    const accountKeywords = exportKeywords.filter((kw) => {
+      const restricted = String(kw.accountCodes ?? '').trim();
+      if (!restricted) return true;
+      return restricted.split(',').map((s) => s.trim()).includes(numericSheetKey);
+    });
+    const klasifikasiColIdx = Number.isInteger(sd.klasifikasiColIdx)
+      ? Number(sd.klasifikasiColIdx)
+      : findSourceColIdx(origCols, [
+          'Document Header Text','Header Text','Doc. Header Text','DocHeaderText',
+          'Header Dokumen','Deskripsi Header','Description','Keterangan','Uraian',
+          'Narasi','Nama Akun','Text','Item Text','Reference','Ref. Doc.'
+        ]);
+    const docnoColIdx = Number.isInteger(sd.docnoColIdx)
+      ? Number(sd.docnoColIdx)
+      : findSourceColIdx(origCols, [
+          'Document No.','Doc. No.','DocNo','Document Number','Belegnummer','Belnr',
+          'No. Dokumen','Nomor Dokumen'
+        ]);
+
     rows.forEach((row, ri) => {
+      const rawK = String(row['__klasifikasi_raw'] ?? '') ||
+        (klasifikasiColIdx >= 0 ? String(row[origCols[klasifikasiColIdx]] ?? '') : String(row['__klasifikasi'] ?? ''));
+      const rawR = String(row['__remark_raw'] ?? '') || rawK;
+      const docno = String(row['__docno_raw'] ?? '') ||
+        (docnoColIdx >= 0 ? String(row[origCols[docnoColIdx]] ?? '') : '');
+
+      const liveKlasifikasi = matchExportKeywords(rawK, accountKeywords, 'klasifikasi', docno, row);
+      const liveRemark = matchExportKeywords(rawR, accountKeywords, 'remark', docno, row);
+
       const values = [
         ...origCols.map((h: string) => row[h] ?? ''),
         row['__periode'] ?? '',
-        row['__klasifikasi'] ?? '',
-        row['__remark'] ?? '',
+        liveKlasifikasi || row['__klasifikasi'] || '',
+        liveRemark || row['__remark'] || '',
       ];
       const dataRow = ws.addRow(values);
       dataRow.height = 15;
