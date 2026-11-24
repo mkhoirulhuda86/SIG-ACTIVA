@@ -124,10 +124,39 @@ function getSaldoAwal(item: Accrual): number {
   return Math.abs(item.totalAmount ?? 0);
 }
 
-// Saldo = saldo awal + total accrual - realisasi
-function calculateItemSaldo(item: Accrual, totalAccrual: number, totalRealisasi: number): number {
-  const saldoAwal = getSaldoAwal(item);
-  return saldoAwal + totalAccrual - totalRealisasi;
+const BULAN_NAMES = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+
+// Calendar-month keys avoid timezone shifts at the first/last day of a month.
+function dateMonthKey(date: string): number {
+  const match = /^(\d{4})-(\d{2})/.exec(date ?? '');
+  if (!match) return Number.POSITIVE_INFINITY;
+  const month = Number(match[2]);
+  return month >= 1 && month <= 12 ? Number(match[1]) * 100 + month : Number.POSITIVE_INFINITY;
+}
+
+function allocationMonthKey(periode: AccrualPeriode): number {
+  const [month, year] = periode.bulan.trim().split(/\s+/);
+  const index = BULAN_NAMES.indexOf(month);
+  const y = Number(year || periode.tahun);
+  return index >= 0 && Number.isInteger(y) && y > 0 ? y * 100 + index + 1 : Number.POSITIVE_INFINITY;
+}
+
+function actualRealisasiThrough(periode: AccrualPeriode, cutoff: number): number {
+  return (periode.realisasis ?? []).reduce((sum, r) =>
+    dateMonthKey(r.tanggalRealisasi) <= cutoff ? sum + Number(r.amount) : sum, 0);
+}
+
+function accrualSnapshot(item: Accrual, cutoff: number) {
+  const opened = dateMonthKey(item.startDate) <= cutoff;
+  const periodes = item.periodes ?? [];
+  const accrual = periodes.reduce((sum, p) =>
+    allocationMonthKey(p) <= cutoff ? sum + Math.abs(p.amountAccrual) : sum, 0);
+  const realisasi = periodes.reduce((sum, p) => sum + actualRealisasiThrough(p, cutoff), 0);
+  const saldoAwal = opened ? getSaldoAwal(item) : 0;
+  // Preserve early actual transactions even if their allocation belongs to a later month.
+  const included = opened || periodes.some(p => allocationMonthKey(p) <= cutoff ||
+    (p.realisasis ?? []).some(r => dateMonthKey(r.tanggalRealisasi) <= cutoff));
+  return { included, saldoAwal, accrual, realisasi, saldo: saldoAwal + accrual - realisasi };
 }
 
 // Total Accrual: logika lama – hanya periode yang sudah jatuh tempo ATAU yang punya realisasi efektif (dengan rollover) yang diakui
@@ -178,8 +207,7 @@ function calculateAccrualAmount(item: Accrual): number {
 export default function MonitoringAccrualPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  const [filterMonth, setFilterMonth] = useState('');
-  const [filterYear,  setFilterYear]  = useState('');
+  const [filterPeriod, setFilterPeriod] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [filterType, setFilterType] = useState('All');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -307,7 +335,6 @@ export default function MonitoringAccrualPage() {
   const quickRincianModalPanelRef = useRef<HTMLDivElement>(null);
 
   // -- Display states for animated metric counters -----------------
-  const [displaySaldo,    setDisplaySaldo]    = useState(0);
   const [displayCount,    setDisplayCount]    = useState(0);
   const [displayPeriodes, setDisplayPeriodes] = useState(0);
 
@@ -591,127 +618,88 @@ export default function MonitoringAccrualPage() {
     return accrualData.reduce((sum, item) => sum + (item.periodes?.length || 0), 0);
   }, [accrualData]);
 
-  // Filter data (optimized with debounced search and cached toLowerCase)
-  const filteredData = useMemo(() => {
-    if (debouncedSearchTerm === '') return accrualData;
-    
-    const searchLower = debouncedSearchTerm.toLowerCase();
-    return accrualData.filter(item => {
-      return item.kdAkr.toLowerCase().includes(searchLower) ||
-        item.kdAkunBiaya.toLowerCase().includes(searchLower) ||
-        item.vendor.toLowerCase().includes(searchLower) ||
-        item.deskripsi.toLowerCase().includes(searchLower) ||
-        (item.klasifikasi ?? '').toLowerCase().includes(searchLower) ||
-        (item.noPo ?? '').toLowerCase().includes(searchLower);
-    });
-  }, [accrualData, debouncedSearchTerm]);
+  const cutoff = filterPeriod ? dateMonthKey(filterPeriod) : null;
+  const periodLabel = filterPeriod
+    ? `${BULAN_NAMES[Number(filterPeriod.slice(5)) - 1]} ${filterPeriod.slice(0, 4)}`
+    : 'Semua Periode';
+  const exportPeriod = filterPeriod || 'Semua_Periode';
 
-  // Group data by kode akun accrual, then by vendor (dengan pre-calculated totals)
+  const availableYears = useMemo(() => {
+    const years = new Set<number>([new Date().getFullYear()]);
+    const add = (key: number) => {
+      if (Number.isFinite(key)) years.add(Math.floor(key / 100));
+    };
+    accrualData.forEach(item => {
+      add(dateMonthKey(item.startDate));
+      item.periodes?.forEach(p => {
+        add(allocationMonthKey(p));
+        p.realisasis?.forEach(r => add(dateMonthKey(r.tanggalRealisasi)));
+      });
+    });
+    const sorted = [...years].sort((a, b) => a - b);
+    return Array.from({ length: sorted[sorted.length - 1] - sorted[0] + 1 }, (_, i) => sorted[0] + i);
+  }, [accrualData]);
+
+  // One snapshot is shared by every monitoring level and both Excel reports.
+  const itemTotalsCache = useMemo(() => {
+    const cache = new Map<number, { accrual: number; realisasi: number; saldoAwal: number; saldo: number }>();
+    accrualData.forEach(item => {
+      if (cutoff !== null) {
+        const snapshot = accrualSnapshot(item, cutoff);
+        if (snapshot.included) cache.set(item.id, snapshot);
+      } else {
+        // Preserve existing unfiltered accrual recognition and actual realization.
+        const saldoAwal = getSaldoAwal(item);
+        const accrual = calculateItemAccrual(item);
+        const realisasi = calculateActualRealisasi(item);
+        cache.set(item.id, { saldoAwal, accrual, realisasi, saldo: saldoAwal + accrual - realisasi });
+      }
+    });
+    return cache;
+  }, [accrualData, cutoff, calculateItemAccrual, calculateActualRealisasi]);
+
+  const filteredData = useMemo(() => {
+    const searchLower = debouncedSearchTerm.toLowerCase();
+    return accrualData.filter(item => itemTotalsCache.has(item.id) && (
+      !searchLower ||
+      [item.kdAkr, item.kdAkunBiaya, item.vendor, item.deskripsi, item.klasifikasi, item.noPo]
+        .some(value => (value ?? '').toLowerCase().includes(searchLower))
+    ));
+  }, [accrualData, debouncedSearchTerm, itemTotalsCache]);
+
+  // Changing report scope must not leave hidden items selected for bulk deletion.
+  useEffect(() => {
+    const visibleIds = new Set(filteredData.map(item => item.id));
+    setSelectedIds(prev => {
+      const next = new Set([...prev].filter(id => visibleIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [filteredData]);
+
+  // Group only the items included in the selected snapshot and search.
   const groupedByKodeAkun = useMemo(() => {
     const groups: Record<string, Record<string, Accrual[]>> = {};
     filteredData.forEach(item => {
-      if (!groups[item.kdAkr]) {
-        groups[item.kdAkr] = {};
-      }
-      if (!groups[item.kdAkr][item.vendor]) {
-        groups[item.kdAkr][item.vendor] = [];
-      }
+      if (!groups[item.kdAkr]) groups[item.kdAkr] = {};
+      if (!groups[item.kdAkr][item.vendor]) groups[item.kdAkr][item.vendor] = [];
       groups[item.kdAkr][item.vendor].push(item);
     });
     return groups;
   }, [filteredData]);
 
-  const BULAN_NAMES = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-
-  // Pre-calculate totals untuk setiap item (cache untuk performa) dengan memperhatikan filter periode
-  const itemTotalsCache = useMemo(() => {
-    let monthOnlyTargetYear: number | null = null;
-    if (filterMonth && !filterYear) {
-      filteredData.forEach(item => {
-        item.periodes?.forEach(p => {
-          const [mon, yr] = p.bulan.split(' ');
-          if (mon === filterMonth) {
-            const y = parseInt(yr);
-            if (monthOnlyTargetYear === null || y > monthOnlyTargetYear) monthOnlyTargetYear = y;
-          }
-        });
-      });
-    }
-
-    const cache = new Map<number, { accrual: number; realisasi: number; saldoAwal: number }>();
-    filteredData.forEach(item => {
-      const saldoAwal = getSaldoAwal(item);
-      
-      let accrualAll = 0;
-      let realisasiAll = 0;
-
-      if (filterMonth || filterYear) {
-        const upToPeriodes = item.periodes?.filter(p => {
-          const [mon, yr] = p.bulan.split(' ');
-          const pDate = new Date(parseInt(yr), BULAN_NAMES.indexOf(mon), 1);
-          if (filterMonth && filterYear) {
-            const targetDate = new Date(parseInt(filterYear), BULAN_NAMES.indexOf(filterMonth), 1);
-            return pDate <= targetDate;
-          }
-          if (filterMonth && monthOnlyTargetYear !== null) {
-            const targetDate = new Date(monthOnlyTargetYear, BULAN_NAMES.indexOf(filterMonth), 1);
-            return pDate <= targetDate;
-          }
-          if (filterYear) {
-            const targetDate = new Date(parseInt(filterYear), 11, 1);
-            return pDate <= targetDate;
-          }
-          return false;
-        }) ?? [];
-        accrualAll = upToPeriodes.reduce((s, p) => s + Math.abs(p.amountAccrual), 0);
-        realisasiAll = upToPeriodes.reduce((s, p) => s + (p.totalRealisasi ?? 0), 0);
-      } else {
-        // No filter: use full calculation
-        accrualAll = calculateItemAccrual(item);
-        realisasiAll = calculateActualRealisasi(item);
-      }
-
-      cache.set(item.id, {
-        accrual: accrualAll,
-        realisasi: realisasiAll,
-        saldoAwal,
-      });
-    });
-    return cache;
-  }, [filteredData, filterMonth, filterYear, calculateItemAccrual, calculateActualRealisasi]);
-
-  // Unique years across all accrual periodes, sorted asc
-  const availableYears = useMemo(() => {
-    const set = new Set<number>();
-    accrualData.forEach(item => item.periodes?.forEach(p => {
-      const yr = parseInt(p.bulan.split(' ')[1]);
-      if (!isNaN(yr)) set.add(yr);
-    }));
-    return [...set].sort((a, b) => a - b);
-  }, [accrualData]);
-
-  // Calculate total saldo for metric card – uses itemTotalsCache so it matches rows perfectly
-  const totalSaldo = useMemo(() => {
-    return filteredData.reduce((sum, item) => {
-      const cached = itemTotalsCache.get(item.id);
-      if (cached) {
-        return sum + (cached.saldoAwal + cached.accrual - cached.realisasi);
-      }
-      return sum + getSaldoAwal(item);
-    }, 0);
-  }, [filteredData, itemTotalsCache]);
+  const totalSaldo = useMemo(() =>
+    filteredData.reduce((sum, item) => sum + itemTotalsCache.get(item.id)!.saldo, 0),
+  [filteredData, itemTotalsCache]);
 
   // -- Animated metric counters (placed here after useMemo) -------------
   useEffect(() => {
     if (loading) return;
-    const proxy1 = { value: 0 };
-    animate(proxy1, { value: Math.abs(totalSaldo), duration: 1300, ease: 'easeOutExpo', onUpdate: () => setDisplaySaldo(proxy1.value) } as any);
     const proxy2 = { value: 0 };
     animate(proxy2, { value: accrualData.length, duration: 900, ease: 'easeOutExpo', onUpdate: () => setDisplayCount(Math.round(proxy2.value)) } as any);
     const proxy3 = { value: 0 };
     animate(proxy3, { value: totalPeriodes, duration: 1050, ease: 'easeOutExpo', onUpdate: () => setDisplayPeriodes(Math.round(proxy3.value)) } as any);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, totalSaldo, accrualData.length, totalPeriodes]);
+  }, [loading, accrualData.length, totalPeriodes]);
 
   // -- Table rows animation (placed here after useMemo) -----------------
   useEffect(() => {
@@ -776,9 +764,7 @@ export default function MonitoringAccrualPage() {
       Object.entries(vendorGroups).forEach(([vendor, items]) => {
         items.forEach((item) => {
           // Saldo = saldo awal + total accrual - realisasi (outstanding)
-          const totalAccrual = calculateAccrualAmount(item);
-          const totalRealisasi = calculateItemRealisasi(item);
-          const totalOutstanding = calculateItemSaldo(item, totalAccrual, totalRealisasi);
+          const totalOutstanding = itemTotalsCache.get(item.id)!.saldo;
           
           const row = worksheet.getRow(currentRow);
           
@@ -790,7 +776,7 @@ export default function MonitoringAccrualPage() {
           row.getCell(6).value = item.alokasi || '';
           row.getCell(7).value = item.deskripsi;
           row.getCell(8).value = item.totalAmount;
-          row.getCell(8).numFmt = '#,##0.000';
+          row.getCell(8).numFmt = '#,##0';
           
           // DOC DATE
           const docDate = new Date(item.startDate);
@@ -803,7 +789,7 @@ export default function MonitoringAccrualPage() {
           
           // OUTSTANDING
           row.getCell(11).value = totalOutstanding;
-          row.getCell(11).numFmt = '#,##0.000';
+          row.getCell(11).numFmt = '#,##0';
           
           // Apply borders and styling
           for (let col = 1; col <= 11; col++) {
@@ -834,7 +820,7 @@ export default function MonitoringAccrualPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Detail_All_Accruals_${new Date().toISOString().split('T')[0]}.xlsx`;
+    link.download = `Detail_All_Accruals_${exportPeriod}_${new Date().toISOString().split('T')[0]}.xlsx`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -855,7 +841,7 @@ export default function MonitoringAccrualPage() {
     // Title - "Kebutuhan lain rekon akru utang AU exclude 21600001 dan 21600020 (SDM)"
     worksheet.mergeCells('A1:C1');
     const titleCell = worksheet.getCell('A1');
-    titleCell.value = 'Kebutuhan lain rekon akru utang AU exclude 21600001 dan 21600020 (SDM)';
+    titleCell.value = `Rekap Akru Utang AU — ${periodLabel}`;
     titleCell.font = { name: 'Calibri', size: 11, bold: true };
     titleCell.alignment = { horizontal: 'left', vertical: 'middle' };
     titleCell.fill = {
@@ -904,9 +890,7 @@ export default function MonitoringAccrualPage() {
           const vendorName = item.vendor;
           
           // Saldo = saldo awal + total accrual - realisasi
-          const totalAccrual = calculateAccrualAmount(item);
-          const totalRealisasi = calculateItemRealisasi(item);
-          const totalSaldo = calculateItemSaldo(item, totalAccrual, totalRealisasi);
+          const totalSaldo = itemTotalsCache.get(item.id)!.saldo;
           
           // Group by GL Account and Vendor
           if (!summaryData[glAccount]) {
@@ -946,7 +930,7 @@ export default function MonitoringAccrualPage() {
         
         row.getCell(2).value = vendor;
         row.getCell(3).value = amount;
-        row.getCell(3).numFmt = '#,##0.00';
+        row.getCell(3).numFmt = '#,##0';
         
         // Add borders
         for (let col = 1; col <= 3; col++) {
@@ -987,7 +971,7 @@ export default function MonitoringAccrualPage() {
     
     const totalAmountCell = totalRow.getCell(3);
     totalAmountCell.value = totalGrandTotal;
-    totalAmountCell.numFmt = '#,##0.00';
+    totalAmountCell.numFmt = '#,##0';
     totalAmountCell.font = { name: 'Calibri', size: 11, bold: true };
     totalAmountCell.alignment = { horizontal: 'right', vertical: 'middle' };
     totalAmountCell.fill = {
@@ -1014,7 +998,7 @@ export default function MonitoringAccrualPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Rekap_Akrual_Global_${new Date().toISOString().split('T')[0]}.xlsx`;
+    link.download = `Rekap_Akrual_Global_${exportPeriod}_${new Date().toISOString().split('T')[0]}.xlsx`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -3418,36 +3402,35 @@ export default function MonitoringAccrualPage() {
                     />
                   </div>
 
-                  {/* Period filter – month + year */}
-                  <select
-                    value={filterMonth}
-                    onChange={(e) => setFilterMonth(e.target.value)}
-                    className="px-3 py-2 border border-gray-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-400 text-xs transition-all"
-                  >
-                    <option value="">Semua Bulan</option>
-                    {BULAN_NAMES.map(m => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={filterYear}
-                    onChange={(e) => setFilterYear(e.target.value)}
-                    className="px-3 py-2 border border-gray-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-400 text-xs transition-all"
-                  >
-                    <option value="">Semua Tahun</option>
-                    {availableYears.map(y => (
-                      <option key={y} value={String(y)}>{y}</option>
-                    ))}
-                  </select>
+                  {/* As-of month-end filter */}
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                    Periode saldo
+                    <select
+                      value={filterPeriod}
+                      onChange={(e) => setFilterPeriod(e.target.value)}
+                      className="px-3 py-2 border border-gray-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-400 text-xs transition-all"
+                    >
+                      <option value="">Semua Periode</option>
+                      {availableYears.flatMap(y => BULAN_NAMES.map((m, i) => {
+                        const value = `${y}-${String(i + 1).padStart(2, '0')}`;
+                        return <option key={value} value={value}>{m} {y}</option>;
+                      }))}
+                    </select>
+                  </label>
+                  {filterPeriod && (
+                    <button type="button" onClick={() => setFilterPeriod('')} className="px-2 py-2 text-xs text-slate-600 hover:text-red-600">
+                      Reset Periode
+                    </button>
+                  )}
 
                   {/* Outstanding Saldo inline */}
                   <div ref={metricCard1Ref} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm shrink-0" style={{ opacity: 0 }}>
                     <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
                     <div className="leading-tight">
                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">
-                        Outstanding Saldo{(filterMonth || filterYear) ? ` – ${filterMonth || ''}${filterMonth && filterYear ? ' ' : ''}${filterYear || ''}` : ''}
+                        Outstanding Saldo{filterPeriod ? ` – Akhir ${periodLabel}` : ''}
                       </p>
-                      <p className="text-xs font-bold text-slate-800 font-mono">{formatCurrency(Math.abs(displaySaldo))}</p>
+                      <p className="text-xs font-bold text-slate-800 font-mono">{formatCurrency(totalSaldo)}</p>
                     </div>
                   </div>
 
@@ -3601,7 +3584,7 @@ export default function MonitoringAccrualPage() {
                       const cached = itemTotalsCache.get(item.id);
                       return sum + (cached?.realisasi || 0);
                     }, 0);
-                    const totalSaldoKodeAkun = totalSaldoAwalKodeAkun + totalAccrualKodeAkun - totalRealisasiKodeAkun;
+                    const totalSaldoKodeAkun = allItems.reduce((sum, item) => sum + itemTotalsCache.get(item.id)!.saldo, 0);
 
                     return (
                       <React.Fragment key={kodeAkun}>
@@ -3692,7 +3675,7 @@ export default function MonitoringAccrualPage() {
                             const cached = itemTotalsCache.get(item.id);
                             return sum + (cached?.saldoAwal ?? getSaldoAwal(item));
                           }, 0);
-                          const totalSaldoVendor = totalSaldoAwalVendor + totalAccrualVendor - totalRealisasiVendor;
+                          const totalSaldoVendor = items.reduce((sum, item) => sum + itemTotalsCache.get(item.id)!.saldo, 0);
 
                           return (
                             <React.Fragment key={vendorKey}>
@@ -3732,6 +3715,9 @@ export default function MonitoringAccrualPage() {
 
                               {isVendorExpanded && items.map((item, idx) => {
                           const isExpanded = expandedRows.has(item.id);
+                          const visiblePeriodes = (item.periodes ?? []).filter(p =>
+                            cutoff === null || allocationMonthKey(p) <= cutoff ||
+                            (p.realisasis ?? []).some(r => dateMonthKey(r.tanggalRealisasi) <= cutoff));
                           return (
                             <React.Fragment key={item.id}>
                               <tr className={`tr-item transition-colors duration-100 animate-slide-down ${idx % 2 === 0 ? 'bg-white hover:bg-red-50/20' : 'bg-slate-50/50 hover:bg-red-50/30'}`}>
@@ -3796,22 +3782,22 @@ export default function MonitoringAccrualPage() {
                           </td>
                           <td className="px-2 py-3.5 text-right text-slate-600 text-xs whitespace-nowrap">
                             
-                              {formatCurrency(getSaldoAwal(item))}
+                              {formatCurrency(itemTotalsCache.get(item.id)!.saldoAwal)}
                             
                           </td>
                           <td className="px-2 py-3.5 text-right text-slate-600 text-xs whitespace-nowrap">
                             
-                              {formatCurrency(calculateItemAccrual(item))}
+                              {formatCurrency(itemTotalsCache.get(item.id)!.accrual)}
                             
                           </td>
                           <td className="px-2 py-3.5 text-right text-blue-600 text-xs whitespace-nowrap">
                             
-                              {formatCurrency(calculateActualRealisasi(item))}
+                              {formatCurrency(itemTotalsCache.get(item.id)!.realisasi)}
                             
                           </td>
                           <td className="px-2 py-3.5 text-right text-xs whitespace-nowrap">
                             {(() => {
-                              const saldo = calculateItemSaldo(item, calculateItemAccrual(item), calculateActualRealisasi(item));
+                              const saldo = itemTotalsCache.get(item.id)!.saldo;
                               return (
                                 <span className={`font-bold ${saldo > 0 ? 'text-amber-600' : saldo < 0 ? 'text-red-600' : 'text-slate-400'}`}>
                                   {formatCurrency(saldo)}
@@ -3844,11 +3830,11 @@ export default function MonitoringAccrualPage() {
                         </tr>
                         
                         {/* Expanded Row - Periode Details */}
-                        {isExpanded && item.periodes && item.periodes.length > 0 && (
+                        {isExpanded && visiblePeriodes.length > 0 && (
                           <tr className="bg-gray-50 animate-slide-down">
                             <td colSpan={canEdit ? 20 : 19} className="px-4 py-4 bg-gray-50">
                               <div className="ml-8">
-                                <h4 className="text-sm font-semibold text-gray-700 mb-3">Detail Periode</h4>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3">Detail Periode{filterPeriod ? ` — hingga akhir ${periodLabel} (realisasi berdasarkan tanggal transaksi)` : ''}</h4>
                                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                                 <div className="overflow-y-auto max-h-[400px]">
                                 <table className="w-full text-sm">
@@ -3863,19 +3849,23 @@ export default function MonitoringAccrualPage() {
                                     </tr>
                                   </thead>
                                   <tbody className="bg-white divide-y divide-gray-200">
-                                    {item.periodes?.map((periode) => (
+                                    {visiblePeriodes.map((periode) => {
+                                      const shownAccrual = cutoff === null || allocationMonthKey(periode) <= cutoff ? Math.abs(periode.amountAccrual) : 0;
+                                      const shownRealisasi = cutoff === null ? (periode.totalRealisasi ?? 0) : actualRealisasiThrough(periode, cutoff);
+                                      const shownSaldo = cutoff === null ? (periode.saldo ?? 0) : shownAccrual - shownRealisasi;
+                                      return (
                                       <React.Fragment key={periode.id}>
                                       <tr className="hover:bg-gray-50">
                                         <td className="px-4 py-3 text-gray-700 bg-white">Periode {periode.periodeKe}</td>
                                         <td className="px-4 py-3 text-gray-700 bg-white">{periode.bulan}</td>
                                         <td className="px-4 py-3 text-right text-gray-800 font-medium bg-white">
-                                          {formatCurrency(Math.abs(periode.amountAccrual))}
+                                          {formatCurrency(shownAccrual)}
                                         </td>
                                         <td className="px-4 py-3 text-right text-blue-700 bg-white">
-                                          {formatCurrency(periode.totalRealisasi || 0)}
+                                          {formatCurrency(shownRealisasi)}
                                         </td>
-                                        <td className={`px-4 py-3 text-right font-semibold bg-white ${(periode.saldo ?? 0) < 0 ? 'text-red-600' : 'text-gray-800'}`}>
-                                          {formatCurrency(periode.saldo ?? 0)}
+                                        <td className={`px-4 py-3 text-right font-semibold bg-white ${shownSaldo < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                                          {formatCurrency(shownSaldo)}
                                         </td>
                                         <td className="px-4 py-3 text-center bg-white">
                                           <div className="flex items-center justify-center gap-1 flex-wrap">
@@ -3925,7 +3915,7 @@ export default function MonitoringAccrualPage() {
                                         </td>
                                       </tr>
                                       </React.Fragment>
-                                    ))}
+                                    ); })}
                                   </tbody>
                                 </table>
                                 </div>
