@@ -141,6 +141,33 @@ function allocationMonthKey(periode: AccrualPeriode): number {
   return index >= 0 && Number.isInteger(y) && y > 0 ? y * 100 + index + 1 : Number.POSITIVE_INFINITY;
 }
 
+// Reporting options contain actual years only. Extremely distant dates are flagged
+// rather than silently corrected or used to generate hundreds of empty years.
+function collectReportingYears(items: Accrual[], currentYear: number) {
+  const years = new Set<number>([currentYear]);
+  const issues: { item: Accrual; field: string; value: string; recordId?: number }[] = [];
+  const inspect = (item: Accrual, field: string, value: string, key: number, recordId?: number) => {
+    const year = Math.floor(key / 100);
+    if (!Number.isFinite(year) || year < 1900 || year > currentYear + 20) {
+      issues.push({ item, field, value, recordId });
+    } else {
+      years.add(year);
+    }
+  };
+  items.forEach(item => {
+    inspect(item, 'Start Date', item.startDate, dateMonthKey(item.startDate), item.id);
+    item.periodes?.forEach(p => {
+      inspect(item, 'Periode Accrual', p.bulan, allocationMonthKey(p), p.id);
+      if (Number(p.tahun) !== Math.floor(allocationMonthKey(p) / 100)) {
+        issues.push({ item, field: 'Tahun Periode (tidak sesuai bulan)', value: String(p.tahun), recordId: p.id });
+      }
+      p.realisasis?.forEach(r =>
+        inspect(item, 'Tanggal Realisasi', r.tanggalRealisasi, dateMonthKey(r.tanggalRealisasi), r.id));
+    });
+  });
+  return { years: [...years].sort((a, b) => a - b), issues };
+}
+
 function actualRealisasiThrough(periode: AccrualPeriode, cutoff: number): number {
   return (periode.realisasis ?? []).reduce((sum, r) =>
     dateMonthKey(r.tanggalRealisasi) <= cutoff ? sum + Number(r.amount) : sum, 0);
@@ -624,21 +651,8 @@ export default function MonitoringAccrualPage() {
     : 'Semua Periode';
   const exportPeriod = filterPeriod || 'Semua_Periode';
 
-  const availableYears = useMemo(() => {
-    const years = new Set<number>([new Date().getFullYear()]);
-    const add = (key: number) => {
-      if (Number.isFinite(key)) years.add(Math.floor(key / 100));
-    };
-    accrualData.forEach(item => {
-      add(dateMonthKey(item.startDate));
-      item.periodes?.forEach(p => {
-        add(allocationMonthKey(p));
-        p.realisasis?.forEach(r => add(dateMonthKey(r.tanggalRealisasi)));
-      });
-    });
-    const sorted = [...years].sort((a, b) => a - b);
-    return Array.from({ length: sorted[sorted.length - 1] - sorted[0] + 1 }, (_, i) => sorted[0] + i);
-  }, [accrualData]);
+  const { years: availableYears, issues: periodIssues } = useMemo(
+    () => collectReportingYears(accrualData, new Date().getFullYear()), [accrualData]);
 
   // One snapshot is shared by every monitoring level and both Excel reports.
   const itemTotalsCache = useMemo(() => {
@@ -714,7 +728,43 @@ export default function MonitoringAccrualPage() {
     exportToCSV(filteredData, 'Monitoring_Accrual.csv', headers);
   };
 
+  // Freeze the reporting scope and balance at click time, before lazy imports.
+  const captureExportSnapshot = () => {
+    const generatedAt = new Date();
+    const rows = filteredData.map(item => ({ item, saldo: itemTotalsCache.get(item.id)!.saldo }));
+    return {
+      rows, expectedTotal: totalSaldo, period: periodLabel, search: debouncedSearchTerm,
+      generatedAt, filename: exportPeriod + '_' + generatedAt.toISOString().replace(/[:.]/g, '-'),
+    };
+  };
+
+  const addExportControl = (workbook: any, snapshot: ReturnType<typeof captureExportSnapshot>, writtenTotal: number, writtenCount: number) => {
+    const difference = writtenTotal - snapshot.expectedTotal;
+    // Different addition orders may introduce tiny floating-point differences.
+    if (!Number.isFinite(difference) || Math.abs(difference) > 0.01 || writtenCount !== snapshot.rows.length) {
+      throw new Error('Export tidak sesuai dengan snapshot saldo monitoring');
+    }
+    const control = workbook.addWorksheet('Kontrol Export');
+    control.columns = [{ width: 32 }, { width: 42 }];
+    control.addRow(['Periode saldo', snapshot.period]);
+    control.addRow(['Pencarian', snapshot.search || 'Semua']);
+    control.addRow(['Waktu export (UTC)', snapshot.generatedAt.toISOString()]);
+    control.addRow(['Jumlah item monitoring', snapshot.rows.length]);
+    control.addRow(['Jumlah item sumber export', writtenCount]);
+    control.addRow(['Outstanding aplikasi', snapshot.expectedTotal]).getCell(2).numFmt = '#,##0';
+    control.addRow(['Total export', writtenTotal]).getCell(2).numFmt = '#,##0';
+    control.addRow(['Selisih (0 desimal)', difference]).getCell(2).numFmt = '#,##0';
+    control.addRow(['Catatan', 'Saldo per snapshot saat tombol export ditekan.']);
+    const detail = workbook.addWorksheet('Kontrol Per Item');
+    detail.columns = [{width: 15}, {width: 15}, {width: 36}, {width: 22}, {width: 22}];
+    detail.addRow(['ID ACCRUAL', 'GL ACCOUNT', 'VENDOR', 'PO/PR', 'OUTSTANDING']);
+    snapshot.rows.forEach(({item, saldo}) => {
+      detail.addRow([item.id, item.kdAkr, item.vendor, item.noPo || '', saldo]).getCell(5).numFmt = '#,##0';
+    });
+  };
+
   const handleDownloadAllItemsReport = async () => {
+    const snapshot = captureExportSnapshot();
     try {
       // Load ExcelJS on demand
       const { ExcelJS: ExcelJSLib } = await loadExcelLibraries();
@@ -759,12 +809,11 @@ export default function MonitoringAccrualPage() {
     
     let currentRow = 2;
     
-    // Loop through all items
-    Object.entries(groupedByKodeAkun).forEach(([kodeAkun, vendorGroups]) => {
-      Object.entries(vendorGroups).forEach(([vendor, items]) => {
-        items.forEach((item) => {
-          // Saldo = saldo awal + total accrual - realisasi (outstanding)
-          const totalOutstanding = itemTotalsCache.get(item.id)!.saldo;
+    // The exact same rows as the monitoring snapshot, ordered for the report.
+    let writtenTotal = 0;
+    const rows = [...snapshot.rows].sort((a, b) =>
+      a.item.kdAkr.localeCompare(b.item.kdAkr) || a.item.vendor.localeCompare(b.item.vendor));
+    rows.forEach(({ item, saldo: totalOutstanding }) => {
           
           const row = worksheet.getRow(currentRow);
           
@@ -808,10 +857,10 @@ export default function MonitoringAccrualPage() {
             }
           }
           
+          writtenTotal += Number(row.getCell(11).value);
           currentRow++;
-        });
-      });
     });
+    addExportControl(workbook, snapshot, writtenTotal, currentRow - 2);
     
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { 
@@ -820,7 +869,7 @@ export default function MonitoringAccrualPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Detail_All_Accruals_${exportPeriod}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    link.download = `Detail_All_Accruals_${snapshot.filename}.xlsx`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -832,6 +881,7 @@ export default function MonitoringAccrualPage() {
   };
 
   const handleDownloadGlobalReport = async () => {
+    const snapshot = captureExportSnapshot();
     try {
       // Load ExcelJS on demand
       const { ExcelJS: ExcelJSLib } = await loadExcelLibraries();
@@ -841,7 +891,7 @@ export default function MonitoringAccrualPage() {
     // Title - "Kebutuhan lain rekon akru utang AU exclude 21600001 dan 21600020 (SDM)"
     worksheet.mergeCells('A1:C1');
     const titleCell = worksheet.getCell('A1');
-    titleCell.value = `Rekap Akru Utang AU — ${periodLabel}`;
+    titleCell.value = `Rekap Akru Utang AU — ${snapshot.period}`;
     titleCell.font = { name: 'Calibri', size: 11, bold: true };
     titleCell.alignment = { horizontal: 'left', vertical: 'middle' };
     titleCell.fill = {
@@ -880,43 +930,31 @@ export default function MonitoringAccrualPage() {
     
     let currentRow = 3;
     
-    // Calculate summary data grouped by kdAkr (GL Account) and vendor
-    const summaryData: Record<string, Record<string, number>> = {};
-    
-    Object.entries(groupedByKodeAkun).forEach(([kodeAkun, vendorGroups]) => {
-      Object.entries(vendorGroups).forEach(([vendor, items]) => {
-        items.forEach((item) => {
-          const glAccount = item.kdAkr; // Using kode akun accrual
-          const vendorName = item.vendor;
-          
-          // Saldo = saldo awal + total accrual - realisasi
-          const totalSaldo = itemTotalsCache.get(item.id)!.saldo;
-          
-          // Group by GL Account and Vendor
-          if (!summaryData[glAccount]) {
-            summaryData[glAccount] = {};
-          }
-          if (!summaryData[glAccount][vendorName]) {
-            summaryData[glAccount][vendorName] = 0;
-          }
-          summaryData[glAccount][vendorName] += totalSaldo;
-        });
-      });
+    // Aggregate the frozen monitoring rows, not a second source of financial data.
+    const summaryData = new Map<string, Map<string, { amount: number; count: number }>>();
+    snapshot.rows.forEach(({ item, saldo }) => {
+      const vendors = summaryData.get(item.kdAkr) ?? new Map();
+      const group = vendors.get(item.vendor) ?? { amount: 0, count: 0 };
+      group.amount += saldo;
+      group.count++;
+      vendors.set(item.vendor, group);
+      summaryData.set(item.kdAkr, vendors);
     });
-    
+
     // Sort GL Accounts
-    const sortedGLAccounts = Object.keys(summaryData).sort();
+    const sortedGLAccounts = [...summaryData.keys()].sort();
     
     let totalGrandTotal = 0;
+    let writtenCount = 0;
     
     // Loop through sorted GL Accounts
     sortedGLAccounts.forEach((glAccount) => {
-      const vendors = summaryData[glAccount];
-      const sortedVendors = Object.keys(vendors).sort();
+      const vendors = summaryData.get(glAccount)!;
+      const sortedVendors = [...vendors.keys()].sort();
       
       sortedVendors.forEach((vendor, index) => {
-        const amount = vendors[vendor];
-        totalGrandTotal += amount;
+        const { amount, count } = vendors.get(vendor)!;
+        writtenCount += count;
         
         const row = worksheet.getRow(currentRow);
         
@@ -931,6 +969,7 @@ export default function MonitoringAccrualPage() {
         row.getCell(2).value = vendor;
         row.getCell(3).value = amount;
         row.getCell(3).numFmt = '#,##0';
+        totalGrandTotal += Number(row.getCell(3).value);
         
         // Add borders
         for (let col = 1; col <= 3; col++) {
@@ -955,6 +994,8 @@ export default function MonitoringAccrualPage() {
       });
     });
     
+    addExportControl(workbook, snapshot, totalGrandTotal, writtenCount);
+
     // Add TOTAL row
     const totalRow = worksheet.getRow(currentRow);
     worksheet.mergeCells(currentRow, 1, currentRow, 2);
@@ -998,7 +1039,7 @@ export default function MonitoringAccrualPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Rekap_Akrual_Global_${exportPeriod}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    link.download = `Rekap_Akrual_Global_${snapshot.filename}.xlsx`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -3485,6 +3526,28 @@ export default function MonitoringAccrualPage() {
                   </div>
                 </div>
               </div>
+
+              {periodIssues.length > 0 && (
+                <details className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  <summary className="cursor-pointer font-semibold">
+                    <AlertTriangle size={14} className="mr-1 inline" />
+                    {periodIssues.length} data tanggal/periode perlu diperiksa
+                  </summary>
+                  <p className="my-2">Tahun di luar rentang wajar (1900–{new Date().getFullYear() + 20}) tidak ditawarkan pada filter. Data transaksi tidak diubah. Periksa tanggal sumber berikut sebelum koreksi.</p>
+                  <div className="max-h-56 overflow-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead><tr>{['ID Accrual','GL','Vendor','PO/PR','Field','ID Record','Nilai'].map(h => <th key={h} className="p-1">{h}</th>)}</tr></thead>
+                      <tbody>{periodIssues.map((issue, i) => (
+                        <tr key={i} className="border-t border-amber-200">
+                          <td className="p-1">{issue.item.id}</td><td className="p-1">{issue.item.kdAkr}</td>
+                          <td className="p-1">{issue.item.vendor}</td><td className="p-1">{issue.item.noPo || '-'}</td>
+                          <td className="p-1">{issue.field}</td><td className="p-1">{issue.recordId ?? '-'}</td><td className="p-1">{issue.value}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                </details>
+              )}
 
           {/* Table */}
           <div ref={tableContainerRef} className="bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden" style={{ maxWidth: '100%' }}>
