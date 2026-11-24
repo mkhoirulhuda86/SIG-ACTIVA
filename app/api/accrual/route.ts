@@ -52,6 +52,8 @@ export async function GET(request: NextRequest) {
       ];
     }
 
+    // Financial monitoring requires the complete matching dataset. Do not silently cap
+    // parent records or their periods; both normal and schema-fallback reads must agree.
     let accruals: any[] = [];
     try {
       accruals = await prisma.accrual.findMany({
@@ -109,13 +111,9 @@ export async function GET(request: NextRequest) {
             orderBy: {
               periodeKe: 'asc',
             },
-            take: 100
           },
         },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        take: 1000
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       });
     } catch (fullQueryError) {
       // Fallback for schema drift in production so endpoint still serves core data.
@@ -152,13 +150,9 @@ export async function GET(request: NextRequest) {
             orderBy: {
               periodeKe: 'asc',
             },
-            take: 100,
           },
         },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        take: 1000,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       });
     }
 
